@@ -1,0 +1,11 @@
+{
+    "external": {
+        "appwrite": {
+            "endpoint": "***********",
+            "project_id": "**********",
+            "database_id": "**********",
+            "apiKey": "*********",
+            "apiSecret": "**********",
+        }
+    }
+}
