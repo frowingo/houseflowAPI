@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 
-	_ "houseflowApi/docs" // Swagger docs
+	_ "houseflowApi/external/swagger/docs" // Swagger docs
 )
 
 // @title HouseFlow API
@@ -35,24 +35,7 @@ func main() {
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	api := app.Group("/api/v1")
-
-	api.Get("/health", healthCheck)
+	SetupRoutes(app)
 
 	log.Fatal(app.Listen(":3162"))
-}
-
-// HealthCheck godoc
-// @Summary Health check
-// @Description Check if the API is running
-// @Tags health
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /health [get]
-func healthCheck(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status":  "ok",
-		"message": "HouseFlow API is running",
-	})
 }
