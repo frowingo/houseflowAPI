@@ -11,6 +11,7 @@ type ConfigModel struct {
 
 type ConfigExternal struct {
 	AppWrite ConfigAppWrite `json:"appwrite"`
+	Mongo    ConfigMongo    `json:"mongo"`
 }
 
 type ConfigAppWrite struct {
@@ -19,6 +20,12 @@ type ConfigAppWrite struct {
 	DatabaseId string `json:"database_id"`
 	ApiKey     string `json:"apiKey"`
 	ApiSecret  string `json:"apiSecret"`
+}
+
+type ConfigMongo struct {
+	DevConString  string `json:"devConString"`
+	ProdConString string `json:"prodConString"`
+	DbName        string `json:"dbName"`
 }
 
 func LoadConfig() (*ConfigModel, error) {
