@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 )
 
@@ -29,16 +30,16 @@ type ConfigMongo struct {
 }
 
 func LoadConfig() (*ConfigModel, error) {
-	configFilePath := "internal/config/config.json"
+	configFilePath := "./internal/config/config.json"
 
 	file, err := os.ReadFile(configFilePath)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("failed to read config file:" + err.Error())
 	}
 
 	var config ConfigModel
 	if err := json.Unmarshal(file, &config); err != nil {
-		return nil, err
+		return nil, errors.New("config.json cannot deserialize:" + err.Error())
 	}
 
 	return &config, nil

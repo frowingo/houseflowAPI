@@ -1,4 +1,18 @@
 basePath: /api/v1
+definitions:
+  dtos.NewUserModel:
+    properties:
+      age:
+        type: integer
+      email:
+        type: string
+      firstName:
+        type: string
+      lastName:
+        type: string
+      phoneNumber:
+        type: string
+    type: object
 host: localhost:3162
 info:
   contact:
@@ -12,11 +26,10 @@ info:
   title: HouseFlow API
   version: "1.0"
 paths:
-  /health:
+  /base/health:
     get:
       consumes:
       - application/json
-      description: Check if the API is running
       produces:
       - application/json
       responses:
@@ -25,9 +38,33 @@ paths:
           schema:
             additionalProperties: true
             type: object
-      summary: Health check
       tags:
-      - health
+      - Base
+  /user:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: User object
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.NewUserModel'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dtos.NewUserModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      tags:
+      - User
 schemes:
 - http
 - https

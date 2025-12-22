@@ -5,7 +5,7 @@
             "project_id": "6946*********eed98d",
             "database_id": "694*********4977",
             "apiKey": "houseFlowAPI",
-            "apiSecret": "st********151b0398*********************a5bb2d0aec5e4fcff5bcc01a4*********************************e0f3bd7b227757885c8ba88e6c9d7b0e7c9090189cee62d0402d6f41bef35cf597ea0bc245be55c5a21**********************************",
+            "apiSecret": "st********151b0398*********************a5bb2d0aec5e4fcff5bcc01a4*********************************e0f3bd7b227757885c8ba88e6c9d7b0e7c9090189cee62d0402d6f41bef35cf597ea0bc245be55c5a21**********************************"
         },
         "mongo": {
             "devConString": "mongodb://localhost:27017",

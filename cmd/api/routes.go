@@ -1,7 +1,10 @@
 package main
 
 import (
+	"houseflowApi/internal/abstract"
+	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/handlers"
+	"houseflowApi/internal/services"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -12,4 +15,10 @@ func SetupRoutes(app *fiber.App) {
 
 	baseRoutes := api.Group("/base")
 	baseRoutes.Get("/health", handlers.HealthCheck)
+
+	userService := services.NewUserService(&abstract.DbRepository[entities.User]{})
+	userHandler := handlers.NewUserHandler(userService)
+
+	userRoutes := api.Group("/user")
+	userRoutes.Post("", userHandler.NewUser)
 }

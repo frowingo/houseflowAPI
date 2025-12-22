@@ -38,6 +38,6 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 		return zero, err
 	}
 
-	r.mongoContext.CloseConnection(ctx)
+	mongoCtx.CloseConnection(ctx)
 	return &entity, nil
 }
