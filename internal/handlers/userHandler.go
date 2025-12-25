@@ -79,6 +79,12 @@ func (r *UserHandler) DeleteUser(c *fiber.Ctx) error {
 
 	userId := c.Params("id")
 
+	if userId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User ID is required",
+		})
+	}
+
 	err := r.userService.DeleteUser(userId)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

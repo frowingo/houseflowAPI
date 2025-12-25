@@ -13,6 +13,35 @@ definitions:
       phoneNumber:
         type: string
     type: object
+  entities.User:
+    properties:
+      age:
+        type: integer
+      created_on:
+        type: string
+      email:
+        type: string
+      firstName:
+        type: string
+      house_ids:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      image_url:
+        type: string
+      is_active:
+        type: boolean
+      last_login:
+        type: string
+      lastName:
+        type: string
+      phoneNumber:
+        type: string
+      updated_on:
+        type: string
+    type: object
 host: localhost:3162
 info:
   contact:
@@ -63,6 +92,78 @@ paths:
           schema:
             additionalProperties: true
             type: object
+      tags:
+      - User
+  /user/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a user by their ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Delete a user
+      tags:
+      - User
+  /user/getByEmail:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a user by their email address
+      parameters:
+      - description: User email
+        in: query
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entities.User'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get user by email
+      tags:
+      - User
+  /user/usersList:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of all users in the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dtos.NewUserModel'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List all users
       tags:
       - User
 schemes:

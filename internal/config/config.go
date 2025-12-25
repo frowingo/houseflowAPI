@@ -8,11 +8,20 @@ import (
 
 type ConfigModel struct {
 	External ConfigExternal `json:"external"`
+	Internal ConfigInternal `json:"internal"`
 }
 
 type ConfigExternal struct {
 	AppWrite ConfigAppWrite `json:"appwrite"`
 	Mongo    ConfigMongo    `json:"mongo"`
+}
+
+type ConfigInternal struct {
+	JWT ConfigJWT `json:"jwt"`
+}
+
+type ConfigJWT struct {
+	ApiSecret string `json:"apiSecret"`
 }
 
 type ConfigAppWrite struct {

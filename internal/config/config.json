@@ -12,5 +12,10 @@
             "prodConString": "",
             "dbName": "houseflowDb"
         }
+    },
+    "internal": {
+        "jwt": {
+            "apiSecret": "JWT_HOUSEFLOW_SECRET_KEY"
+        }
     }
 }

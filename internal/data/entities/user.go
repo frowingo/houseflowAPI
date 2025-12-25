@@ -12,6 +12,7 @@ type User struct {
 	Lastname    string             `bson:"lastName" json:"lastName"`
 	PhoneNumber string             `bson:"phoneNumber" json:"phoneNumber"`
 	Email       string             `bson:"email" json:"email"`
+	Password    string             `bson:"password" json:"password"`
 	Age         int                `bson:"age" json:"age"`
 	ImageURL    string             `bson:"image_url" json:"image_url"`
 	HouseIds    []string           `bson:"house_ids" json:"house_ids"`
