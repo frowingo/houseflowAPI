@@ -12,7 +12,7 @@ type LoginResponseModel struct {
 	Password string `bson:"password" json:"password"`
 }
 
-type JwtModels struct {
+type JwtModel struct {
 	Issuer    string    `bson:"issuer" json:"issuer"`
 	ExpiresAt time.Time `bson:"expiresAt" json:"expiresAt"`
 	IssuedAt  time.Time `bson:"issuedAt" json:"issuedAt"`

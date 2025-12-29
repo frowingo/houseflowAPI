@@ -35,15 +35,14 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 		var zero *T
 		return zero, err
 	}
+	defer mongoCtx.CloseConnection(ctx)
 
 	_, err = mongoCtx.Collection.InsertOne(ctx, entity)
 	if err != nil {
 		var zero *T
-		r.mongoContext.CloseConnection(ctx)
 		return zero, err
 	}
 
-	mongoCtx.CloseConnection(ctx)
 	return &entity, nil
 }
 

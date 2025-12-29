@@ -21,7 +21,13 @@ func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, er
 
 	entity := user.ToEntity()
 
-	_, err := r.dbRepository.Insert(entity)
+	hashedPassword, err := helpers.HashPassword(user.Password)
+	if err != nil {
+		return nil, err
+	}
+	entity.HashPassword = hashedPassword
+
+	_, err = r.dbRepository.Insert(entity)
 	if err != nil {
 		return nil, err
 	}

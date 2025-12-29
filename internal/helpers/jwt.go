@@ -3,12 +3,13 @@ package helpers
 import (
 	"errors"
 	"houseflowApi/internal/config"
+	"houseflowApi/internal/models/dtos"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func GenerateToken(email string, password string) (string, error) {
+func GenerateToken(email string, userId string) (string, error) {
 
 	config, err := config.LoadConfig()
 	if err != nil {
@@ -17,7 +18,7 @@ func GenerateToken(email string, password string) (string, error) {
 
 	claim := jwt.RegisteredClaims{
 		Issuer:    email,
-		Subject:   password,
+		Subject:   userId,
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}
@@ -31,25 +32,27 @@ func GenerateToken(email string, password string) (string, error) {
 	return signedToken, nil
 }
 
-func ValidateToken(token string) (string, error) {
+func ValidateToken(token string) (dtos.JwtModel, error) {
 
 	config, err := config.LoadConfig()
 	if err != nil {
-		return "", errors.New("config not found")
+		return dtos.JwtModel{}, errors.New("config not found")
 	}
 
 	parsedToken, err := jwt.ParseWithClaims(token, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
 		return []byte(config.Internal.JWT.ApiSecret), nil
 	})
 	if err != nil {
-		return "", err
+		return dtos.JwtModel{}, err
 	}
 
 	if claims, ok := parsedToken.Claims.(*jwt.RegisteredClaims); ok && parsedToken.Valid {
-		return claims.Issuer, nil
-	} else {
-		return "", errors.New("invalid token")
-	}
 
-	return "mocked_user_id", nil
+		return dtos.JwtModel{
+			Issuer:    claims.Issuer,
+			ExpiresAt: claims.ExpiresAt.Time,
+			IssuedAt:  claims.IssuedAt.Time}, nil
+	} else {
+		return dtos.JwtModel{}, errors.New("invalid token")
+	}
 }
