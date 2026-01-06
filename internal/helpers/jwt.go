@@ -50,6 +50,7 @@ func ValidateToken(token string) (dtos.JwtModel, error) {
 
 		return dtos.JwtModel{
 			Issuer:    claims.Issuer,
+			Subject:   claims.Subject,
 			ExpiresAt: claims.ExpiresAt.Time,
 			IssuedAt:  claims.IssuedAt.Time}, nil
 	} else {

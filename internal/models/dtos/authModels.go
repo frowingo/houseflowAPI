@@ -14,6 +14,7 @@ type LoginResponseModel struct {
 
 type JwtModel struct {
 	Issuer    string    `bson:"issuer" json:"issuer"`
+	Subject   string    `bson:"subject" json:"subject"`
 	ExpiresAt time.Time `bson:"expiresAt" json:"expiresAt"`
 	IssuedAt  time.Time `bson:"issuedAt" json:"issuedAt"`
 }

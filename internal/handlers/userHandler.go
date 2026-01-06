@@ -18,12 +18,16 @@ func NewUserHandler(userService *services.UserService) *UserHandler {
 	}
 }
 
+// @Summary Create new user
+// @Description Create a new user in the system
 // @Tags User
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param user body dtos.NewUserModel true "User object"
 // @Success 201 {object} dtos.NewUserModel
 // @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user [post]
 func (r *UserHandler) NewUser(c *fiber.Ctx) error {
 
@@ -51,8 +55,10 @@ func (r *UserHandler) NewUser(c *fiber.Ctx) error {
 // @Tags User
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Success 200 {array} dtos.NewUserModel
 // @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/usersList [get]
 func (r *UserHandler) ListUsers(c *fiber.Ctx) error {
 
@@ -71,9 +77,11 @@ func (r *UserHandler) ListUsers(c *fiber.Ctx) error {
 // @Tags User
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param id path string true "User ID"
 // @Success 204
 // @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/{id} [delete]
 func (r *UserHandler) DeleteUser(c *fiber.Ctx) error {
 
@@ -100,9 +108,11 @@ func (r *UserHandler) DeleteUser(c *fiber.Ctx) error {
 // @Tags User
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param email query string true "User email"
 // @Success 200 {object} entities.User
 // @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/getByEmail [get]
 func (r *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
 

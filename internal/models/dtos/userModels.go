@@ -14,6 +14,11 @@ type NewUserModel struct {
 	Age         int    `bson:"age" json:"age"`
 }
 
+type SignUpUserModel struct {
+	Email    string `bson:"email" json:"email"`
+	Password string `bson:"password" json:"password"`
+}
+
 func (m *NewUserModel) ToEntity() entities.User {
 	return entities.User{
 		Firstname:    m.Firstname,
@@ -22,6 +27,21 @@ func (m *NewUserModel) ToEntity() entities.User {
 		Email:        m.Email,
 		HashPassword: "",
 		Age:          m.Age,
+		CreatedOn:    time.Now(),
+		UpdatedOn:    time.Now(),
+		IsActive:     true,
+		HouseIds:     []string{},
+	}
+}
+
+func (m *SignUpUserModel) ToEntity() entities.User {
+	return entities.User{
+		Email:        m.Email,
+		HashPassword: m.Password,
+		Age:          0,
+		PhoneNumber:  "",
+		Firstname:    "",
+		Lastname:     "",
 		CreatedOn:    time.Now(),
 		UpdatedOn:    time.Now(),
 		IsActive:     true,

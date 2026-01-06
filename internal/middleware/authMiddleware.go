@@ -37,6 +37,7 @@ func AuthRequired() fiber.Handler {
 
 		// User bilgisini context'e kaydet
 		c.Locals("userEmail", jwtData.Issuer)
+		c.Locals("userID", jwtData.Subject)
 		// İsterseniz userID de eklenebilir (jwt.go'da Subject alanına userID yazıldıysa)
 
 		return c.Next()
