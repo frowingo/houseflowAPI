@@ -1,4 +1,4 @@
-package handlers
+package controllers
 
 import (
 	"houseflowApi/internal/services"
@@ -6,12 +6,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type AuthHandler struct {
+type AuthController struct {
 	authService *services.AuthService
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{
+func NewAuthController(authService *services.AuthService) *AuthController {
+	return &AuthController{
 		authService: authService,
 	}
 }
@@ -27,7 +27,7 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 // @Failure 400 {object} map[string]interface{} "Bad request"
 // @Failure 401 {object} map[string]interface{} "Invalid credentials"
 // @Router /auth/login/{email}/{password} [get]
-func (r *AuthHandler) Login(c *fiber.Ctx) error {
+func (r *AuthController) Login(c *fiber.Ctx) error {
 
 	email := c.Params("email")
 	password := c.Params("password")
@@ -65,7 +65,7 @@ func (r *AuthHandler) Login(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Bad request"
 // @Failure 401 {object} map[string]interface{} "Invalid credentials"
 // @Router /auth/signup/{email}/{password} [get]
-func (r *AuthHandler) Signup(c *fiber.Ctx) error {
+func (r *AuthController) Signup(c *fiber.Ctx) error {
 
 	email := c.Params("email")
 	password := c.Params("password")

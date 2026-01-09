@@ -1,4 +1,4 @@
-package handlers
+package controllers
 
 import "github.com/gofiber/fiber/v2"
 
@@ -8,7 +8,7 @@ import "github.com/gofiber/fiber/v2"
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Router /base/health [get]
-func HealthCheck(c *fiber.Ctx) error {
+func HealthController(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "ok",
 		"message": "HouseFlow API is running",

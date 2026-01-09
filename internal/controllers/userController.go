@@ -1,4 +1,4 @@
-package handlers
+package controllers
 
 import (
 	"houseflowApi/internal/models/dtos"
@@ -7,13 +7,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type UserHandler struct {
+type UserController struct {
 	userService *services.UserService
 }
 
-// NewUserHandler constructor for UserHandler
-func NewUserHandler(userService *services.UserService) *UserHandler {
-	return &UserHandler{
+// NewUserController constructor for UserController
+func NewUserController(userService *services.UserService) *UserController {
+	return &UserController{
 		userService: userService,
 	}
 }
@@ -29,7 +29,7 @@ func NewUserHandler(userService *services.UserService) *UserHandler {
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user [post]
-func (r *UserHandler) NewUser(c *fiber.Ctx) error {
+func (r *UserController) NewUser(c *fiber.Ctx) error {
 
 	user := new(dtos.NewUserModel)
 
@@ -60,7 +60,7 @@ func (r *UserHandler) NewUser(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/usersList [get]
-func (r *UserHandler) ListUsers(c *fiber.Ctx) error {
+func (r *UserController) ListUsers(c *fiber.Ctx) error {
 
 	users, err := r.userService.ListByUsers()
 	if err != nil {
@@ -83,7 +83,7 @@ func (r *UserHandler) ListUsers(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/{id} [delete]
-func (r *UserHandler) DeleteUser(c *fiber.Ctx) error {
+func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 
 	userId := c.Params("id")
 
@@ -114,7 +114,7 @@ func (r *UserHandler) DeleteUser(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/getByEmail [get]
-func (r *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
+func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 
 	email := c.Query("email")
 	if email == "" {

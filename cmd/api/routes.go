@@ -2,8 +2,8 @@ package main
 
 import (
 	"houseflowApi/internal/abstract"
+	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/entities"
-	"houseflowApi/internal/handlers"
 	"houseflowApi/internal/middleware"
 	"houseflowApi/internal/services"
 
@@ -15,21 +15,21 @@ func SetupRoutes(app *fiber.App) {
 	api := app.Group("/api/v1")
 
 	baseRoutes := api.Group("/base")
-	baseRoutes.Get("/health", handlers.HealthCheck)
+	baseRoutes.Get("/health", controllers.HealthController)
 
 	authService := services.NewAuthService(&abstract.DbRepository[entities.User]{})
-	authHandler := handlers.NewAuthHandler(authService)
+	authController := controllers.NewAuthController(authService)
 
 	authRoutes := api.Group("/auth")
-	authRoutes.Get("/login/:email/:password", authHandler.Login)
-	authRoutes.Get("/signup/:email/:password", authHandler.Signup)
+	authRoutes.Get("/login/:email/:password", authController.Login)
+	authRoutes.Get("/signup/:email/:password", authController.Signup)
 
 	userService := services.NewUserService(&abstract.DbRepository[entities.User]{})
-	userHandler := handlers.NewUserHandler(userService)
+	userController := controllers.NewUserController(userService)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired())
-	userRoutes.Post("", userHandler.NewUser)
-	userRoutes.Get("/usersList", userHandler.ListUsers)
-	userRoutes.Get("/getByEmail", userHandler.GetUserByEmail)
-	userRoutes.Delete("/:id", userHandler.DeleteUser)
+	userRoutes.Post("", userController.NewUser)
+	userRoutes.Get("/usersList", userController.ListUsers)
+	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
+	userRoutes.Delete("/:id", userController.DeleteUser)
 }
