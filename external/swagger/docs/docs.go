@@ -157,13 +157,112 @@ const docTemplate = `{
                 }
             }
         },
-        "/user": {
+        "/house/create": {
             "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Create new house",
+                "parameters": [
+                    {
+                        "description": "House object",
+                        "name": "house",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.CreateHouseModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
+                ]
+            }
+        },
+        "/house/join": {
+            "post": {
+                "consumes": [
+                    "application/json"
                 ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Join house by invite code",
+                "parameters": [
+                    {
+                        "description": "Join request",
+                        "name": "joinRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.JoinHouseByCodeModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/user": {
+            "post": {
                 "description": "Create a new user in the system",
                 "consumes": [
                     "application/json"
@@ -207,16 +306,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/user/getByEmail": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/getByEmail": {
+            "get": {
                 "description": "Retrieve a user by their email address",
                 "consumes": [
                     "application/json"
@@ -258,16 +357,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/user/usersList": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/usersList": {
+            "get": {
                 "description": "Get a list of all users in the system",
                 "consumes": [
                     "application/json"
@@ -303,16 +402,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/user/{id}": {
-            "delete": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/{id}": {
+            "delete": {
                 "description": "Delete a user by their ID",
                 "consumes": [
                     "application/json"
@@ -351,33 +450,152 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         }
     },
     "definitions": {
-        "dtos.NewUserModel": {
+        "dtos.CreateHouseModel": {
+            "type": "object",
+            "required": [
+                "maxMemberCount",
+                "name",
+                "ownerId",
+                "type"
+            ],
+            "properties": {
+                "maxMemberCount": {
+                    "type": "integer",
+                    "maximum": 8,
+                    "minimum": 1
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "type": {
+                    "enum": [
+                        "StudentHouse",
+                        "SharedHouse",
+                        "DormRoom"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.HouseType"
+                        }
+                    ]
+                }
+            }
+        },
+        "dtos.HouseResponseModel": {
             "type": "object",
             "properties": {
-                "age": {
+                "createdOn": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "inviteCode": {
+                    "type": "string"
+                },
+                "maxMemberCount": {
                     "type": "integer"
+                },
+                "memberIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/entities.HouseType"
+                },
+                "updatedOn": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.JoinHouseByCodeModel": {
+            "type": "object",
+            "required": [
+                "inviteCode",
+                "userId"
+            ],
+            "properties": {
+                "inviteCode": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.NewUserModel": {
+            "type": "object",
+            "required": [
+                "email",
+                "firstName",
+                "lastName",
+                "password"
+            ],
+            "properties": {
+                "age": {
+                    "type": "integer",
+                    "maximum": 150,
+                    "minimum": 0
                 },
                 "email": {
                     "type": "string"
                 },
                 "firstName": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 2
                 },
                 "lastName": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 2
                 },
                 "password": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 6
                 },
                 "phoneNumber": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 15,
+                    "minLength": 10
                 }
             }
+        },
+        "entities.HouseType": {
+            "type": "string",
+            "enum": [
+                "StudentHouse",
+                "SharedHouse",
+                "DormRoom"
+            ],
+            "x-enum-varnames": [
+                "StudentHouse",
+                "SharedHouse",
+                "DormRoom"
+            ]
         },
         "entities.User": {
             "type": "object",

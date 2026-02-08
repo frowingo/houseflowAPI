@@ -1,20 +1,102 @@
 basePath: /api/v1
 definitions:
+  dtos.CreateHouseModel:
+    properties:
+      maxMemberCount:
+        maximum: 8
+        minimum: 1
+        type: integer
+      name:
+        maxLength: 100
+        minLength: 3
+        type: string
+      ownerId:
+        type: string
+      type:
+        allOf:
+        - $ref: '#/definitions/entities.HouseType'
+        enum:
+        - StudentHouse
+        - SharedHouse
+        - DormRoom
+    required:
+    - maxMemberCount
+    - name
+    - ownerId
+    - type
+    type: object
+  dtos.HouseResponseModel:
+    properties:
+      createdOn:
+        type: string
+      id:
+        type: string
+      inviteCode:
+        type: string
+      maxMemberCount:
+        type: integer
+      memberIds:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      ownerId:
+        type: string
+      type:
+        $ref: '#/definitions/entities.HouseType'
+      updatedOn:
+        type: string
+    type: object
+  dtos.JoinHouseByCodeModel:
+    properties:
+      inviteCode:
+        type: string
+      userId:
+        type: string
+    required:
+    - inviteCode
+    - userId
+    type: object
   dtos.NewUserModel:
     properties:
       age:
+        maximum: 150
+        minimum: 0
         type: integer
       email:
         type: string
       firstName:
+        maxLength: 50
+        minLength: 2
         type: string
       lastName:
+        maxLength: 50
+        minLength: 2
         type: string
       password:
+        minLength: 6
         type: string
       phoneNumber:
+        maxLength: 15
+        minLength: 10
         type: string
+    required:
+    - email
+    - firstName
+    - lastName
+    - password
     type: object
+  entities.HouseType:
+    enum:
+    - StudentHouse
+    - SharedHouse
+    - DormRoom
+    type: string
+    x-enum-varnames:
+    - StudentHouse
+    - SharedHouse
+    - DormRoom
   entities.User:
     properties:
       age:
@@ -149,6 +231,72 @@ paths:
             type: object
       tags:
       - Base
+  /house/create:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: House object
+        in: body
+        name: house
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateHouseModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create new house
+      tags:
+      - House
+  /house/join:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Join request
+        in: body
+        name: joinRequest
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.JoinHouseByCodeModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Join house by invite code
+      tags:
+      - House
   /user:
     post:
       consumes:

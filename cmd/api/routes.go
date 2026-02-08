@@ -32,4 +32,14 @@ func SetupRoutes(app *fiber.App) {
 	userRoutes.Get("/usersList", userController.ListUsers)
 	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
 	userRoutes.Delete("/:id", userController.DeleteUser)
+
+	houseService := services.NewHouseService(
+		&abstract.DbRepository[entities.House]{},
+		&abstract.DbRepository[entities.User]{},
+	)
+	houseController := controllers.NewHouseController(houseService)
+
+	houseRoutes := api.Group("/house", middleware.AuthRequired())
+	houseRoutes.Post("/create", houseController.CreateHouse)
+	houseRoutes.Post("/join", houseController.JoinHouseByCode)
 }

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"houseflowApi/external/validator"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 
@@ -9,12 +10,14 @@ import (
 
 type UserController struct {
 	userService *services.UserService
+	validator   *validator.CustomValidator
 }
 
 // NewUserController constructor for UserController
 func NewUserController(userService *services.UserService) *UserController {
 	return &UserController{
 		userService: userService,
+		validator:   validator.NewValidator(),
 	}
 }
 
@@ -36,6 +39,13 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(user); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Cannot parse JSON",
+		})
+	}
+
+	// Validate model
+	if err := r.validator.Validate(user); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
 		})
 	}
 

@@ -6,12 +6,12 @@ import (
 )
 
 type NewUserModel struct {
-	Firstname   string `bson:"firstName" json:"firstName"`
-	Lastname    string `bson:"lastName" json:"lastName"`
-	PhoneNumber string `bson:"phoneNumber" json:"phoneNumber"`
-	Email       string `bson:"email" json:"email"`
-	Password    string `bson:"password" json:"password"`
-	Age         int    `bson:"age" json:"age"`
+	Firstname   string `bson:"firstName" json:"firstName" validate:"required,min=2,max=50"`
+	Lastname    string `bson:"lastName" json:"lastName" validate:"required,min=2,max=50"`
+	PhoneNumber string `bson:"phoneNumber" json:"phoneNumber" validate:"omitempty,min=10,max=15"`
+	Email       string `bson:"email" json:"email" validate:"required,email"`
+	Password    string `bson:"password" json:"password" validate:"required,min=6"`
+	Age         int    `bson:"age" json:"age" validate:"omitempty,gte=0,lte=150"`
 }
 
 type SignUpUserModel struct {
