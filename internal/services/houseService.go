@@ -63,7 +63,7 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 	}
 
 	// Update user's house list
-	owner.HouseIds = append(owner.HouseIds, house.Id)
+	owner.HouseIds = append(owner.HouseIds, house.Id.Hex())
 	owner.UpdatedOn = time.Now()
 	_, err = s.userRepository.Update(ownerObjectId, *owner)
 	if err != nil {
@@ -110,19 +110,14 @@ func (s *HouseService) JoinHouseByCode(model dtos.JoinHouseByCodeModel) (*entiti
 	house.MemberIds = append(house.MemberIds, model.UserId)
 	house.UpdatedOn = time.Now()
 
-	houseObjectId, err := helpers.ToMongoId(house.Id)
-	if err != nil {
-		return nil, errors.New("invalid house ID format")
-	}
-
 	// Update house in database
-	updatedHouse, err := s.houseRepository.Update(houseObjectId, *house)
+	updatedHouse, err := s.houseRepository.Update(house.Id, *house)
 	if err != nil {
 		return nil, errors.New("failed to join house: " + err.Error())
 	}
 
 	// Update user's house list
-	user.HouseIds = append(user.HouseIds, house.Id)
+	user.HouseIds = append(user.HouseIds, house.Id.Hex())
 	user.UpdatedOn = time.Now()
 	_, err = s.userRepository.Update(userObjectId, *user)
 	if err != nil {

@@ -44,7 +44,7 @@ func (m *CreateHouseModel) ToEntity(inviteCode string) entities.House {
 
 func HouseToResponseModel(house entities.House) HouseResponseModel {
 	return HouseResponseModel{
-		Id:             house.Id,
+		Id:             house.Id.Hex(),
 		OwnerId:        house.OwnerId,
 		InviteCode:     house.InviteCode,
 		Name:           house.Name,
