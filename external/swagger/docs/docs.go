@@ -79,9 +79,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/signup/{email}/{password}": {
-            "get": {
-                "description": "Signup with email and password to receive JWT token",
+        "/auth/signup": {
+            "post": {
+                "description": "Signup with email, password, firstname, and lastname to receive JWT token",
                 "consumes": [
                     "application/json"
                 ],
@@ -94,22 +94,17 @@ const docTemplate = `{
                 "summary": "User Signup",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "User email address",
-                        "name": "email",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "User password",
-                        "name": "password",
-                        "in": "path",
-                        "required": true
+                        "description": "Signup request",
+                        "name": "signup",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SignUpUserModel"
+                        }
                     }
                 ],
                 "responses": {
-                    "200": {
+                    "201": {
                         "description": "Returns JWT token",
                         "schema": {
                             "type": "object",
@@ -581,6 +576,34 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 15,
                     "minLength": 10
+                }
+            }
+        },
+        "dtos.SignUpUserModel": {
+            "type": "object",
+            "required": [
+                "email",
+                "firstName",
+                "lastName",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "firstName": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 2
+                },
+                "lastName": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 2
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 6
                 }
             }
         },

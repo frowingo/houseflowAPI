@@ -42,9 +42,9 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 	return "", nil
 }
 
-func (r *AuthService) SignUp(email string, password string) (string, error) {
+func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 
-	user, err := r.dbRepository.FindByColumn("email", email)
+	user, err := r.dbRepository.FindByColumn("email", model.Email)
 
 	// user email must unique
 	if user != nil {
@@ -55,17 +55,13 @@ func (r *AuthService) SignUp(email string, password string) (string, error) {
 		}
 	}
 
-	hashedPassword, err := helpers.HashPassword(password)
+	hashedPassword, err := helpers.HashPassword(model.Password)
 	if err != nil {
 		return "", err
 	}
 
-	signupUser := &dtos.SignUpUserModel{
-		Email:    email,
-		Password: hashedPassword,
-	}
-
-	entity := signupUser.ToEntity()
+	model.Password = hashedPassword
+	entity := model.ToEntity()
 
 	_, err = r.dbRepository.Insert(entity)
 	if err != nil {

@@ -15,8 +15,10 @@ type NewUserModel struct {
 }
 
 type SignUpUserModel struct {
-	Email    string `bson:"email" json:"email"`
-	Password string `bson:"password" json:"password"`
+	Email     string `bson:"email" json:"email" validate:"required,email"`
+	Password  string `bson:"password" json:"password" validate:"required,min=6"`
+	Firstname string `bson:"firstName" json:"firstName" validate:"required,min=2,max=50"`
+	Lastname  string `bson:"lastName" json:"lastName" validate:"required,min=2,max=50"`
 }
 
 func (m *NewUserModel) ToEntity() entities.User {
@@ -40,8 +42,8 @@ func (m *SignUpUserModel) ToEntity() entities.User {
 		HashPassword: m.Password,
 		Age:          0,
 		PhoneNumber:  "",
-		Firstname:    "",
-		Lastname:     "",
+		Firstname:    m.Firstname,
+		Lastname:     m.Lastname,
 		CreatedOn:    time.Now(),
 		UpdatedOn:    time.Now(),
 		IsActive:     true,
