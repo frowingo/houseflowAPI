@@ -1,22 +1,27 @@
 package entities
 
-import "time"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 type House struct {
-	Id         string    `json:"id"`
-	OwnerId    string    `json:"owner_id"`
-	InviteCode string    `json:"invite_code"`
-	Name       string    `json:"name"`
-	Type       HouseType `json:"type"`
-	MemberIds  []string  `json:"member_ids"`
-	CreatedOn  time.Time `json:"created_on"`
-	UpdatedOn  time.Time `json:"updated_on"`
+	Id             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	OwnerId        string             `bson:"ownerId" json:"ownerId"`
+	InviteCode     string             `bson:"inviteCode" json:"inviteCode"`
+	Name           string             `bson:"name" json:"name"`
+	Type           HouseType          `bson:"type" json:"type"`
+	MemberIds      []string           `bson:"memberIds" json:"memberIds"`
+	MaxMemberCount int                `bson:"maxMemberCount" json:"maxMemberCount"`
+	CreatedOn      time.Time          `bson:"createdOn" json:"createdOn"`
+	UpdatedOn      time.Time          `bson:"updatedOn" json:"updatedOn"`
 }
 
-type HouseType string
+type HouseType int
 
 const (
-	StudentHouse HouseType = "StudentHouse"
-	SharedHouse  HouseType = "SharedHouse"
-	DormRoom     HouseType = "DormRoom"
+	StudentHouse HouseType = 1
+	SharedHouse  HouseType = 2
+	DormRoom     HouseType = 3
 )

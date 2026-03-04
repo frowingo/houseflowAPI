@@ -22,7 +22,7 @@ func SetupRoutes(app *fiber.App) {
 
 	authRoutes := api.Group("/auth")
 	authRoutes.Get("/login/:email/:password", authController.Login)
-	authRoutes.Get("/signup/:email/:password", authController.Signup)
+	authRoutes.Post("/signup", authController.Signup)
 
 	userService := services.NewUserService(&abstract.DbRepository[entities.User]{})
 	userController := controllers.NewUserController(userService)
@@ -32,4 +32,22 @@ func SetupRoutes(app *fiber.App) {
 	userRoutes.Get("/usersList", userController.ListUsers)
 	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
 	userRoutes.Delete("/:id", userController.DeleteUser)
+
+	houseService := services.NewHouseService(
+		&abstract.DbRepository[entities.House]{},
+		&abstract.DbRepository[entities.User]{},
+	)
+	houseController := controllers.NewHouseController(houseService)
+
+	houseRoutes := api.Group("/house", middleware.AuthRequired())
+	houseRoutes.Post("/create", houseController.CreateHouse)
+	houseRoutes.Post("/join", houseController.JoinHouseByCode)
+
+	choreService := services.NewChoreService(&abstract.DbRepository[entities.Chore]{})
+	choreController := controllers.NewChoreController(choreService)
+
+	choreRoutes := api.Group("/chore", middleware.AuthRequired())
+	choreRoutes.Post("", choreController.CreateChore)
+	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
+	choreRoutes.Put("/:id", choreController.UpdateChore)
 }
