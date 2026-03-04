@@ -18,10 +18,10 @@ type House struct {
 	UpdatedOn      time.Time          `bson:"updatedOn" json:"updatedOn"`
 }
 
-type HouseType string
+type HouseType int
 
 const (
-	StudentHouse HouseType = "StudentHouse"
-	SharedHouse  HouseType = "SharedHouse"
-	DormRoom     HouseType = "DormRoom"
+	StudentHouse HouseType = 1
+	SharedHouse  HouseType = 2
+	DormRoom     HouseType = 3
 )

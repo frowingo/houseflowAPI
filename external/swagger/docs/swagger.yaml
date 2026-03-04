@@ -14,16 +14,16 @@ definitions:
         type: string
       type:
         allOf:
-        - $ref: '#/definitions/entities.HouseType'
+          - $ref: "#/definitions/entities.HouseType"
         enum:
-        - StudentHouse
-        - SharedHouse
-        - DormRoom
+          - StudentHouse
+          - SharedHouse
+          - DormRoom
     required:
-    - maxMemberCount
-    - name
-    - ownerId
-    - type
+      - maxMemberCount
+      - name
+      - ownerId
+      - type
     type: object
   dtos.HouseResponseModel:
     properties:
@@ -44,7 +44,7 @@ definitions:
       ownerId:
         type: string
       type:
-        $ref: '#/definitions/entities.HouseType'
+        $ref: "#/definitions/entities.HouseType"
       updatedOn:
         type: string
     type: object
@@ -55,8 +55,8 @@ definitions:
       userId:
         type: string
     required:
-    - inviteCode
-    - userId
+      - inviteCode
+      - userId
     type: object
   dtos.NewUserModel:
     properties:
@@ -82,10 +82,10 @@ definitions:
         minLength: 10
         type: string
     required:
-    - email
-    - firstName
-    - lastName
-    - password
+      - email
+      - firstName
+      - lastName
+      - password
     type: object
   dtos.SignUpUserModel:
     properties:
@@ -103,21 +103,21 @@ definitions:
         minLength: 6
         type: string
     required:
-    - email
-    - firstName
-    - lastName
-    - password
+      - email
+      - firstName
+      - lastName
+      - password
     type: object
   entities.HouseType:
     enum:
-    - StudentHouse
-    - SharedHouse
-    - DormRoom
+      - StudentHouse
+      - SharedHouse
+      - DormRoom
     type: string
     x-enum-varnames:
-    - StudentHouse
-    - SharedHouse
-    - DormRoom
+      - StudentHouse
+      - SharedHouse
+      - DormRoom
   entities.User:
     properties:
       age:
@@ -165,21 +165,21 @@ paths:
   /auth/login/{email}/{password}:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Login with email and password to receive JWT token
       parameters:
-      - description: User email address
-        in: path
-        name: email
-        required: true
-        type: string
-      - description: User password
-        in: path
-        name: password
-        required: true
-        type: string
+        - description: User email address
+          in: path
+          name: email
+          required: true
+          type: string
+        - description: User password
+          in: path
+          name: password
+          required: true
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Returns JWT token
@@ -199,21 +199,21 @@ paths:
             type: object
       summary: User Login
       tags:
-      - Auth
+        - Auth
   /auth/signup:
     post:
       consumes:
-      - application/json
+        - application/json
       description: Signup with email, password, firstname, and lastname to receive JWT token
       parameters:
-      - description: Signup request
-        in: body
-        name: signup
-        required: true
-        schema:
-          $ref: '#/definitions/dtos.SignUpUserModel'
+        - description: Signup request
+          in: body
+          name: signup
+          required: true
+          schema:
+            $ref: "#/definitions/dtos.SignUpUserModel"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: Returns JWT token
@@ -233,13 +233,13 @@ paths:
             type: object
       summary: User Signup
       tags:
-      - Auth
+        - Auth
   /base/health:
     get:
       consumes:
-      - application/json
+        - application/json
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -247,25 +247,25 @@ paths:
             additionalProperties: true
             type: object
       tags:
-      - Base
+        - Base
   /house/create:
     post:
       consumes:
-      - application/json
+        - application/json
       parameters:
-      - description: House object
-        in: body
-        name: house
-        required: true
-        schema:
-          $ref: '#/definitions/dtos.CreateHouseModel'
+        - description: House object
+          in: body
+          name: house
+          required: true
+          schema:
+            $ref: "#/definitions/dtos.CreateHouseModel"
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseResponseModel'
+            $ref: "#/definitions/dtos.HouseResponseModel"
         "400":
           description: Bad Request
           schema:
@@ -277,28 +277,28 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create new house
       tags:
-      - House
+        - House
   /house/join:
     post:
       consumes:
-      - application/json
+        - application/json
       parameters:
-      - description: Join request
-        in: body
-        name: joinRequest
-        required: true
-        schema:
-          $ref: '#/definitions/dtos.JoinHouseByCodeModel'
+        - description: Join request
+          in: body
+          name: joinRequest
+          required: true
+          schema:
+            $ref: "#/definitions/dtos.JoinHouseByCodeModel"
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseResponseModel'
+            $ref: "#/definitions/dtos.HouseResponseModel"
         "400":
           description: Bad Request
           schema:
@@ -310,29 +310,29 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Join house by invite code
       tags:
-      - House
+        - House
   /user:
     post:
       consumes:
-      - application/json
+        - application/json
       description: Create a new user in the system
       parameters:
-      - description: User object
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/dtos.NewUserModel'
+        - description: User object
+          in: body
+          name: user
+          required: true
+          schema:
+            $ref: "#/definitions/dtos.NewUserModel"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/dtos.NewUserModel'
+            $ref: "#/definitions/dtos.NewUserModel"
         "400":
           description: Bad Request
           schema:
@@ -344,23 +344,23 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create new user
       tags:
-      - User
+        - User
   /user/{id}:
     delete:
       consumes:
-      - application/json
+        - application/json
       description: Delete a user by their ID
       parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        type: string
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "204":
           description: No Content
@@ -375,28 +375,28 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Delete a user
       tags:
-      - User
+        - User
   /user/getByEmail:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Retrieve a user by their email address
       parameters:
-      - description: User email
-        in: query
-        name: email
-        required: true
-        type: string
+        - description: User email
+          in: query
+          name: email
+          required: true
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/entities.User'
+            $ref: "#/definitions/entities.User"
         "400":
           description: Bad Request
           schema:
@@ -408,23 +408,23 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get user by email
       tags:
-      - User
+        - User
   /user/usersList:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Get a list of all users in the system
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
             items:
-              $ref: '#/definitions/dtos.NewUserModel'
+              $ref: "#/definitions/dtos.NewUserModel"
             type: array
         "400":
           description: Bad Request
@@ -437,13 +437,13 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: List all users
       tags:
-      - User
+        - User
 schemes:
-- http
-- https
+  - http
+  - https
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

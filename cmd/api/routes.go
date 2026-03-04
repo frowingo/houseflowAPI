@@ -42,4 +42,12 @@ func SetupRoutes(app *fiber.App) {
 	houseRoutes := api.Group("/house", middleware.AuthRequired())
 	houseRoutes.Post("/create", houseController.CreateHouse)
 	houseRoutes.Post("/join", houseController.JoinHouseByCode)
+
+	choreService := services.NewChoreService(&abstract.DbRepository[entities.Chore]{})
+	choreController := controllers.NewChoreController(choreService)
+
+	choreRoutes := api.Group("/chore", middleware.AuthRequired())
+	choreRoutes.Post("", choreController.CreateChore)
+	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
+	choreRoutes.Put("/:id", choreController.UpdateChore)
 }
