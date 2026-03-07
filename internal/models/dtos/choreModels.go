@@ -31,6 +31,8 @@ type ChoreResponseModel struct {
 	AssignedTo        string               `json:"assignedTo"`
 	DueDate           time.Time            `json:"dueDate"`
 	CreatedOn         time.Time            `json:"createdOn"`
+	CompletedAt       time.Time            `json:"completedAt"`
+	CompletedBy       string               `json:"completedBy"`
 	HouseId           string               `json:"houseId"`
 	HouseOwnerId      string               `json:"houseOwnerId"`
 	Level             entities.ChoreLevel  `json:"level"`
@@ -65,6 +67,8 @@ func ChoreToResponseModel(chore entities.Chore) ChoreResponseModel {
 		AssignedTo:        chore.AssignedTo,
 		DueDate:           chore.DueDate,
 		CreatedOn:         chore.CreatedOn,
+		CompletedAt:       chore.CompletedAt,
+		CompletedBy:       chore.CompletedBy,
 		HouseId:           chore.HouseId,
 		HouseOwnerId:      chore.HouseOwnerId,
 		Level:             chore.Level,

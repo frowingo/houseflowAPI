@@ -624,7 +624,7 @@
                 "age": {
                     "type": "integer"
                 },
-                "created_on": {
+                "createdOn": {
                     "type": "string"
                 },
                 "email": {
@@ -633,7 +633,7 @@
                 "firstName": {
                     "type": "string"
                 },
-                "house_ids": {
+                "houseIds": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -642,16 +642,16 @@
                 "id": {
                     "type": "string"
                 },
-                "image_url": {
+                "imageUrl": {
                     "type": "string"
                 },
-                "is_active": {
+                "isActive": {
                     "type": "boolean"
                 },
                 "lastName": {
                     "type": "string"
                 },
-                "last_login": {
+                "lastLogin": {
                     "type": "string"
                 },
                 "password": {
@@ -660,7 +660,7 @@
                 "phoneNumber": {
                     "type": "string"
                 },
-                "updated_on": {
+                "updatedOn": {
                     "type": "string"
                 }
             }

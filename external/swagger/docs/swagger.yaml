@@ -122,23 +122,23 @@ definitions:
     properties:
       age:
         type: integer
-      created_on:
+      createdOn:
         type: string
       email:
         type: string
       firstName:
         type: string
-      house_ids:
+      houseIds:
         items:
           type: string
         type: array
       id:
         type: string
-      image_url:
+      imageUrl:
         type: string
-      is_active:
+      isActive:
         type: boolean
-      last_login:
+      lastLogin:
         type: string
       lastName:
         type: string
@@ -146,7 +146,7 @@ definitions:
         type: string
       phoneNumber:
         type: string
-      updated_on:
+      updatedOn:
         type: string
     type: object
 host: localhost:3162

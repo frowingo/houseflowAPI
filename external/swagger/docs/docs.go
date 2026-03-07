@@ -626,7 +626,7 @@ const docTemplate = `{
                 "age": {
                     "type": "integer"
                 },
-                "created_on": {
+                "createdOn": {
                     "type": "string"
                 },
                 "email": {
@@ -635,7 +635,7 @@ const docTemplate = `{
                 "firstName": {
                     "type": "string"
                 },
-                "house_ids": {
+                "houseIds": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -644,16 +644,16 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "image_url": {
+                "imageUrl": {
                     "type": "string"
                 },
-                "is_active": {
+                "isActive": {
                     "type": "boolean"
                 },
                 "lastName": {
                     "type": "string"
                 },
-                "last_login": {
+                "lastLogin": {
                     "type": "string"
                 },
                 "password": {
@@ -662,7 +662,7 @@ const docTemplate = `{
                 "phoneNumber": {
                     "type": "string"
                 },
-                "updated_on": {
+                "updatedOn": {
                     "type": "string"
                 }
             }

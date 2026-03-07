@@ -10,16 +10,18 @@ type Chore struct {
 	Id                primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title             string             `bson:"title" json:"title"`
 	Description       string             `bson:"description" json:"description"`
-	IsCompleted       bool               `bson:"is_completed" json:"is_completed"`
-	AssignedTo        string             `bson:"assigned_to" json:"assigned_to"`
-	DueDate           time.Time          `bson:"due_date" json:"due_date"`
-	CreatedOn         time.Time          `bson:"created_on" json:"created_on"`
-	HouseId           string             `bson:"house_id" json:"house_id"`
-	HouseOwnerId      string             `bson:"house_owner_id" json:"house_owner_id"`
+	IsCompleted       bool               `bson:"isCompleted" json:"isCompleted"`
+	AssignedTo        string             `bson:"assignedTo" json:"assignedTo"`
+	DueDate           time.Time          `bson:"dueDate" json:"dueDate"`
+	CreatedOn         time.Time          `bson:"createdOn" json:"createdOn"`
+	CompletedAt       time.Time          `bson:"completedAt" json:"completedAt"`
+	CompletedBy       string             `bson:"completedBy" json:"completedBy"`
+	HouseId           string             `bson:"houseId" json:"houseId"`
+	HouseOwnerId      string             `bson:"houseOwnerId" json:"houseOwnerId"`
 	Level             ChoreLevel         `bson:"level" json:"level"`
 	Status            ChoreStatus        `bson:"status" json:"status"`
-	IsRecurring       bool               `bson:"is_recurring" json:"is_recurring"`
-	RecurringInterval int                `bson:"recurring_interval" json:"recurring_interval"`
+	IsRecurring       bool               `bson:"isRecurring" json:"isRecurring"`
+	RecurringInterval int                `bson:"recurringInterval" json:"recurringInterval"`
 }
 
 type ChoreLevel int

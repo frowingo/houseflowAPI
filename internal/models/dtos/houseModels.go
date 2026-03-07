@@ -25,6 +25,7 @@ type HouseResponseModel struct {
 	Type           entities.HouseType `json:"type"`
 	MemberIds      []string           `json:"memberIds"`
 	MaxMemberCount int                `json:"maxMemberCount"`
+	ProfileImage   string             `json:"profileImage"`
 	CreatedOn      time.Time          `json:"createdOn"`
 	UpdatedOn      time.Time          `json:"updatedOn"`
 }
@@ -51,6 +52,7 @@ func HouseToResponseModel(house entities.House) HouseResponseModel {
 		Type:           house.Type,
 		MemberIds:      house.MemberIds,
 		MaxMemberCount: house.MaxMemberCount,
+		ProfileImage:   house.ProfileImage,
 		CreatedOn:      house.CreatedOn,
 		UpdatedOn:      house.UpdatedOn,
 	}

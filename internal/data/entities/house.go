@@ -14,6 +14,7 @@ type House struct {
 	Type           HouseType          `bson:"type" json:"type"`
 	MemberIds      []string           `bson:"memberIds" json:"memberIds"`
 	MaxMemberCount int                `bson:"maxMemberCount" json:"maxMemberCount"`
+	ProfileImage   string             `bson:"profileImage" json:"profileImage"`
 	CreatedOn      time.Time          `bson:"createdOn" json:"createdOn"`
 	UpdatedOn      time.Time          `bson:"updatedOn" json:"updatedOn"`
 }

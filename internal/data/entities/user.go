@@ -14,10 +14,10 @@ type User struct {
 	Email        string             `bson:"email" json:"email"`
 	HashPassword string             `bson:"password" json:"password"`
 	Age          int                `bson:"age" json:"age"`
-	ImageURL     string             `bson:"image_url" json:"image_url"`
-	HouseIds     []string           `bson:"house_ids" json:"house_ids"`
-	IsActive     bool               `bson:"is_active" json:"is_active"`
-	CreatedOn    time.Time          `bson:"created_on" json:"created_on"`
-	UpdatedOn    time.Time          `bson:"updated_on" json:"updated_on"`
-	LastLogin    time.Time          `bson:"last_login" json:"last_login"`
+	ImageURL     string             `bson:"imageUrl" json:"imageUrl"`
+	HouseIds     []string           `bson:"houseIds" json:"houseIds"`
+	IsActive     bool               `bson:"isActive" json:"isActive"`
+	CreatedOn    time.Time          `bson:"createdOn" json:"createdOn"`
+	UpdatedOn    time.Time          `bson:"updatedOn" json:"updatedOn"`
+	LastLogin    time.Time          `bson:"lastLogin" json:"lastLogin"`
 }
