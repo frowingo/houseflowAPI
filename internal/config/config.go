@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -49,6 +50,19 @@ func LoadConfig() (*ConfigModel, error) {
 	var config ConfigModel
 	if err := json.Unmarshal(file, &config); err != nil {
 		return nil, errors.New("config.json cannot deserialize:" + err.Error())
+	}
+
+	// MONGO_HOST + MONGO_PORT env var'ları varsa devConString'i override et.
+	// docker-compose.yml bu değerleri container servis adıyla inject eder.
+	if host := os.Getenv("MONGO_HOST"); host != "" {
+		port := os.Getenv("MONGO_PORT")
+		if port == "" {
+			port = "27017"
+		}
+		config.External.Mongo.DevConString = fmt.Sprintf("mongodb://%s:%s", host, port)
+	}
+	if db := os.Getenv("MONGO_DB"); db != "" {
+		config.External.Mongo.DbName = db
 	}
 
 	return &config, nil

@@ -22,6 +22,7 @@ services:
   mongodb:
     image: mongo:latest
     container_name: houseflow-mongodb
+    command: ["mongod", "--quiet"]
     environment:
       MONGO_INITDB_DATABASE: houseflowDb
     ports:
@@ -30,6 +31,8 @@ services:
       - mongodb-data:/data/db
     networks:
       - houseflow-network
+    logging:
+      driver: "none"
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
       interval: 10s

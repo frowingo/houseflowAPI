@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -8,7 +9,10 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 
+	"houseflowApi/external/migration"
 	_ "houseflowApi/external/swagger/docs" // Swagger docs
+	"houseflowApi/internal/data/database"
+	"houseflowApi/internal/data/migrations"
 )
 
 // @title HouseFlow API
@@ -31,6 +35,18 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 func main() {
+	ctx := context.Background()
+
+	mongoClient, db, err := database.NewDatabase(ctx)
+	if err != nil {
+		log.Fatal("failed to connect to database:", err)
+	}
+	defer mongoClient.Disconnect(ctx)
+
+	if err := migration.RunAll(ctx, db, migrations.AllMigrations()); err != nil {
+		log.Fatal("migration failed:", err)
+	}
+
 	app := fiber.New(fiber.Config{
 		AppName: "HouseFlow API",
 	})
