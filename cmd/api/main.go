@@ -10,7 +10,7 @@ import (
 	"github.com/gofiber/swagger"
 
 	"houseflowApi/external/migration"
-	_ "houseflowApi/external/swagger/docs" // Swagger docs
+	docs "houseflowApi/external/swagger/docs" // Swagger docs
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/migrations"
 )
@@ -46,6 +46,11 @@ func main() {
 	if err := migration.RunAll(ctx, db, migrations.AllMigrations()); err != nil {
 		log.Fatal("migration failed:", err)
 	}
+
+	// Host'u boş bırakarak Swagger UI'nin isteğin geldiği host/scheme'i
+	// kullanmasını sağla (localhost, OrbStack domain, vs. ile uyumlu).
+	docs.SwaggerInfo.Host = ""
+	docs.SwaggerInfo.Schemes = []string{}
 
 	app := fiber.New(fiber.Config{
 		AppName: "HouseFlow API",
