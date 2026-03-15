@@ -23,30 +23,34 @@ type SignUpUserModel struct {
 
 func (m *NewUserModel) ToEntity() entities.User {
 	return entities.User{
-		Firstname:    m.Firstname,
-		Lastname:     m.Lastname,
-		PhoneNumber:  m.PhoneNumber,
-		Email:        m.Email,
-		HashPassword: "",
-		Age:          m.Age,
-		CreatedOn:    time.Now(),
-		UpdatedOn:    time.Now(),
-		IsActive:     true,
-		HouseIds:     []string{},
+		Firstname:     m.Firstname,
+		Lastname:      m.Lastname,
+		PhoneNumber:   m.PhoneNumber,
+		Email:         m.Email,
+		HashPassword:  "",
+		Age:           m.Age,
+		CreatedOn:     time.Now(),
+		UpdatedOn:     time.Now(),
+		IsActive:      true,
+		IsVerifyPhone: false,
+		IsVerifyEmail: false,
+		HouseIds:      []string{},
 	}
 }
 
 func (m *SignUpUserModel) ToEntity() entities.User {
 	return entities.User{
-		Email:        m.Email,
-		HashPassword: m.Password,
-		Age:          0,
-		PhoneNumber:  "",
-		Firstname:    m.Firstname,
-		Lastname:     m.Lastname,
-		CreatedOn:    time.Now(),
-		UpdatedOn:    time.Now(),
-		IsActive:     true,
-		HouseIds:     []string{},
+		Email:         m.Email,
+		HashPassword:  m.Password,
+		Age:           0,
+		PhoneNumber:   "",
+		Firstname:     m.Firstname,
+		Lastname:      m.Lastname,
+		CreatedOn:     time.Now(),
+		UpdatedOn:     time.Now(),
+		IsActive:      true,
+		IsVerifyPhone: false,
+		IsVerifyEmail: false,
+		HouseIds:      []string{},
 	}
 }

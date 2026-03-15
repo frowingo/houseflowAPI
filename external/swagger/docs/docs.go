@@ -23,8 +23,8 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/auth/login/{email}/{password}": {
-            "get": {
+        "/auth/login": {
+            "post": {
                 "description": "Login with email and password to receive JWT token",
                 "consumes": [
                     "application/json"
@@ -38,18 +38,13 @@ const docTemplate = `{
                 "summary": "User Login",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "User email address",
-                        "name": "email",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "User password",
-                        "name": "password",
-                        "in": "path",
-                        "required": true
+                        "description": "Login credentials",
+                        "name": "login",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.LoginRequestModel"
+                        }
                     }
                 ],
                 "responses": {
@@ -455,6 +450,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dtos.LoginRequestModel": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
         "dtos.CreateHouseModel": {
             "type": "object",
             "required": [
@@ -479,9 +485,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "enum": [
-                        "StudentHouse",
-                        "SharedHouse",
-                        "DormRoom"
+                        1,
+                        2,
+                        3
                     ],
                     "allOf": [
                         {
@@ -608,11 +614,11 @@ const docTemplate = `{
             }
         },
         "entities.HouseType": {
-            "type": "string",
+            "type": "integer",
             "enum": [
-                "StudentHouse",
-                "SharedHouse",
-                "DormRoom"
+                1,
+                2,
+                3
             ],
             "x-enum-varnames": [
                 "StudentHouse",

@@ -8,7 +8,7 @@ import (
 type CreateHouseModel struct {
 	OwnerId        string             `json:"ownerId" validate:"required,len=24"`
 	Name           string             `json:"name" validate:"required,min=3,max=100"`
-	Type           entities.HouseType `json:"type" validate:"required,oneof=StudentHouse SharedHouse DormRoom"`
+	Type           entities.HouseType `json:"type" validate:"required,oneof=1 2 3" swaggertype:"integer" enums:"1,2,3" example:"1"`
 	MaxMemberCount int                `json:"maxMemberCount" validate:"required,gte=1,lte=8"`
 }
 
@@ -22,7 +22,7 @@ type HouseResponseModel struct {
 	OwnerId        string             `json:"ownerId"`
 	InviteCode     string             `json:"inviteCode"`
 	Name           string             `json:"name"`
-	Type           entities.HouseType `json:"type"`
+	Type           entities.HouseType `json:"type" swaggertype:"integer" enums:"1,2,3"`
 	MemberIds      []string           `json:"memberIds"`
 	MaxMemberCount int                `json:"maxMemberCount"`
 	ProfileImage   string             `json:"profileImage"`

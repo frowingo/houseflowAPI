@@ -24,5 +24,7 @@ func AllMigrations() []migration.Migration {
 		// --- Schema Transform ---
 		&notificationBsonFix{},
 		&announcementBsonFix{},
+		// --- Index Fix ---
+		&removePhoneUniqueIndex{},
 	}
 }

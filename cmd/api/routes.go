@@ -21,7 +21,7 @@ func SetupRoutes(app *fiber.App) {
 	authController := controllers.NewAuthController(authService)
 
 	authRoutes := api.Group("/auth")
-	authRoutes.Get("/login/:email/:password", authController.Login)
+	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
 
 	userService := services.NewUserService(&abstract.DbRepository[entities.User]{})
