@@ -45,6 +45,7 @@ func SetupRoutes(app *fiber.App) {
 	houseController := controllers.NewHouseController(houseService)
 
 	houseRoutes := api.Group("/house", middleware.AuthRequired())
+	houseRoutes.Get("/details", houseController.GetHouseDetails)
 	houseRoutes.Post("/create", houseController.CreateHouse)
 	houseRoutes.Post("/join", houseController.JoinHouseByCode)
 

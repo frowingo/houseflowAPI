@@ -75,6 +75,45 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 	return house, nil
 }
 
+// GetHouseDetails returns house details with member user objects
+func (s *HouseService) GetHouseDetails(houseId string) (*dtos.HouseDetailsModel, error) {
+	houseObjectId, err := helpers.ToMongoId(houseId)
+	if err != nil {
+		return nil, errors.New("invalid house ID format")
+	}
+
+	house, err := s.houseRepository.FindById(houseObjectId)
+	if err != nil {
+		return nil, errors.New("house not found")
+	}
+
+	members := make([]dtos.UserResultModel, 0, len(house.MemberIds))
+	for _, memberId := range house.MemberIds {
+		userObjectId, err := helpers.ToMongoId(memberId)
+		if err != nil {
+			continue
+		}
+		user, err := s.userRepository.FindById(userObjectId)
+		if err != nil {
+			continue
+		}
+		members = append(members, dtos.UserToResultModel(*user))
+	}
+
+	return &dtos.HouseDetailsModel{
+		Id:             house.Id.Hex(),
+		OwnerId:        house.OwnerId,
+		InviteCode:     house.InviteCode,
+		Name:           house.Name,
+		Type:           house.Type,
+		Members:        members,
+		MaxMemberCount: house.MaxMemberCount,
+		ProfileImage:   house.ProfileImage,
+		CreatedOn:      house.CreatedOn,
+		UpdatedOn:      house.UpdatedOn,
+	}, nil
+}
+
 // JoinHouseByCode allows a user to join a house using an invite code
 func (s *HouseService) JoinHouseByCode(model dtos.JoinHouseByCodeModel) (*entities.House, error) {
 	// Validate user exists

@@ -5,6 +5,55 @@ import (
 	"time"
 )
 
+type UserResultModel struct {
+	Id            string    `json:"id"`
+	Firstname     string    `json:"firstName"`
+	Lastname      string    `json:"lastName"`
+	PhoneNumber   string    `json:"phoneNumber"`
+	Email         string    `json:"email"`
+	Age           int       `json:"age"`
+	ImageURL      string    `json:"imageUrl"`
+	HouseIds      []string  `json:"houseIds"`
+	IsActive      bool      `json:"isActive"`
+	IsVerifyPhone bool      `json:"isVerifyPhone"`
+	IsVerifyEmail bool      `json:"isVerifyEmail"`
+	CreatedOn     time.Time `json:"createdOn"`
+	UpdatedOn     time.Time `json:"updatedOn"`
+	LastLogin     time.Time `json:"lastLogin"`
+}
+
+type HouseDetailsModel struct {
+	Id             string             `json:"id"`
+	OwnerId        string             `json:"ownerId"`
+	InviteCode     string             `json:"inviteCode"`
+	Name           string             `json:"name"`
+	Type           entities.HouseType `json:"type" swaggertype:"integer" enums:"1,2,3"`
+	Members        []UserResultModel  `json:"members"`
+	MaxMemberCount int                `json:"maxMemberCount"`
+	ProfileImage   string             `json:"profileImage"`
+	CreatedOn      time.Time          `json:"createdOn"`
+	UpdatedOn      time.Time          `json:"updatedOn"`
+}
+
+func UserToResultModel(u entities.User) UserResultModel {
+	return UserResultModel{
+		Id:            u.Id.Hex(),
+		Firstname:     u.Firstname,
+		Lastname:      u.Lastname,
+		PhoneNumber:   u.PhoneNumber,
+		Email:         u.Email,
+		Age:           u.Age,
+		ImageURL:      u.ImageURL,
+		HouseIds:      u.HouseIds,
+		IsActive:      u.IsActive,
+		IsVerifyPhone: u.IsVerifyPhone,
+		IsVerifyEmail: u.IsVerifyEmail,
+		CreatedOn:     u.CreatedOn,
+		UpdatedOn:     u.UpdatedOn,
+		LastLogin:     u.LastLogin,
+	}
+}
+
 type CreateHouseModel struct {
 	OwnerId        string             `json:"ownerId" validate:"required,len=24"`
 	Name           string             `json:"name" validate:"required,min=3,max=100"`

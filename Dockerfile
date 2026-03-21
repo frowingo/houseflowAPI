@@ -12,8 +12,14 @@ COPY go.mod go.sum ./
 # Modüleri indir
 RUN go mod download
 
+# swag CLI kur
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
 # Kaynak kodları kopyala
 COPY . .
+
+# Swagger docs'u generate et
+RUN swag init -g cmd/api/main.go -o external/swagger/docs
 
 # Binary'yi build et
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o houseflowapi ./cmd/api
