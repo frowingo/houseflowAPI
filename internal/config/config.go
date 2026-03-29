@@ -27,8 +27,8 @@ type ConfigJWT struct {
 
 type ConfigAppWrite struct {
 	Endpoint   string `json:"endpoint"`
-	ProjectId  string `json:"project_id"`
-	DatabaseId string `json:"database_id"`
+	ProjectId  string `json:"projectId"`
+	DatabaseId string `json:"databaseId"`
 	ApiKey     string `json:"apiKey"`
 	ApiSecret  string `json:"apiSecret"`
 }

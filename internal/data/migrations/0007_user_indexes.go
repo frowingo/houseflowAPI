@@ -11,18 +11,18 @@ import (
 type userIndexes struct{}
 
 func (m *userIndexes) Version() string { return "0007" }
-func (m *userIndexes) Name() string    { return "user_indexes" }
+func (m *userIndexes) Name() string    { return "userIndexes" }
 
 func (m *userIndexes) Up(ctx context.Context, db *mongo.Database) error {
 	col := db.Collection("User")
 	_, err := col.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "email", Value: 1}},
-			Options: options.Index().SetUnique(true).SetName("idx_user_email_unique"),
+			Options: options.Index().SetUnique(true).SetName("idxUserEmailUnique"),
 		},
 		{
 			Keys:    bson.D{{Key: "phoneNumber", Value: 1}},
-			Options: options.Index().SetUnique(true).SetSparse(true).SetName("idx_user_phone_unique"),
+			Options: options.Index().SetUnique(true).SetSparse(true).SetName("idxUserPhoneUnique"),
 		},
 	})
 	return err

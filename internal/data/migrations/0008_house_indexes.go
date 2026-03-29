@@ -11,18 +11,18 @@ import (
 type houseIndexes struct{}
 
 func (m *houseIndexes) Version() string { return "0008" }
-func (m *houseIndexes) Name() string    { return "house_indexes" }
+func (m *houseIndexes) Name() string    { return "houseIndexes" }
 
 func (m *houseIndexes) Up(ctx context.Context, db *mongo.Database) error {
 	col := db.Collection("House")
 	_, err := col.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "inviteCode", Value: 1}},
-			Options: options.Index().SetUnique(true).SetName("idx_house_invitecode_unique"),
+			Options: options.Index().SetUnique(true).SetName("idxHouseInviteCodeUnique"),
 		},
 		{
 			Keys:    bson.D{{Key: "ownerId", Value: 1}},
-			Options: options.Index().SetName("idx_house_ownerid"),
+			Options: options.Index().SetName("idxHouseOwnerId"),
 		},
 	})
 	return err

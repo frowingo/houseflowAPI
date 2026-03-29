@@ -13,7 +13,7 @@ import (
 type announcementBsonFix struct{}
 
 func (m *announcementBsonFix) Version() string { return "0014" }
-func (m *announcementBsonFix) Name() string    { return "announcement_bson_fix" }
+func (m *announcementBsonFix) Name() string    { return "announcementBsonFix" }
 
 func (m *announcementBsonFix) Up(ctx context.Context, db *mongo.Database) error {
 	col := db.Collection("Announcement")

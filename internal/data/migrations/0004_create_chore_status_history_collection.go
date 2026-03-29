@@ -12,19 +12,19 @@ type createChoreStatusHistoryCollection struct{}
 
 func (m *createChoreStatusHistoryCollection) Version() string { return "0004" }
 func (m *createChoreStatusHistoryCollection) Name() string {
-	return "create_chore_status_history_collection"
+	return "createChoreStatusHistoryCollection"
 }
 
 func (m *createChoreStatusHistoryCollection) Up(ctx context.Context, db *mongo.Database) error {
 	validator := bson.M{
 		"$jsonSchema": bson.M{
 			"bsonType": "object",
-			"required": []string{"chore_id"},
+			"required": []string{"choreId"},
 			"properties": bson.M{
-				"chore_id":  bson.M{"bsonType": "string"},
-				"status":    bson.M{"bsonType": "int"},
-				"date_time": bson.M{"bsonType": "date"},
-				"updater":   bson.M{"bsonType": "string"},
+				"choreId":  bson.M{"bsonType": "string"},
+				"status":   bson.M{"bsonType": "int"},
+				"dateTime": bson.M{"bsonType": "date"},
+				"updater":  bson.M{"bsonType": "string"},
 			},
 		},
 	}

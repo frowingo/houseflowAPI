@@ -13,7 +13,7 @@ import (
 type notificationBsonFix struct{}
 
 func (m *notificationBsonFix) Version() string { return "0013" }
-func (m *notificationBsonFix) Name() string    { return "notification_bson_fix" }
+func (m *notificationBsonFix) Name() string    { return "notificationBsonFix" }
 
 func (m *notificationBsonFix) Up(ctx context.Context, db *mongo.Database) error {
 	col := db.Collection("Notification")

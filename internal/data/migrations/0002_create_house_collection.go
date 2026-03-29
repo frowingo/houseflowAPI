@@ -11,7 +11,7 @@ import (
 type createHouseCollection struct{}
 
 func (m *createHouseCollection) Version() string { return "0002" }
-func (m *createHouseCollection) Name() string    { return "create_house_collection" }
+func (m *createHouseCollection) Name() string    { return "createHouseCollection" }
 
 func (m *createHouseCollection) Up(ctx context.Context, db *mongo.Database) error {
 	validator := bson.M{

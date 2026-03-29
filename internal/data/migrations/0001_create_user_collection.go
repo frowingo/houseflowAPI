@@ -11,7 +11,7 @@ import (
 type createUserCollection struct{}
 
 func (m *createUserCollection) Version() string { return "0001" }
-func (m *createUserCollection) Name() string    { return "create_user_collection" }
+func (m *createUserCollection) Name() string    { return "createUserCollection" }
 
 func (m *createUserCollection) Up(ctx context.Context, db *mongo.Database) error {
 	validator := bson.M{
@@ -25,12 +25,12 @@ func (m *createUserCollection) Up(ctx context.Context, db *mongo.Database) error
 				"email":       bson.M{"bsonType": "string"},
 				"password":    bson.M{"bsonType": "string"},
 				"age":         bson.M{"bsonType": "int"},
-				"image_url":   bson.M{"bsonType": "string"},
-				"house_ids":   bson.M{"bsonType": "array"},
-				"is_active":   bson.M{"bsonType": "bool"},
-				"created_on":  bson.M{"bsonType": "date"},
-				"updated_on":  bson.M{"bsonType": "date"},
-				"last_login":  bson.M{"bsonType": "date"},
+				"imageUrl":    bson.M{"bsonType": "string"},
+				"houseIds":    bson.M{"bsonType": "array"},
+				"isActive":    bson.M{"bsonType": "bool"},
+				"createdOn":   bson.M{"bsonType": "date"},
+				"updatedOn":   bson.M{"bsonType": "date"},
+				"lastLogin":   bson.M{"bsonType": "date"},
 			},
 		},
 	}

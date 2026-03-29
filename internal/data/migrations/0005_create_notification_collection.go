@@ -11,18 +11,18 @@ import (
 type createNotificationCollection struct{}
 
 func (m *createNotificationCollection) Version() string { return "0005" }
-func (m *createNotificationCollection) Name() string    { return "create_notification_collection" }
+func (m *createNotificationCollection) Name() string    { return "createNotificationCollection" }
 
 func (m *createNotificationCollection) Up(ctx context.Context, db *mongo.Database) error {
 	validator := bson.M{
 		"$jsonSchema": bson.M{
 			"bsonType": "object",
 			"properties": bson.M{
-				"title":          bson.M{"bsonType": "string"},
-				"message":        bson.M{"bsonType": "string"},
-				"created_at":     bson.M{"bsonType": "date"},
-				"house_id":       bson.M{"bsonType": "string"},
-				"house_owner_id": bson.M{"bsonType": "string"},
+				"title":        bson.M{"bsonType": "string"},
+				"message":      bson.M{"bsonType": "string"},
+				"createdAt":    bson.M{"bsonType": "date"},
+				"houseId":      bson.M{"bsonType": "string"},
+				"houseOwnerId": bson.M{"bsonType": "string"},
 			},
 		},
 	}

@@ -14,7 +14,7 @@ const migrationsCollection = "_migrations"
 type MigrationRecord struct {
 	Version   string    `bson:"version"`
 	Name      string    `bson:"name"`
-	AppliedAt time.Time `bson:"applied_at"`
+	AppliedAt time.Time `bson:"appliedAt"`
 }
 
 type Tracker struct {

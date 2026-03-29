@@ -11,26 +11,26 @@ import (
 type createChoreCollection struct{}
 
 func (m *createChoreCollection) Version() string { return "0003" }
-func (m *createChoreCollection) Name() string    { return "create_chore_collection" }
+func (m *createChoreCollection) Name() string    { return "createChoreCollection" }
 
 func (m *createChoreCollection) Up(ctx context.Context, db *mongo.Database) error {
 	validator := bson.M{
 		"$jsonSchema": bson.M{
 			"bsonType": "object",
-			"required": []string{"title", "house_id"},
+			"required": []string{"title", "houseId"},
 			"properties": bson.M{
-				"title":              bson.M{"bsonType": "string"},
-				"description":        bson.M{"bsonType": "string"},
-				"is_completed":       bson.M{"bsonType": "bool"},
-				"assigned_to":        bson.M{"bsonType": "string"},
-				"due_date":           bson.M{"bsonType": "date"},
-				"created_on":         bson.M{"bsonType": "date"},
-				"house_id":           bson.M{"bsonType": "string"},
-				"house_owner_id":     bson.M{"bsonType": "string"},
-				"level":              bson.M{"bsonType": "int"},
-				"status":             bson.M{"bsonType": "int"},
-				"is_recurring":       bson.M{"bsonType": "bool"},
-				"recurring_interval": bson.M{"bsonType": "int"},
+				"title":             bson.M{"bsonType": "string"},
+				"description":       bson.M{"bsonType": "string"},
+				"isCompleted":       bson.M{"bsonType": "bool"},
+				"assignedTo":        bson.M{"bsonType": "string"},
+				"dueDate":           bson.M{"bsonType": "date"},
+				"createdOn":         bson.M{"bsonType": "date"},
+				"houseId":           bson.M{"bsonType": "string"},
+				"houseOwnerId":      bson.M{"bsonType": "string"},
+				"level":             bson.M{"bsonType": "int"},
+				"status":            bson.M{"bsonType": "int"},
+				"isRecurring":       bson.M{"bsonType": "bool"},
+				"recurringInterval": bson.M{"bsonType": "int"},
 			},
 		},
 	}

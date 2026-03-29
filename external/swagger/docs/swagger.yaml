@@ -42,6 +42,7 @@ definitions:
         minLength: 5
         type: string
       dueDate:
+        example: "2026-07-12 00:00:00"
         type: string
       houseId:
         type: string
@@ -92,6 +93,35 @@ definitions:
     - name
     - ownerId
     - type
+    type: object
+  dtos.HouseDetailsModel:
+    properties:
+      createdOn:
+        type: string
+      id:
+        type: string
+      inviteCode:
+        type: string
+      maxMemberCount:
+        type: integer
+      members:
+        items:
+          $ref: '#/definitions/dtos.UserResultModel'
+        type: array
+      name:
+        type: string
+      ownerId:
+        type: string
+      profileImage:
+        type: string
+      type:
+        enum:
+        - 1
+        - 2
+        - 3
+        type: integer
+      updatedOn:
+        type: string
     type: object
   dtos.HouseResponseModel:
     properties:
@@ -221,6 +251,39 @@ definitions:
       phoneNumber:
         maxLength: 15
         minLength: 10
+        type: string
+    type: object
+  dtos.UserResultModel:
+    properties:
+      age:
+        type: integer
+      createdOn:
+        type: string
+      email:
+        type: string
+      firstName:
+        type: string
+      houseIds:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      imageUrl:
+        type: string
+      isActive:
+        type: boolean
+      isVerifyEmail:
+        type: boolean
+      isVerifyPhone:
+        type: boolean
+      lastLogin:
+        type: string
+      lastName:
+        type: string
+      phoneNumber:
+        type: string
+      updatedOn:
         type: string
     type: object
   entities.ChoreLevel:
@@ -526,6 +589,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Create new house
+      tags:
+      - House
+  /house/details:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseDetailsModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get house details
       tags:
       - House
   /house/join:
