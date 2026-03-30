@@ -41,6 +41,7 @@ func SetupRoutes(app *fiber.App) {
 	houseService := services.NewHouseService(
 		&abstract.DbRepository[entities.House]{},
 		&abstract.DbRepository[entities.User]{},
+		&abstract.DbRepository[entities.Chore]{},
 	)
 	houseController := controllers.NewHouseController(houseService)
 

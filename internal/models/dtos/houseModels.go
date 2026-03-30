@@ -23,16 +23,17 @@ type UserResultModel struct {
 }
 
 type HouseDetailsModel struct {
-	Id             string             `json:"id"`
-	OwnerId        string             `json:"ownerId"`
-	InviteCode     string             `json:"inviteCode"`
-	Name           string             `json:"name"`
-	Type           entities.HouseType `json:"type" swaggertype:"integer" enums:"1,2,3"`
-	Members        []UserResultModel  `json:"members"`
-	MaxMemberCount int                `json:"maxMemberCount"`
-	ProfileImage   string             `json:"profileImage"`
-	CreatedOn      time.Time          `json:"createdOn"`
-	UpdatedOn      time.Time          `json:"updatedOn"`
+	Id             string               `json:"id"`
+	OwnerId        string               `json:"ownerId"`
+	InviteCode     string               `json:"inviteCode"`
+	Name           string               `json:"name"`
+	Type           entities.HouseType   `json:"type" swaggertype:"integer" enums:"1,2,3"`
+	Members        []UserResultModel    `json:"members"`
+	MaxMemberCount int                  `json:"maxMemberCount"`
+	ProfileImage   string               `json:"profileImage"`
+	CreatedOn      time.Time            `json:"createdOn"`
+	UpdatedOn      time.Time            `json:"updatedOn"`
+	Chores         []ChoreResponseModel `json:"chores"`
 }
 
 func UserToResultModel(u entities.User) UserResultModel {

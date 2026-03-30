@@ -30,6 +30,13 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 
 	colName := entityType.Name()
 
+	// Assign a new ObjectID before insert so the returned entity already has it.
+	entityVal := reflect.ValueOf(&entity).Elem()
+	idField := entityVal.FieldByName("Id")
+	if idField.IsValid() && idField.CanSet() && idField.Interface() == (primitive.ObjectID{}) {
+		idField.Set(reflect.ValueOf(primitive.NewObjectID()))
+	}
+
 	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
 	if err != nil {
 		var zero *T
@@ -203,6 +210,27 @@ func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) err
 	}
 
 	return nil
+}
+
+func (r *DbRepository[T]) ExistsByFilter(filter bson.M) (bool, error) {
+
+	ctx := context.Background()
+
+	entityType := reflect.TypeOf(new(T)).Elem()
+	colName := entityType.Name()
+
+	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
+	if err != nil {
+		return false, err
+	}
+	defer mongoCtx.CloseConnection(ctx)
+
+	count, err := mongoCtx.Collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 func (r *DbRepository[T]) Delete(id primitive.ObjectID) error {

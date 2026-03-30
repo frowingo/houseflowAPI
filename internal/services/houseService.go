@@ -10,17 +10,22 @@ import (
 )
 
 type HouseService struct {
-	houseRepository *abstract.DbRepository[entities.House]
-	userRepository  *abstract.DbRepository[entities.User]
+	houseRepository           *abstract.DbRepository[entities.House]
+	userRepository            *abstract.DbRepository[entities.User]
+	choreRepository           *abstract.DbRepository[entities.Chore]
+	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
 }
 
 func NewHouseService(
 	houseRepository *abstract.DbRepository[entities.House],
 	userRepository *abstract.DbRepository[entities.User],
+	choreRepository *abstract.DbRepository[entities.Chore],
 ) *HouseService {
 	return &HouseService{
-		houseRepository: houseRepository,
-		userRepository:  userRepository,
+		houseRepository:           houseRepository,
+		userRepository:            userRepository,
+		choreRepository:           choreRepository,
+		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](),
 	}
 }
 
@@ -100,6 +105,13 @@ func (s *HouseService) GetHouseDetails(houseId string) (*dtos.HouseDetailsModel,
 		members = append(members, dtos.UserToResultModel(*user))
 	}
 
+	choreEntities, _ := s.choreRepository.FindManyByColumn("houseId", houseId)
+	chores := make([]dtos.ChoreResponseModel, 0, len(choreEntities))
+	for _, c := range choreEntities {
+		histories, _ := s.choreStatusHistRepository.FindManyByColumn("choreId", c.Id.Hex())
+		chores = append(chores, dtos.ChoreToResponseModel(c, histories))
+	}
+
 	return &dtos.HouseDetailsModel{
 		Id:             house.Id.Hex(),
 		OwnerId:        house.OwnerId,
@@ -111,6 +123,7 @@ func (s *HouseService) GetHouseDetails(houseId string) (*dtos.HouseDetailsModel,
 		ProfileImage:   house.ProfileImage,
 		CreatedOn:      house.CreatedOn,
 		UpdatedOn:      house.UpdatedOn,
+		Chores:         chores,
 	}, nil
 }
 
