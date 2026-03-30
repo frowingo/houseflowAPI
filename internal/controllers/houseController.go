@@ -57,6 +57,34 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(response)
 }
 
+// @Summary Get house details
+// @Tags House
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param houseId query string true "House ID"
+// @Success 200 {object} dtos.HouseDetailsModel
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /house/details [get]
+func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
+	houseId := c.Query("houseId")
+	if houseId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "houseId query param is required",
+		})
+	}
+
+	details, err := r.houseService.GetHouseDetails(houseId)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(details)
+}
+
 // @Summary Join house by invite code
 // @Tags House
 // @Accept json

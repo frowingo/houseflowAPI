@@ -1,12 +1,17 @@
 package entities
 
-import "time"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 type Notification struct {
-	Id           string    `json:"id"`
-	Title        string    `json:"title"`
-	Message      string    `json:"message"`
-	CreatedAt    time.Time `json:"created_at"`
-	HouseId      string    `json:"house_id"`
-	HouseOwnerId string    `json:"house_owner_id"`
+	Id           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Title        string             `bson:"title" json:"title"`
+	Message      string             `bson:"message" json:"message"`
+	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
+	HouseId      string             `bson:"houseId" json:"houseId"`
+	HouseOwnerId string             `bson:"houseOwnerId" json:"houseOwnerId"`
+	IsRead       bool               `bson:"isRead" json:"isRead"`
 }

@@ -142,3 +142,77 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 
 	return c.Status(200).JSON(user)
 }
+
+// @Summary Get users by house
+// @Description Get all members of a house with their full details
+// @Tags User
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param houseId query string true "House ID"
+// @Success 200 {array} entities.User
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /user/getUsersByHouse [get]
+func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
+
+	houseId := c.Query("houseId")
+	if houseId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "houseId query param is required",
+		})
+	}
+
+	users, err := r.userService.GetUsersByHouse(houseId)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(200).JSON(users)
+}
+
+// @Summary Update user profile
+// @Description Update user profile fields. Only provided (non-null) fields will be updated.
+// @Tags User
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Param user body dtos.UpdateUserModel true "Fields to update"
+// @Success 200 {object} entities.User
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /user/profile/{id} [put]
+func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
+
+	userId := c.Params("id")
+	if userId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User ID is required",
+		})
+	}
+
+	model := new(dtos.UpdateUserModel)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot parse JSON",
+		})
+	}
+
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	updated, err := r.userService.UpdateProfile(userId, *model)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(200).JSON(updated)
+}

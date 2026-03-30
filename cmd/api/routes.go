@@ -21,25 +21,32 @@ func SetupRoutes(app *fiber.App) {
 	authController := controllers.NewAuthController(authService)
 
 	authRoutes := api.Group("/auth")
-	authRoutes.Get("/login/:email/:password", authController.Login)
+	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
 
-	userService := services.NewUserService(&abstract.DbRepository[entities.User]{})
+	userService := services.NewUserService(
+		&abstract.DbRepository[entities.User]{},
+		&abstract.DbRepository[entities.House]{},
+	)
 	userController := controllers.NewUserController(userService)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired())
 	userRoutes.Post("", userController.NewUser)
 	userRoutes.Get("/usersList", userController.ListUsers)
 	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
+	userRoutes.Get("/getUsersByHouse", userController.GetUsersByHouse)
+	userRoutes.Put("/profile/:id", userController.UpdateProfile)
 	userRoutes.Delete("/:id", userController.DeleteUser)
 
 	houseService := services.NewHouseService(
 		&abstract.DbRepository[entities.House]{},
 		&abstract.DbRepository[entities.User]{},
+		&abstract.DbRepository[entities.Chore]{},
 	)
 	houseController := controllers.NewHouseController(houseService)
 
 	houseRoutes := api.Group("/house", middleware.AuthRequired())
+	houseRoutes.Get("/details", houseController.GetHouseDetails)
 	houseRoutes.Post("/create", houseController.CreateHouse)
 	houseRoutes.Post("/join", houseController.JoinHouseByCode)
 

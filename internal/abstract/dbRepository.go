@@ -30,6 +30,13 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 
 	colName := entityType.Name()
 
+	// Assign a new ObjectID before insert so the returned entity already has it.
+	entityVal := reflect.ValueOf(&entity).Elem()
+	idField := entityVal.FieldByName("Id")
+	if idField.IsValid() && idField.CanSet() && idField.Interface() == (primitive.ObjectID{}) {
+		idField.Set(reflect.ValueOf(primitive.NewObjectID()))
+	}
+
 	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
 	if err != nil {
 		var zero *T
@@ -151,6 +158,79 @@ func (r *DbRepository[T]) Update(id primitive.ObjectID, updatedEntity T) (*T, er
 	}
 
 	return &updatedEntity, nil
+}
+
+func (r *DbRepository[T]) FindManyByColumn(columnName string, columnValue string) ([]T, error) {
+
+	ctx := context.Background()
+
+	entityType := reflect.TypeOf(new(T)).Elem()
+	colName := entityType.Name()
+
+	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
+	if err != nil {
+		return nil, err
+	}
+	defer mongoCtx.CloseConnection(ctx)
+
+	cursor, err := mongoCtx.Collection.Find(ctx, bson.M{columnName: columnValue})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []T
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) error {
+
+	ctx := context.Background()
+
+	entityType := reflect.TypeOf(new(T)).Elem()
+	colName := entityType.Name()
+
+	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
+	if err != nil {
+		return err
+	}
+	defer mongoCtx.CloseConnection(ctx)
+
+	result, err := mongoCtx.Collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": fields})
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
+func (r *DbRepository[T]) ExistsByFilter(filter bson.M) (bool, error) {
+
+	ctx := context.Background()
+
+	entityType := reflect.TypeOf(new(T)).Elem()
+	colName := entityType.Name()
+
+	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
+	if err != nil {
+		return false, err
+	}
+	defer mongoCtx.CloseConnection(ctx)
+
+	count, err := mongoCtx.Collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 func (r *DbRepository[T]) Delete(id primitive.ObjectID) error {

@@ -21,32 +21,47 @@ type SignUpUserModel struct {
 	Lastname  string `bson:"lastName" json:"lastName" validate:"required,min=2,max=50"`
 }
 
+// UpdateUserModel — sadece gönderilen (non-nil) alanlar güncellenir.
+type UpdateUserModel struct {
+	Firstname     *string `json:"firstName,omitempty"`
+	Lastname      *string `json:"lastName,omitempty"`
+	PhoneNumber   *string `json:"phoneNumber,omitempty" validate:"omitempty,min=10,max=15"`
+	Age           *int    `json:"age,omitempty" validate:"omitempty,gte=0,lte=150"`
+	ImageURL      *string `json:"imageUrl,omitempty"`
+	IsVerifyPhone *bool   `json:"isVerifyPhone,omitempty"`
+	IsVerifyEmail *bool   `json:"isVerifyEmail,omitempty"`
+}
+
 func (m *NewUserModel) ToEntity() entities.User {
 	return entities.User{
-		Firstname:    m.Firstname,
-		Lastname:     m.Lastname,
-		PhoneNumber:  m.PhoneNumber,
-		Email:        m.Email,
-		HashPassword: "",
-		Age:          m.Age,
-		CreatedOn:    time.Now(),
-		UpdatedOn:    time.Now(),
-		IsActive:     true,
-		HouseIds:     []string{},
+		Firstname:     m.Firstname,
+		Lastname:      m.Lastname,
+		PhoneNumber:   m.PhoneNumber,
+		Email:         m.Email,
+		HashPassword:  "",
+		Age:           m.Age,
+		CreatedOn:     time.Now(),
+		UpdatedOn:     time.Now(),
+		IsActive:      true,
+		IsVerifyPhone: false,
+		IsVerifyEmail: false,
+		HouseIds:      []string{},
 	}
 }
 
 func (m *SignUpUserModel) ToEntity() entities.User {
 	return entities.User{
-		Email:        m.Email,
-		HashPassword: m.Password,
-		Age:          0,
-		PhoneNumber:  "",
-		Firstname:    m.Firstname,
-		Lastname:     m.Lastname,
-		CreatedOn:    time.Now(),
-		UpdatedOn:    time.Now(),
-		IsActive:     true,
-		HouseIds:     []string{},
+		Email:         m.Email,
+		HashPassword:  m.Password,
+		Age:           0,
+		PhoneNumber:   "",
+		Firstname:     m.Firstname,
+		Lastname:      m.Lastname,
+		CreatedOn:     time.Now(),
+		UpdatedOn:     time.Now(),
+		IsActive:      true,
+		IsVerifyPhone: false,
+		IsVerifyEmail: false,
+		HouseIds:      []string{},
 	}
 }

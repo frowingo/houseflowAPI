@@ -25,24 +25,28 @@ func NewAuthController(authService *services.AuthService) *AuthController {
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param email path string true "User email address"
-// @Param password path string true "User password"
+// @Param login body dtos.LoginRequestModel true "Login credentials"
 // @Success 200 {object} map[string]string "Returns JWT token"
 // @Failure 400 {object} map[string]interface{} "Bad request"
 // @Failure 401 {object} map[string]interface{} "Invalid credentials"
-// @Router /auth/login/{email}/{password} [get]
+// @Router /auth/login [post]
 func (r *AuthController) Login(c *fiber.Ctx) error {
 
-	email := c.Params("email")
-	password := c.Params("password")
+	model := new(dtos.LoginRequestModel)
 
-	if email == "" || password == "" {
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot parse JSON",
+		})
+	}
+
+	if model.Email == "" || model.Password == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Email and password are required",
 		})
 	}
 
-	token, err := r.authService.Login(email, password)
+	token, err := r.authService.Login(model.Email, model.Password)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),

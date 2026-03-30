@@ -23,8 +23,8 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/auth/login/{email}/{password}": {
-            "get": {
+        "/auth/login": {
+            "post": {
                 "description": "Login with email and password to receive JWT token",
                 "consumes": [
                     "application/json"
@@ -38,18 +38,13 @@ const docTemplate = `{
                 "summary": "User Login",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "User email address",
-                        "name": "email",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "User password",
-                        "name": "password",
-                        "in": "path",
-                        "required": true
+                        "description": "Login credentials",
+                        "name": "login",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.LoginRequestModel"
+                        }
                     }
                 ],
                 "responses": {
@@ -152,8 +147,196 @@ const docTemplate = `{
                 }
             }
         },
+        "/chore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new chore in a house",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chore"
+                ],
+                "summary": "Create new chore",
+                "parameters": [
+                    {
+                        "description": "Chore object",
+                        "name": "chore",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.CreateChoreModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ChoreResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/chore/status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the status of multiple chores",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chore"
+                ],
+                "summary": "Update chore status",
+                "parameters": [
+                    {
+                        "description": "Array of status updates",
+                        "name": "statusUpdates",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dtos.UpdateChoreStatusModel"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/chore/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update an existing chore",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chore"
+                ],
+                "summary": "Update chore",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Chore ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Chore object",
+                        "name": "chore",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.CreateChoreModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ChoreResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/house/create": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -196,16 +379,66 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                },
+                }
+            }
+        },
+        "/house/details": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ]
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Get house details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseDetailsModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
             }
         },
         "/house/join": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -248,16 +481,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ]
+                }
             }
         },
         "/user": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Create a new user in the system",
                 "consumes": [
                     "application/json"
@@ -301,16 +534,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ]
+                }
             }
         },
         "/user/getByEmail": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Retrieve a user by their email address",
                 "consumes": [
                     "application/json"
@@ -352,16 +585,130 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                },
+                }
+            }
+        },
+        "/user/getUsersByHouse": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ]
+                ],
+                "description": "Get all members of a house with their full details",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Get users by house",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.User"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/profile/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update user profile fields. Only provided (non-null) fields will be updated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Update user profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.UpdateUserModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
             }
         },
         "/user/usersList": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get a list of all users in the system",
                 "consumes": [
                     "application/json"
@@ -397,16 +744,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ]
+                }
             }
         },
         "/user/{id}": {
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Delete a user by their ID",
                 "consumes": [
                     "application/json"
@@ -445,16 +792,112 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ]
+                }
             }
         }
     },
     "definitions": {
+        "dtos.ChoreResponseModel": {
+            "type": "object",
+            "properties": {
+                "assignedTo": {
+                    "type": "string"
+                },
+                "completedAt": {
+                    "type": "string"
+                },
+                "completedBy": {
+                    "type": "string"
+                },
+                "createdOn": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "dueDate": {
+                    "type": "string"
+                },
+                "houseId": {
+                    "type": "string"
+                },
+                "houseOwnerId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isCompleted": {
+                    "type": "boolean"
+                },
+                "isRecurring": {
+                    "type": "boolean"
+                },
+                "level": {
+                    "$ref": "#/definitions/entities.ChoreLevel"
+                },
+                "recurringInterval": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/entities.ChoreStatus"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.CreateChoreModel": {
+            "type": "object",
+            "required": [
+                "assignedTo",
+                "description",
+                "dueDate",
+                "houseId",
+                "level",
+                "title"
+            ],
+            "properties": {
+                "assignedTo": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 5
+                },
+                "dueDate": {
+                    "type": "string",
+                    "example": "2026-07-12 00:00:00"
+                },
+                "houseId": {
+                    "type": "string"
+                },
+                "isRecurring": {
+                    "type": "boolean"
+                },
+                "level": {
+                    "enum": [
+                        10
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.ChoreLevel"
+                        }
+                    ]
+                },
+                "recurringInterval": {
+                    "type": "integer",
+                    "maximum": 365,
+                    "minimum": 1
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 3
+                }
+            }
+        },
         "dtos.CreateHouseModel": {
             "type": "object",
             "required": [
@@ -478,16 +921,56 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
+                    "type": "integer",
                     "enum": [
-                        "StudentHouse",
-                        "SharedHouse",
-                        "DormRoom"
+                        1,
+                        2,
+                        3
                     ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entities.HouseType"
-                        }
+                    "example": 1
+                }
+            }
+        },
+        "dtos.HouseDetailsModel": {
+            "type": "object",
+            "properties": {
+                "createdOn": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "inviteCode": {
+                    "type": "string"
+                },
+                "maxMemberCount": {
+                    "type": "integer"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dtos.UserResultModel"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "profileImage": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3
                     ]
+                },
+                "updatedOn": {
+                    "type": "string"
                 }
             }
         },
@@ -518,8 +1001,16 @@ const docTemplate = `{
                 "ownerId": {
                     "type": "string"
                 },
+                "profileImage": {
+                    "type": "string"
+                },
                 "type": {
-                    "$ref": "#/definitions/entities.HouseType"
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3
+                    ]
                 },
                 "updatedOn": {
                     "type": "string"
@@ -537,6 +1028,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.LoginRequestModel": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
                     "type": "string"
                 }
             }
@@ -607,26 +1109,65 @@ const docTemplate = `{
                 }
             }
         },
-        "entities.HouseType": {
-            "type": "string",
-            "enum": [
-                "StudentHouse",
-                "SharedHouse",
-                "DormRoom"
+        "dtos.UpdateChoreStatusModel": {
+            "type": "object",
+            "required": [
+                "choreId",
+                "status"
             ],
-            "x-enum-varnames": [
-                "StudentHouse",
-                "SharedHouse",
-                "DormRoom"
-            ]
+            "properties": {
+                "choreId": {
+                    "type": "string"
+                },
+                "status": {
+                    "enum": [
+                        0
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.ChoreStatus"
+                        }
+                    ]
+                }
+            }
         },
-        "entities.User": {
+        "dtos.UpdateUserModel": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer",
+                    "maximum": 150,
+                    "minimum": 0
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "isVerifyEmail": {
+                    "type": "boolean"
+                },
+                "isVerifyPhone": {
+                    "type": "boolean"
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "phoneNumber": {
+                    "type": "string",
+                    "maxLength": 15,
+                    "minLength": 10
+                }
+            }
+        },
+        "dtos.UserResultModel": {
             "type": "object",
             "properties": {
                 "age": {
                     "type": "integer"
                 },
-                "created_on": {
+                "createdOn": {
                     "type": "string"
                 },
                 "email": {
@@ -635,7 +1176,7 @@ const docTemplate = `{
                 "firstName": {
                     "type": "string"
                 },
-                "house_ids": {
+                "houseIds": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -644,16 +1185,100 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "image_url": {
+                "imageUrl": {
                     "type": "string"
                 },
-                "is_active": {
+                "isActive": {
                     "type": "boolean"
+                },
+                "isVerifyEmail": {
+                    "type": "boolean"
+                },
+                "isVerifyPhone": {
+                    "type": "boolean"
+                },
+                "lastLogin": {
+                    "type": "string"
                 },
                 "lastName": {
                     "type": "string"
                 },
-                "last_login": {
+                "phoneNumber": {
+                    "type": "string"
+                },
+                "updatedOn": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.ChoreLevel": {
+            "type": "integer",
+            "enum": [
+                10,
+                20,
+                30
+            ],
+            "x-enum-varnames": [
+                "Easy",
+                "Medium",
+                "Hard"
+            ]
+        },
+        "entities.ChoreStatus": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "Draft",
+                "Progress",
+                "InTest",
+                "Completed"
+            ]
+        },
+        "entities.User": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "createdOn": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "houseIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "isVerifyEmail": {
+                    "type": "boolean"
+                },
+                "isVerifyPhone": {
+                    "type": "boolean"
+                },
+                "lastLogin": {
+                    "type": "string"
+                },
+                "lastName": {
                     "type": "string"
                 },
                 "password": {
@@ -662,7 +1287,7 @@ const docTemplate = `{
                 "phoneNumber": {
                     "type": "string"
                 },
-                "updated_on": {
+                "updatedOn": {
                     "type": "string"
                 }
             }

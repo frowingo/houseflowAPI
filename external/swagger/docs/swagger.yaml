@@ -1,5 +1,74 @@
 basePath: /api/v1
 definitions:
+  dtos.ChoreResponseModel:
+    properties:
+      assignedTo:
+        type: string
+      completedAt:
+        type: string
+      completedBy:
+        type: string
+      createdOn:
+        type: string
+      description:
+        type: string
+      dueDate:
+        type: string
+      houseId:
+        type: string
+      houseOwnerId:
+        type: string
+      id:
+        type: string
+      isCompleted:
+        type: boolean
+      isRecurring:
+        type: boolean
+      level:
+        $ref: '#/definitions/entities.ChoreLevel'
+      recurringInterval:
+        type: integer
+      status:
+        $ref: '#/definitions/entities.ChoreStatus'
+      title:
+        type: string
+    type: object
+  dtos.CreateChoreModel:
+    properties:
+      assignedTo:
+        type: string
+      description:
+        maxLength: 1000
+        minLength: 5
+        type: string
+      dueDate:
+        example: "2026-07-12 00:00:00"
+        type: string
+      houseId:
+        type: string
+      isRecurring:
+        type: boolean
+      level:
+        allOf:
+        - $ref: '#/definitions/entities.ChoreLevel'
+        enum:
+        - 10
+      recurringInterval:
+        maximum: 365
+        minimum: 1
+        type: integer
+      title:
+        maxLength: 200
+        minLength: 3
+        type: string
+    required:
+    - assignedTo
+    - description
+    - dueDate
+    - houseId
+    - level
+    - title
+    type: object
   dtos.CreateHouseModel:
     properties:
       maxMemberCount:
@@ -13,17 +82,46 @@ definitions:
       ownerId:
         type: string
       type:
-        allOf:
-          - $ref: "#/definitions/entities.HouseType"
         enum:
-          - StudentHouse
-          - SharedHouse
-          - DormRoom
+        - 1
+        - 2
+        - 3
+        example: 1
+        type: integer
     required:
-      - maxMemberCount
-      - name
-      - ownerId
-      - type
+    - maxMemberCount
+    - name
+    - ownerId
+    - type
+    type: object
+  dtos.HouseDetailsModel:
+    properties:
+      createdOn:
+        type: string
+      id:
+        type: string
+      inviteCode:
+        type: string
+      maxMemberCount:
+        type: integer
+      members:
+        items:
+          $ref: '#/definitions/dtos.UserResultModel'
+        type: array
+      name:
+        type: string
+      ownerId:
+        type: string
+      profileImage:
+        type: string
+      type:
+        enum:
+        - 1
+        - 2
+        - 3
+        type: integer
+      updatedOn:
+        type: string
     type: object
   dtos.HouseResponseModel:
     properties:
@@ -43,8 +141,14 @@ definitions:
         type: string
       ownerId:
         type: string
+      profileImage:
+        type: string
       type:
-        $ref: "#/definitions/entities.HouseType"
+        enum:
+        - 1
+        - 2
+        - 3
+        type: integer
       updatedOn:
         type: string
     type: object
@@ -55,8 +159,15 @@ definitions:
       userId:
         type: string
     required:
-      - inviteCode
-      - userId
+    - inviteCode
+    - userId
+    type: object
+  dtos.LoginRequestModel:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
     type: object
   dtos.NewUserModel:
     properties:
@@ -82,10 +193,10 @@ definitions:
         minLength: 10
         type: string
     required:
-      - email
-      - firstName
-      - lastName
-      - password
+    - email
+    - firstName
+    - lastName
+    - password
     type: object
   dtos.SignUpUserModel:
     properties:
@@ -103,42 +214,125 @@ definitions:
         minLength: 6
         type: string
     required:
-      - email
-      - firstName
-      - lastName
-      - password
+    - email
+    - firstName
+    - lastName
+    - password
     type: object
-  entities.HouseType:
-    enum:
-      - StudentHouse
-      - SharedHouse
-      - DormRoom
-    type: string
-    x-enum-varnames:
-      - StudentHouse
-      - SharedHouse
-      - DormRoom
-  entities.User:
+  dtos.UpdateChoreStatusModel:
+    properties:
+      choreId:
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/entities.ChoreStatus'
+        enum:
+        - 0
+    required:
+    - choreId
+    - status
+    type: object
+  dtos.UpdateUserModel:
+    properties:
+      age:
+        maximum: 150
+        minimum: 0
+        type: integer
+      firstName:
+        type: string
+      imageUrl:
+        type: string
+      isVerifyEmail:
+        type: boolean
+      isVerifyPhone:
+        type: boolean
+      lastName:
+        type: string
+      phoneNumber:
+        maxLength: 15
+        minLength: 10
+        type: string
+    type: object
+  dtos.UserResultModel:
     properties:
       age:
         type: integer
-      created_on:
+      createdOn:
         type: string
       email:
         type: string
       firstName:
         type: string
-      house_ids:
+      houseIds:
         items:
           type: string
         type: array
       id:
         type: string
-      image_url:
+      imageUrl:
         type: string
-      is_active:
+      isActive:
         type: boolean
-      last_login:
+      isVerifyEmail:
+        type: boolean
+      isVerifyPhone:
+        type: boolean
+      lastLogin:
+        type: string
+      lastName:
+        type: string
+      phoneNumber:
+        type: string
+      updatedOn:
+        type: string
+    type: object
+  entities.ChoreLevel:
+    enum:
+    - 10
+    - 20
+    - 30
+    type: integer
+    x-enum-varnames:
+    - Easy
+    - Medium
+    - Hard
+  entities.ChoreStatus:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-varnames:
+    - Draft
+    - Progress
+    - InTest
+    - Completed
+  entities.User:
+    properties:
+      age:
+        type: integer
+      createdOn:
+        type: string
+      email:
+        type: string
+      firstName:
+        type: string
+      houseIds:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      imageUrl:
+        type: string
+      isActive:
+        type: boolean
+      isVerifyEmail:
+        type: boolean
+      isVerifyPhone:
+        type: boolean
+      lastLogin:
         type: string
       lastName:
         type: string
@@ -146,7 +340,7 @@ definitions:
         type: string
       phoneNumber:
         type: string
-      updated_on:
+      updatedOn:
         type: string
     type: object
 host: localhost:3162
@@ -162,24 +356,20 @@ info:
   title: HouseFlow API
   version: "1.0"
 paths:
-  /auth/login/{email}/{password}:
-    get:
+  /auth/login:
+    post:
       consumes:
-        - application/json
+      - application/json
       description: Login with email and password to receive JWT token
       parameters:
-        - description: User email address
-          in: path
-          name: email
-          required: true
-          type: string
-        - description: User password
-          in: path
-          name: password
-          required: true
-          type: string
+      - description: Login credentials
+        in: body
+        name: login
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.LoginRequestModel'
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: Returns JWT token
@@ -199,21 +389,22 @@ paths:
             type: object
       summary: User Login
       tags:
-        - Auth
+      - Auth
   /auth/signup:
     post:
       consumes:
-        - application/json
-      description: Signup with email, password, firstname, and lastname to receive JWT token
+      - application/json
+      description: Signup with email, password, firstname, and lastname to receive
+        JWT token
       parameters:
-        - description: Signup request
-          in: body
-          name: signup
-          required: true
-          schema:
-            $ref: "#/definitions/dtos.SignUpUserModel"
+      - description: Signup request
+        in: body
+        name: signup
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.SignUpUserModel'
       produces:
-        - application/json
+      - application/json
       responses:
         "201":
           description: Returns JWT token
@@ -233,13 +424,13 @@ paths:
             type: object
       summary: User Signup
       tags:
-        - Auth
+      - Auth
   /base/health:
     get:
       consumes:
-        - application/json
+      - application/json
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: OK
@@ -247,92 +438,26 @@ paths:
             additionalProperties: true
             type: object
       tags:
-        - Base
-  /house/create:
+      - Base
+  /chore:
     post:
       consumes:
-        - application/json
+      - application/json
+      description: Create a new chore in a house
       parameters:
-        - description: House object
-          in: body
-          name: house
-          required: true
-          schema:
-            $ref: "#/definitions/dtos.CreateHouseModel"
+      - description: Chore object
+        in: body
+        name: chore
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateChoreModel'
       produces:
-        - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: "#/definitions/dtos.HouseResponseModel"
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-        - BearerAuth: []
-      summary: Create new house
-      tags:
-        - House
-  /house/join:
-    post:
-      consumes:
-        - application/json
-      parameters:
-        - description: Join request
-          in: body
-          name: joinRequest
-          required: true
-          schema:
-            $ref: "#/definitions/dtos.JoinHouseByCodeModel"
-      produces:
-        - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: "#/definitions/dtos.HouseResponseModel"
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-        - BearerAuth: []
-      summary: Join house by invite code
-      tags:
-        - House
-  /user:
-    post:
-      consumes:
-        - application/json
-      description: Create a new user in the system
-      parameters:
-        - description: User object
-          in: body
-          name: user
-          required: true
-          schema:
-            $ref: "#/definitions/dtos.NewUserModel"
-      produces:
-        - application/json
+      - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: "#/definitions/dtos.NewUserModel"
+            $ref: '#/definitions/dtos.ChoreResponseModel'
         "400":
           description: Bad Request
           schema:
@@ -344,23 +469,240 @@ paths:
             additionalProperties: true
             type: object
       security:
-        - BearerAuth: []
+      - BearerAuth: []
+      summary: Create new chore
+      tags:
+      - Chore
+  /chore/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update an existing chore
+      parameters:
+      - description: Chore ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Chore object
+        in: body
+        name: chore
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateChoreModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ChoreResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update chore
+      tags:
+      - Chore
+  /chore/status:
+    put:
+      consumes:
+      - application/json
+      description: Update the status of multiple chores
+      parameters:
+      - description: Array of status updates
+        in: body
+        name: statusUpdates
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/dtos.UpdateChoreStatusModel'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: boolean
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update chore status
+      tags:
+      - Chore
+  /house/create:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: House object
+        in: body
+        name: house
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateHouseModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create new house
+      tags:
+      - House
+  /house/details:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseDetailsModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get house details
+      tags:
+      - House
+  /house/join:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Join request
+        in: body
+        name: joinRequest
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.JoinHouseByCodeModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Join house by invite code
+      tags:
+      - House
+  /user:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user in the system
+      parameters:
+      - description: User object
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.NewUserModel'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dtos.NewUserModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
       summary: Create new user
       tags:
-        - User
+      - User
   /user/{id}:
     delete:
       consumes:
-        - application/json
+      - application/json
       description: Delete a user by their ID
       parameters:
-        - description: User ID
-          in: path
-          name: id
-          required: true
-          type: string
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
       produces:
-        - application/json
+      - application/json
       responses:
         "204":
           description: No Content
@@ -375,28 +717,28 @@ paths:
             additionalProperties: true
             type: object
       security:
-        - BearerAuth: []
+      - BearerAuth: []
       summary: Delete a user
       tags:
-        - User
+      - User
   /user/getByEmail:
     get:
       consumes:
-        - application/json
+      - application/json
       description: Retrieve a user by their email address
       parameters:
-        - description: User email
-          in: query
-          name: email
-          required: true
-          type: string
+      - description: User email
+        in: query
+        name: email
+        required: true
+        type: string
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: "#/definitions/entities.User"
+            $ref: '#/definitions/entities.User'
         "400":
           description: Bad Request
           schema:
@@ -408,23 +750,29 @@ paths:
             additionalProperties: true
             type: object
       security:
-        - BearerAuth: []
+      - BearerAuth: []
       summary: Get user by email
       tags:
-        - User
-  /user/usersList:
+      - User
+  /user/getUsersByHouse:
     get:
       consumes:
-        - application/json
-      description: Get a list of all users in the system
+      - application/json
+      description: Get all members of a house with their full details
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: OK
           schema:
             items:
-              $ref: "#/definitions/dtos.NewUserModel"
+              $ref: '#/definitions/entities.User'
             type: array
         "400":
           description: Bad Request
@@ -437,13 +785,82 @@ paths:
             additionalProperties: true
             type: object
       security:
-        - BearerAuth: []
+      - BearerAuth: []
+      summary: Get users by house
+      tags:
+      - User
+  /user/profile/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update user profile fields. Only provided (non-null) fields will
+        be updated.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.UpdateUserModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entities.User'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - User
+  /user/usersList:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of all users in the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dtos.NewUserModel'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
       summary: List all users
       tags:
-        - User
+      - User
 schemes:
-  - http
-  - https
+- http
+- https
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.
