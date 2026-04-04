@@ -1,0 +1,21 @@
+{
+    "external": {
+        "appwrite": {
+            "endpoint": "",
+            "projectId": "",
+            "databaseId": "",
+            "apiKey": "",
+            "apiSecret": ""
+        },
+        "mongo": {
+            "devConString": "mongodb://localhost:27017",
+            "prodConString": "",
+            "dbName": "houseflowDb"
+        }
+    },
+    "internal": {
+        "jwt": {
+            "apiSecret": ""
+        }
+    }
+}
