@@ -35,7 +35,7 @@ WORKDIR /root/
 COPY --from=builder /app/houseflowapi .
 
 # Config dosyalarını kopyala
-COPY ./internal/config/config.json ./internal/config/
+COPY ./internal/config/ ./internal/config/
 
 # Port'u expose et
 EXPOSE 3162

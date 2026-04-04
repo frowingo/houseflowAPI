@@ -52,9 +52,12 @@ func LoadConfig() (*ConfigModel, error) {
 		return nil, errors.New("config.json cannot deserialize:" + err.Error())
 	}
 
-	// MONGO_HOST + MONGO_PORT env var'ları varsa devConString'i override et.
-	// docker-compose.yml bu değerleri container servis adıyla inject eder.
-	if host := os.Getenv("MONGO_HOST"); host != "" {
+	// MONGO_URI env var'ı varsa (Atlas gibi tam URI için) devConString'i override et.
+	if uri := os.Getenv("MONGO_URI"); uri != "" {
+		config.External.Mongo.DevConString = uri
+	} else if host := os.Getenv("MONGO_HOST"); host != "" {
+		// MONGO_HOST + MONGO_PORT env var'ları varsa devConString'i override et.
+		// docker-compose.yml bu değerleri container servis adıyla inject eder.
 		port := os.Getenv("MONGO_PORT")
 		if port == "" {
 			port = "27017"
@@ -63,6 +66,9 @@ func LoadConfig() (*ConfigModel, error) {
 	}
 	if db := os.Getenv("MONGO_DB"); db != "" {
 		config.External.Mongo.DbName = db
+	}
+	if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
+		config.Internal.JWT.ApiSecret = jwtSecret
 	}
 
 	return &config, nil

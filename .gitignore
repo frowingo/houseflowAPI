@@ -1,0 +1,15 @@
+# Binaries
+*.exe
+*.out
+/bin/
+
+# Config with secrets (template is safe to commit, actual config is not)
+internal/config/config.json
+
+# Environment files
+.env
+.env.*
+
+# Go workspace
+go.work
+go.work.sum
