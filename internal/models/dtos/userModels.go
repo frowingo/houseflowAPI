@@ -42,10 +42,12 @@ func (m *NewUserModel) ToEntity() entities.User {
 		Age:           m.Age,
 		CreatedOn:     time.Now(),
 		UpdatedOn:     time.Now(),
+		LastLogin:     time.Now(),
 		IsActive:      true,
 		IsVerifyPhone: false,
 		IsVerifyEmail: false,
 		HouseIds:      []string{},
+		Role:          entities.Normal,
 	}
 }
 
@@ -59,9 +61,11 @@ func (m *SignUpUserModel) ToEntity() entities.User {
 		Lastname:      m.Lastname,
 		CreatedOn:     time.Now(),
 		UpdatedOn:     time.Now(),
+		LastLogin:     time.Now(),
 		IsActive:      true,
 		IsVerifyPhone: false,
 		IsVerifyEmail: false,
 		HouseIds:      []string{},
+		Role:          entities.Normal,
 	}
 }

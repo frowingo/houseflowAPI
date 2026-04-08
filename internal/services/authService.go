@@ -6,6 +6,9 @@ import (
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 type AuthService struct {
@@ -33,6 +36,9 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 			if err != nil {
 				return "", err
 			}
+
+			_ = r.dbRepository.UpdateFields(user.Id, bson.M{"lastLogin": time.Now()})
+
 			return token, nil
 		}
 	} else {

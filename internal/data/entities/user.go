@@ -6,6 +6,14 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type UserRole int
+
+const (
+	Normal     UserRole = 0
+	Admin      UserRole = 1
+	SuperAdmin UserRole = 2
+)
+
 type User struct {
 	Id            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Firstname     string             `bson:"firstName" json:"firstName"`
@@ -22,4 +30,5 @@ type User struct {
 	CreatedOn     time.Time          `bson:"createdOn" json:"createdOn"`
 	UpdatedOn     time.Time          `bson:"updatedOn" json:"updatedOn"`
 	LastLogin     time.Time          `bson:"lastLogin" json:"lastLogin"`
+	Role          UserRole           `bson:"role" json:"role"`
 }

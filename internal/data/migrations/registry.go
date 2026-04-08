@@ -26,5 +26,7 @@ func AllMigrations() []migration.Migration {
 		&announcementBsonFix{},
 		// --- Index Fix ---
 		&removePhoneUniqueIndex{},
+		// --- Field Additions ---
+		&userAddRoleAndLastLogin{},
 	}
 }
