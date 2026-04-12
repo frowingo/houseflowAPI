@@ -22,30 +22,49 @@ func NewAuthService(dbRepository *abstract.DbRepository[entities.User]) *AuthSer
 }
 
 func (r *AuthService) Login(email string, password string) (string, error) {
+	const MaxFailedAttempts = 10
 
 	user, err := r.dbRepository.FindByColumn("email", email)
-	if err != nil {
+	if err != nil && err.Error() == "document not found" {
+		return "", errors.New("sen kimsin birader, böyle bi mail yok") //invalid email or password
+	} else if err != nil {
 		return "", err
 	}
 
-	if user != nil {
-		isValid := helpers.CheckPasswordHash(password, user.HashPassword)
-		if isValid {
-
-			token, err := helpers.GenerateToken(user.Email, user.Id.String(), int(user.Role))
-			if err != nil {
-				return "", err
-			}
-
-			_ = r.dbRepository.UpdateFields(user.Id, bson.M{"lastLogin": time.Now()})
-
-			return token, nil
-		}
-	} else {
-		return "", errors.New("user not found")
+	// Check if account is locked
+	if !user.IsActive {
+		return "", errors.New("sen şimdi naneyi yimedin mi? BANLANDIN!") //account is locked due to multiple failed login attempts
 	}
 
-	return "", nil
+	isValid := helpers.CheckPasswordHash(password, user.HashPassword)
+	if isValid {
+		// Password correct: reset failed attempts and update last login
+		token, err := helpers.GenerateToken(user.Email, user.Id.String(), int(user.Role))
+		if err != nil {
+			return "", err
+		}
+
+		_ = r.dbRepository.UpdateFields(user.Id, bson.M{
+			"lastLogin":           time.Now(),
+			"failedLoginAttempts": 0,
+		})
+
+		return token, nil
+	}
+
+	// Password incorrect: increment failed attempts
+	user.FailedLoginAttempts++
+	updateData := bson.M{"failedLoginAttempts": user.FailedLoginAttempts}
+
+	// Lock account if max attempts reached
+	if user.FailedLoginAttempts >= MaxFailedAttempts {
+		updateData["isActive"] = false
+		_ = r.dbRepository.UpdateFields(user.Id, updateData)
+		return "", errors.New("sen şimdi naneyi yimedin mi? BANLANDIN!") //too many failed login attempts, account has been locked
+	}
+
+	_ = r.dbRepository.UpdateFields(user.Id, updateData)
+	return "", errors.New("TEZGAHHH LAN BU, yanlış şifre!") //invalid email or password
 }
 
 func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {

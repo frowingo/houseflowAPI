@@ -28,5 +28,6 @@ func AllMigrations() []migration.Migration {
 		&removePhoneUniqueIndex{},
 		// --- Field Additions ---
 		&userAddRoleAndLastLogin{},
+		&userAddFailedLoginAttempts{},
 	}
 }
