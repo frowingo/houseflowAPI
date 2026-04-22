@@ -24,6 +24,8 @@ func SetupRoutes(app *fiber.App) {
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit())
 	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
+	authRoutes.Post("/forget", authController.ForgotPassword)
+	authRoutes.Post("/reset", authController.ResetPassword)
 	// ----------
 
 	// - USER -

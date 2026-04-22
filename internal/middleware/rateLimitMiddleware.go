@@ -108,7 +108,7 @@ func IPRateLimit() fiber.Handler {
 // StrictRateLimit limits each IP to x requests per y minutes.
 func StrictRateLimit() fiber.Handler {
 	return RateLimit(RateLimitConfig{
-		Max:     100,
+		Max:     10,
 		Window:  15 * time.Minute,
 		Message: "Too many attempts, please try again later",
 	})

@@ -8,6 +8,10 @@
     "internal": {
         "jwt": {
             "apiSecret": "HOUSEFLOW_SECRET_KEY"
+        },
+        "passwordReset": {
+            "secret": "HOUSEFLOW_RESET_SECRET",
+            "validityMinutes": 3
         }
     }
 }

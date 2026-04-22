@@ -16,7 +16,13 @@ type ConfigExternal struct {
 }
 
 type ConfigInternal struct {
-	JWT ConfigJWT `json:"jwt"`
+	JWT           ConfigJWT           `json:"jwt"`
+	PasswordReset ConfigPasswordReset `json:"passwordReset"`
+}
+
+type ConfigPasswordReset struct {
+	Secret          string `json:"secret"`
+	ValidityMinutes int    `json:"validityMinutes"`
 }
 
 type ConfigJWT struct {
@@ -57,6 +63,10 @@ func LoadConfig() (*ConfigModel, error) {
 
 		if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
 			config.Internal.JWT.ApiSecret = jwtSecret
+		}
+
+		if resetSecret := os.Getenv("RESET_CODE_SECRET"); resetSecret != "" {
+			config.Internal.PasswordReset.Secret = resetSecret
 		}
 	}
 
