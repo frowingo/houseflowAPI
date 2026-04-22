@@ -13,8 +13,19 @@ type LoginResponseModel struct {
 }
 
 type JwtModel struct {
-	Issuer    string    `bson:"issuer" json:"issuer"`
-	Subject   string    `bson:"subject" json:"subject"`
-	ExpiresAt time.Time `bson:"expiresAt" json:"expiresAt"`
-	IssuedAt  time.Time `bson:"issuedAt" json:"issuedAt"`
+	Issuer     string    `bson:"issuer" json:"issuer"`
+	Subject    string    `bson:"subject" json:"subject"`
+	IssuerRole int       `bson:"issuerRole" json:"issuerRole"`
+	ExpiresAt  time.Time `bson:"expiresAt" json:"expiresAt"`
+	IssuedAt   time.Time `bson:"issuedAt" json:"issuedAt"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email" validate:"required,email"`
+	Code        string `json:"code" validate:"required,len=6"`
+	NewPassword string `json:"newPassword" validate:"required,min=6"`
 }

@@ -1,21 +1,17 @@
 {
     "external": {
-        "appwrite": {
-            "endpoint": "",
-            "projectId": "",
-            "databaseId": "",
-            "apiKey": "",
-            "apiSecret": ""
-        },
         "mongo": {
-            "devConString": "mongodb://localhost:27017",
-            "prodConString": "",
+            "connectionString": "mongodb://mongodb:27017",
             "dbName": "houseflowDb"
         }
     },
     "internal": {
         "jwt": {
-            "apiSecret": ""
+            "apiSecret": "HOUSEFLOW_SECRET_KEY"
+        },
+        "passwordReset": {
+            "secret": "HOUSEFLOW_RESET_SECRET",
+            "validityMinutes": 3
         }
     }
 }

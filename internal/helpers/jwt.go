@@ -9,18 +9,26 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func GenerateToken(email string, userId string) (string, error) {
+type customClaims struct {
+	Role int `json:"role"`
+	jwt.RegisteredClaims
+}
+
+func GenerateToken(email string, userId string, role int) (string, error) {
 
 	config, err := config.LoadConfig()
 	if err != nil {
 		return "", errors.New("config not found")
 	}
 
-	claim := jwt.RegisteredClaims{
-		Issuer:    email,
-		Subject:   userId,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
+	claim := customClaims{
+		Role: role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    email,
+			Subject:   userId,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
@@ -39,20 +47,21 @@ func ValidateToken(token string) (dtos.JwtModel, error) {
 		return dtos.JwtModel{}, errors.New("config not found")
 	}
 
-	parsedToken, err := jwt.ParseWithClaims(token, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(token, &customClaims{}, func(t *jwt.Token) (interface{}, error) {
 		return []byte(config.Internal.JWT.ApiSecret), nil
 	})
 	if err != nil {
 		return dtos.JwtModel{}, err
 	}
 
-	if claims, ok := parsedToken.Claims.(*jwt.RegisteredClaims); ok && parsedToken.Valid {
-
+	if claims, ok := parsedToken.Claims.(*customClaims); ok && parsedToken.Valid {
 		return dtos.JwtModel{
-			Issuer:    claims.Issuer,
-			Subject:   claims.Subject,
-			ExpiresAt: claims.ExpiresAt.Time,
-			IssuedAt:  claims.IssuedAt.Time}, nil
+			Issuer:     claims.Issuer,
+			Subject:    claims.Subject,
+			IssuerRole: claims.Role,
+			ExpiresAt:  claims.ExpiresAt.Time,
+			IssuedAt:   claims.IssuedAt.Time,
+		}, nil
 	} else {
 		return dtos.JwtModel{}, errors.New("invalid token")
 	}

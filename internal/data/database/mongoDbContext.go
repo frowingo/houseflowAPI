@@ -21,7 +21,7 @@ func (r *MongoDbContext) NewConnection(ctx context.Context, colName string) (*Mo
 		return nil, err
 	}
 
-	clientOpts := options.Client().ApplyURI(config.External.Mongo.DevConString)
+	clientOpts := options.Client().ApplyURI(config.External.Mongo.ConnectionString)
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
 		return nil, errors.New("don't create amongo client:" + err.Error())
@@ -51,7 +51,7 @@ func NewDatabase(ctx context.Context) (*mongo.Client, *mongo.Database, error) {
 		return nil, nil, err
 	}
 
-	clientOpts := options.Client().ApplyURI(cfg.External.Mongo.DevConString)
+	clientOpts := options.Client().ApplyURI(cfg.External.Mongo.ConnectionString)
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
 		return nil, nil, errors.New("failed to connect to mongo: " + err.Error())

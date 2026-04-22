@@ -9,7 +9,7 @@ import (
 
 func AuthRequired() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Authorization header'ı al
+
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -27,7 +27,6 @@ func AuthRequired() fiber.Handler {
 
 		token := parts[1]
 
-		// JWT token'ı validate et
 		jwtData, err := helpers.ValidateToken(token)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -38,8 +37,29 @@ func AuthRequired() fiber.Handler {
 		// User bilgisini context'e kaydet
 		c.Locals("userEmail", jwtData.Issuer)
 		c.Locals("userID", jwtData.Subject)
-		// İsterseniz userID de eklenebilir (jwt.go'da Subject alanına userID yazıldıysa)
+		c.Locals("userRole", jwtData.IssuerRole)
 
 		return c.Next()
+	}
+}
+
+func RequireRole(requiredRoles ...int) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userRole, ok := c.Locals("userRole").(int)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Unauthorized",
+			})
+		}
+
+		for _, role := range requiredRoles {
+			if userRole == role {
+				return c.Next()
+			}
+		}
+
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Sen onu yapaman",
+		})
 	}
 }

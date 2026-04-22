@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 )
 
@@ -13,30 +12,30 @@ type ConfigModel struct {
 }
 
 type ConfigExternal struct {
-	AppWrite ConfigAppWrite `json:"appwrite"`
-	Mongo    ConfigMongo    `json:"mongo"`
+	Mongo ConfigMongo `json:"mongo"`
 }
 
 type ConfigInternal struct {
-	JWT ConfigJWT `json:"jwt"`
+	JWT           ConfigJWT           `json:"jwt"`
+	PasswordReset ConfigPasswordReset `json:"passwordReset"`
+}
+
+type ConfigPasswordReset struct {
+	Secret          string `json:"secret"`
+	ValidityMinutes int    `json:"validityMinutes"`
 }
 
 type ConfigJWT struct {
 	ApiSecret string `json:"apiSecret"`
 }
 
-type ConfigAppWrite struct {
-	Endpoint   string `json:"endpoint"`
-	ProjectId  string `json:"projectId"`
-	DatabaseId string `json:"databaseId"`
-	ApiKey     string `json:"apiKey"`
-	ApiSecret  string `json:"apiSecret"`
+type ConfigMongo struct {
+	ConnectionString string `json:"connectionString"`
+	DbName           string `json:"dbName"`
 }
 
-type ConfigMongo struct {
-	DevConString  string `json:"devConString"`
-	ProdConString string `json:"prodConString"`
-	DbName        string `json:"dbName"`
+func isDebugMode() bool {
+	return os.Getenv("APP_ENV") != "production"
 }
 
 func LoadConfig() (*ConfigModel, error) {
@@ -52,23 +51,23 @@ func LoadConfig() (*ConfigModel, error) {
 		return nil, errors.New("config.json cannot deserialize:" + err.Error())
 	}
 
-	// MONGO_URI env var'ı varsa (Atlas gibi tam URI için) devConString'i override et.
-	if uri := os.Getenv("MONGO_URI"); uri != "" {
-		config.External.Mongo.DevConString = uri
-	} else if host := os.Getenv("MONGO_HOST"); host != "" {
-		// MONGO_HOST + MONGO_PORT env var'ları varsa devConString'i override et.
-		// docker-compose.yml bu değerleri container servis adıyla inject eder.
-		port := os.Getenv("MONGO_PORT")
-		if port == "" {
-			port = "27017"
+	if isDebugMode() == false {
+
+		if uri := os.Getenv("MONGO_URI"); uri != "" {
+			config.External.Mongo.ConnectionString = uri
 		}
-		config.External.Mongo.DevConString = fmt.Sprintf("mongodb://%s:%s", host, port)
-	}
-	if db := os.Getenv("MONGO_DB"); db != "" {
-		config.External.Mongo.DbName = db
-	}
-	if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
-		config.Internal.JWT.ApiSecret = jwtSecret
+
+		if db := os.Getenv("MONGO_DB"); db != "" {
+			config.External.Mongo.DbName = db
+		}
+
+		if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
+			config.Internal.JWT.ApiSecret = jwtSecret
+		}
+
+		if resetSecret := os.Getenv("RESET_CODE_SECRET"); resetSecret != "" {
+			config.Internal.PasswordReset.Secret = resetSecret
+		}
 	}
 
 	return &config, nil

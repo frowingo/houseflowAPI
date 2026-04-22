@@ -96,7 +96,7 @@ func (r *DbRepository[T]) FindByColumn(columnName string, columnValue string) (*
 	if err == mongo.ErrNoDocuments {
 		return nil, errors.New("document not found")
 	} else if err != nil {
-		return nil, errors.New("kime bakmıştınız:" + err.Error())
+		return nil, err
 	}
 
 	return &result, nil

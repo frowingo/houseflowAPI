@@ -21,7 +21,10 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Set secrets on Fly.io
-        run: flyctl secrets set MONGO_URI="${{ secrets.MONGO_URI }}" JWT_SECRET="${{ secrets.JWT_SECRET }}" --app houseflowapi --stage
+        run: flyctl secrets set MONGO_URI="${{ secrets.MONGO_URI }}" JWT_SECRET="${{
+          secrets.JWT_SECRET }}" RESET_CODE_SECRET="${{
+          secrets.RESET_CODE_SECRET }}" APP_ENV="production" --app houseflowapi
+          --stage
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
