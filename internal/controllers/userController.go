@@ -42,7 +42,6 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate model
 	if err := r.validator.Validate(user); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -187,19 +186,14 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 // @Router /user/profile/{id} [put]
 func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 
-	userId := c.Params("id")
-	if userId == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "User ID is required",
-		})
-	}
-
 	model := new(dtos.UpdateUserModel)
 	if err := c.BodyParser(model); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Cannot parse JSON",
 		})
 	}
+
+	userId := c.Locals("userID").(string)
 
 	if err := r.validator.Validate(model); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
