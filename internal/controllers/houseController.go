@@ -111,6 +111,8 @@ func (r *HouseController) JoinHouseByCode(c *fiber.Ctx) error {
 		})
 	}
 
+	model.UserId = c.Locals("userID").(string)
+
 	house, err := r.houseService.JoinHouseByCode(*model)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
