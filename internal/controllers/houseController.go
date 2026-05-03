@@ -39,7 +39,8 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate model
+	model.OwnerId = c.Locals("userID").(string)
+
 	if err := r.validator.Validate(model); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -104,12 +105,13 @@ func (r *HouseController) JoinHouseByCode(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate model
 	if err := r.validator.Validate(model); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
+
+	model.UserId = c.Locals("userID").(string)
 
 	house, err := r.houseService.JoinHouseByCode(*model)
 	if err != nil {

@@ -42,17 +42,14 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if err := r.validator.Validate(chore); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	// Get user ID from JWT token
 	userId := c.Locals("userID").(string)
 
-	// Create chore
 	createdChore, err := r.choreService.CreateChore(*chore, userId)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -91,7 +88,6 @@ func (r *ChoreController) UpdateChoreStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get user ID from JWT token
 	userId := c.Locals("userID").(string)
 
 	result, err := r.choreService.UpdateChoreStatusBulk(statusUpdates, userId)
@@ -129,7 +125,6 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if err := r.validator.Validate(chore); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),

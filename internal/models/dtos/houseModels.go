@@ -63,7 +63,7 @@ type CreateHouseModel struct {
 }
 
 type JoinHouseByCodeModel struct {
-	UserId     string `json:"userId" validate:"required,len=24"`
+	UserId     string `json:"userId"`
 	InviteCode string `json:"inviteCode" validate:"required,len=8,alphanum"`
 }
 

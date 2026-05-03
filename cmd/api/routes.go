@@ -36,7 +36,7 @@ func SetupRoutes(app *fiber.App) {
 	userController := controllers.NewUserController(userService)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired(), middleware.UserRateLimit())
-	userRoutes.Post("", userController.NewUser)
+	userRoutes.Post("", userController.NewUser, middleware.RequireRole(int(entities.SuperAdmin)))
 	userRoutes.Get("/usersList", middleware.RequireRole(int(entities.SuperAdmin)), userController.ListUsers)
 	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
 	userRoutes.Get("/getUsersByHouse", userController.GetUsersByHouse)
