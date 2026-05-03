@@ -56,7 +56,7 @@ func UserToResultModel(u entities.User) UserResultModel {
 }
 
 type CreateHouseModel struct {
-	OwnerId        string             `json:"ownerId" validate:"required,len=24"`
+	OwnerId        string             `json:"ownerId"`
 	Name           string             `json:"name" validate:"required,min=3,max=100"`
 	Type           entities.HouseType `json:"type" validate:"required,oneof=1 2 3" swaggertype:"integer" enums:"1,2,3" example:"1"`
 	MaxMemberCount int                `json:"maxMemberCount" validate:"required,gte=1,lte=8"`
