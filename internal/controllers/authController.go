@@ -2,8 +2,11 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -18,6 +21,32 @@ func NewAuthController(authService *services.AuthService) *AuthController {
 		authService: authService,
 		validator:   validator.NewValidator(),
 	}
+}
+
+// @Summary Check if token is valid
+// @Description Returns true if the token has not expired, false otherwise
+// @Tags Auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} bool
+// @Failure 400 {object} bool
+// @Router /auth/isAuth [get]
+func (r *AuthController) IsAuth(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false})
+	}
+
+	jwtData, err := helpers.ValidateToken(parts[1])
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false})
+	}
+
+	if time.Now().Before(jwtData.ExpiresAt) {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true})
+	}
+	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false})
 }
 
 // @Summary User Login
