@@ -40,7 +40,7 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 	isValid := helpers.CheckPasswordHash(password, user.HashPassword)
 	if isValid {
 		// Password correct: reset failed attempts and update last login
-		token, err := helpers.GenerateToken(user.Email, user.Id.String(), int(user.Role))
+		token, err := helpers.GenerateToken(user.Email, user.Id.Hex(), int(user.Role))
 		if err != nil {
 			return "", err
 		}
@@ -94,7 +94,7 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 		return "", err
 	}
 
-	token, err := helpers.GenerateToken(entity.Email, entity.Id.String(), int(entity.Role))
+	token, err := helpers.GenerateToken(entity.Email, entity.Id.Hex(), int(entity.Role))
 	if err != nil {
 		return "", err
 	}
