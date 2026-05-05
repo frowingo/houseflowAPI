@@ -22,6 +22,7 @@ func SetupRoutes(app *fiber.App) {
 	authController := controllers.NewAuthController(authService)
 
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit())
+	authRoutes.Get("/isAuth", authController.IsAuth)
 	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
 	authRoutes.Post("/forget", authController.ForgotPassword)
