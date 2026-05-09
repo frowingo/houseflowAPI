@@ -89,12 +89,12 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 	model.Password = hashedPassword
 	entity := model.ToEntity()
 
-	_, err = r.dbRepository.Insert(entity)
+	newUser, err := r.dbRepository.Insert(entity)
 	if err != nil {
 		return "", err
 	}
 
-	token, err := helpers.GenerateToken(entity.Email, entity.Id.Hex(), int(entity.Role))
+	token, err := helpers.GenerateToken(newUser.Email, newUser.Id.Hex(), int(newUser.Role))
 	if err != nil {
 		return "", err
 	}
