@@ -42,7 +42,7 @@ EXPOSE 3162
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3162/swagger/index.html || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3162/swagger/index.html || exit 1
 
 # Uygulamayı çalıştır
 CMD ["./houseflowapi"]
