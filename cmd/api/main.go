@@ -63,7 +63,7 @@ func main() {
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	SetupRoutes(app)
+	SetupRoutes(app, mongoClient, db.Name())
 
 	log.Fatal(app.Listen(":3162"))
 }

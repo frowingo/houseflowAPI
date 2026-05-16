@@ -8,9 +8,10 @@ import (
 	"houseflowApi/internal/services"
 
 	"github.com/gofiber/fiber/v2"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func SetupRoutes(app *fiber.App) {
+func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 
 	api := app.Group("/api/v1", middleware.IPRateLimit())
 
@@ -18,7 +19,7 @@ func SetupRoutes(app *fiber.App) {
 	baseRoutes.Get("/health", controllers.HealthController)
 
 	// - AUTH -
-	authService := services.NewAuthService(&abstract.DbRepository[entities.User]{})
+	authService := services.NewAuthService(abstract.New[entities.User](client, dbName))
 	authController := controllers.NewAuthController(authService)
 
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit())
@@ -31,8 +32,8 @@ func SetupRoutes(app *fiber.App) {
 
 	// - USER -
 	userService := services.NewUserService(
-		&abstract.DbRepository[entities.User]{},
-		&abstract.DbRepository[entities.House]{},
+		abstract.New[entities.User](client, dbName),
+		abstract.New[entities.House](client, dbName),
 	)
 	userController := controllers.NewUserController(userService)
 
@@ -47,9 +48,11 @@ func SetupRoutes(app *fiber.App) {
 
 	// - HOUSE -
 	houseService := services.NewHouseService(
-		&abstract.DbRepository[entities.House]{},
-		&abstract.DbRepository[entities.User]{},
-		&abstract.DbRepository[entities.Chore]{},
+		abstract.New[entities.House](client, dbName),
+		abstract.New[entities.User](client, dbName),
+		abstract.New[entities.Chore](client, dbName),
+		client,
+		dbName,
 	)
 	houseController := controllers.NewHouseController(houseService)
 
@@ -60,7 +63,11 @@ func SetupRoutes(app *fiber.App) {
 	// ----------
 
 	// - CHORE -
-	choreService := services.NewChoreService(&abstract.DbRepository[entities.Chore]{})
+	choreService := services.NewChoreService(
+		abstract.New[entities.Chore](client, dbName),
+		client,
+		dbName,
+	)
 	choreController := controllers.NewChoreController(choreService)
 
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(), middleware.UserRateLimit())

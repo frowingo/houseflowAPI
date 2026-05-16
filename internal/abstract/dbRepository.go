@@ -3,8 +3,8 @@ package abstract
 import (
 	"context"
 	"errors"
-	"houseflowApi/internal/data/database"
 	"reflect"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -12,23 +12,25 @@ import (
 )
 
 type DbRepository[T any] struct {
-	mongoContext *database.MongoDbContext
+	client *mongo.Client
+	dbName string
 }
 
-func New[T any]() *DbRepository[T] {
-	return &DbRepository[T]{}
+func New[T any](client *mongo.Client, dbName string) *DbRepository[T] {
+	return &DbRepository[T]{client: client, dbName: dbName}
+}
+
+func (r *DbRepository[T]) getCollection() *mongo.Collection {
+	entityType := reflect.TypeOf(new(T)).Elem()
+	return r.client.Database(r.dbName).Collection(entityType.Name())
 }
 
 func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(entity)
-	if entityType.Kind() == reflect.Ptr {
-		entityType = entityType.Elem()
-	}
-
-	colName := entityType.Name()
+	collection := r.getCollection()
 
 	// Assign a new ObjectID before insert so the returned entity already has it.
 	entityVal := reflect.ValueOf(&entity).Elem()
@@ -37,14 +39,7 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 		idField.Set(reflect.ValueOf(primitive.NewObjectID()))
 	}
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		var zero *T
-		return zero, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	_, err = mongoCtx.Collection.InsertOne(ctx, entity)
+	_, err := collection.InsertOne(ctx, entity)
 	if err != nil {
 		var zero *T
 		return zero, err
@@ -55,20 +50,13 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 
 func (r *DbRepository[T]) FindById(id primitive.ObjectID) (*T, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
-
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		var zero *T
-		return zero, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
+	collection := r.getCollection()
 
 	var result T
-	err = mongoCtx.Collection.FindOne(ctx, bson.M{"_id": id}).Decode(&result)
+	err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&result)
 	if err != nil {
 		return nil, errors.New("document not found")
 	}
@@ -79,20 +67,13 @@ func (r *DbRepository[T]) FindById(id primitive.ObjectID) (*T, error) {
 // this method only for string columns
 func (r *DbRepository[T]) FindByColumn(columnName string, columnValue string) (*T, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
-
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		var zero *T
-		return zero, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
+	collection := r.getCollection()
 
 	var result T
-	err = mongoCtx.Collection.FindOne(ctx, bson.M{columnName: columnValue}).Decode(&result)
+	err := collection.FindOne(ctx, bson.M{columnName: columnValue}).Decode(&result)
 	if err == mongo.ErrNoDocuments {
 		return nil, errors.New("document not found")
 	} else if err != nil {
@@ -106,19 +87,12 @@ func (r *DbRepository[T]) FindByColumn(columnName string, columnValue string) (*
 // learn -> how to use cursor by mongo
 func (r *DbRepository[T]) FindAll() ([]T, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
+	collection := r.getCollection()
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		var zero []T
-		return zero, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	cursor, err := mongoCtx.Collection.Find(ctx, bson.M{})
+	cursor, err := collection.Find(ctx, bson.M{})
 	if err != nil {
 		var zero []T
 		return zero, err
@@ -135,19 +109,12 @@ func (r *DbRepository[T]) FindAll() ([]T, error) {
 
 func (r *DbRepository[T]) Update(id primitive.ObjectID, updatedEntity T) (*T, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
+	collection := r.getCollection()
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		var zero *T
-		return zero, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	result, err := mongoCtx.Collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updatedEntity})
+	result, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updatedEntity})
 	if err != nil {
 		var zero *T
 		return zero, err
@@ -162,18 +129,12 @@ func (r *DbRepository[T]) Update(id primitive.ObjectID, updatedEntity T) (*T, er
 
 func (r *DbRepository[T]) FindManyByColumn(columnName string, columnValue string) ([]T, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
+	collection := r.getCollection()
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		return nil, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	cursor, err := mongoCtx.Collection.Find(ctx, bson.M{columnName: columnValue})
+	cursor, err := collection.Find(ctx, bson.M{columnName: columnValue})
 	if err != nil {
 		return nil, err
 	}
@@ -189,18 +150,12 @@ func (r *DbRepository[T]) FindManyByColumn(columnName string, columnValue string
 
 func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) error {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
+	collection := r.getCollection()
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		return err
-	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	result, err := mongoCtx.Collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": fields})
+	result, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": fields})
 	if err != nil {
 		return err
 	}
@@ -214,18 +169,12 @@ func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) err
 
 func (r *DbRepository[T]) ExistsByFilter(filter bson.M) (bool, error) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
+	collection := r.getCollection()
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
-	if err != nil {
-		return false, err
-	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	count, err := mongoCtx.Collection.CountDocuments(ctx, filter)
+	count, err := collection.CountDocuments(ctx, filter)
 	if err != nil {
 		return false, err
 	}
@@ -235,18 +184,15 @@ func (r *DbRepository[T]) ExistsByFilter(filter bson.M) (bool, error) {
 
 func (r *DbRepository[T]) Delete(id primitive.ObjectID) error {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	entityType := reflect.TypeOf(new(T)).Elem()
-	colName := entityType.Name()
+	collection := r.getCollection()
 
-	mongoCtx, err := r.mongoContext.NewConnection(ctx, colName)
+	result, err := collection.DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil {
 		return err
 	}
-	defer mongoCtx.CloseConnection(ctx)
-
-	result, err := mongoCtx.Collection.DeleteOne(ctx, bson.M{"_id": id})
 
 	if result.DeletedCount == 0 {
 		return errors.New("Olmayan şeyi nasıl silerim altan mal mısın?")
