@@ -7,6 +7,8 @@ import (
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
 	"time"
+
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type HouseService struct {
@@ -20,12 +22,14 @@ func NewHouseService(
 	houseRepository *abstract.DbRepository[entities.House],
 	userRepository *abstract.DbRepository[entities.User],
 	choreRepository *abstract.DbRepository[entities.Chore],
+	client *mongo.Client,
+	dbName string,
 ) *HouseService {
 	return &HouseService{
 		houseRepository:           houseRepository,
 		userRepository:            userRepository,
 		choreRepository:           choreRepository,
-		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](),
+		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](client, dbName),
 	}
 }
 

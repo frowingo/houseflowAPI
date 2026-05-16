@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ChoreService struct {
@@ -16,10 +17,14 @@ type ChoreService struct {
 	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
 }
 
-func NewChoreService(dbRepository *abstract.DbRepository[entities.Chore]) *ChoreService {
+func NewChoreService(
+	dbRepository *abstract.DbRepository[entities.Chore],
+	client *mongo.Client,
+	dbName string,
+) *ChoreService {
 	return &ChoreService{
 		dbRepository:              dbRepository,
-		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](),
+		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](client, dbName),
 	}
 }
 
