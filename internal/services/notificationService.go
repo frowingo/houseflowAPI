@@ -30,8 +30,6 @@ func (r *NotificationService) SendResetCodeEmail(toEmail, code string, validityM
 		return fmt.Errorf("smtp password is missing")
 	}
 
-	smtpPassword = "arhu nemz ksqu udtu"
-
 	smtpAddress := fmt.Sprintf("%s:%d", MailSMTPHost, MailSMTPPort)
 	auth := smtp.PlainAuth("", MailSMTPUsername, smtpPassword, MailSMTPHost)
 

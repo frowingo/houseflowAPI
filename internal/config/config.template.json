@@ -3,6 +3,12 @@
         "mongo": {
             "connectionString": "mongodb://mongodb:27017",
             "dbName": "houseflowDb"
+        },
+        "cloudinary": {
+            "cloudName": "CLOUDINARY_CLOUD_NAME",
+            "apiKey": "CLOUDINARY_API_KEY",
+            "apiSecret": "CLOUDINARY_API_SECRET",
+            "folder": "houseflow/images"
         }
     },
     "internal": {
