@@ -28,25 +28,34 @@ func NewAuthController(authService *services.AuthService) *AuthController {
 // @Tags Auth
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} bool
-// @Failure 400 {object} bool
+// @Success 200 {object} dtos.IsAuthResponseModel
+// @Failure 400 {object} dtos.IsAuthResponseModel
 // @Router /auth/isAuth [get]
 func (r *AuthController) IsAuth(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false})
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 	}
 
 	jwtData, err := helpers.ValidateToken(parts[1])
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false})
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 	}
 
 	if time.Now().Before(jwtData.ExpiresAt) {
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true})
+		user, err := r.authService.GetUserByID(jwtData.Subject)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
+		}
+
+		userResult := dtos.UserToResultModel(*user)
+		return c.Status(fiber.StatusOK).JSON(dtos.IsAuthResponseModel{
+			Success: true,
+			Data:    &userResult,
+		})
 	}
-	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false})
+	return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 }
 
 // @Summary User Login
@@ -127,41 +136,31 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 }
 
 // @Summary Forgot Password
-// @Description Generates a 6-character reset code for the given email. In production the code should be delivered via email; here it is returned in the response body.
+// @Description Generates a 6-character reset code for the given email and sends it to the user's email address.
 // @Tags Auth
 // @Accept json
 // @Produce json
 // @Param body body dtos.ForgotPasswordRequest true "Email address"
-// @Success 200 {object} map[string]string "Reset code (deliver via email in production)"
-// @Failure 400 {object} map[string]interface{} "Bad request"
+// @Success 200 {object} dtos.SuccessResponseModel "Operation status"
+// @Failure 400 {object} dtos.SuccessResponseModel "Bad request"
 // @Router /auth/forget [post]
 func (r *AuthController) ForgotPassword(c *fiber.Ctx) error {
 	model := new(dtos.ForgotPasswordRequest)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	code, err := r.authService.ForgotPassword(model.Email)
+	err := r.authService.ForgotPassword(model.Email)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	//TODO: mail code to user
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "success",
-		"code":    code,
-	})
+	return c.Status(fiber.StatusOK).JSON(dtos.SuccessResponseModel{Success: true})
 }
 
 // @Summary Reset Password

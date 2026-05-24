@@ -12,6 +12,15 @@ type LoginResponseModel struct {
 	Password string `bson:"password" json:"password"`
 }
 
+type IsAuthResponseModel struct {
+	Success bool             `json:"success"`
+	Data    *UserResultModel `json:"data,omitempty"`
+}
+
+type SuccessResponseModel struct {
+	Success bool `json:"success"`
+}
+
 type JwtModel struct {
 	Issuer     string    `bson:"issuer" json:"issuer"`
 	Subject    string    `bson:"subject" json:"subject"`

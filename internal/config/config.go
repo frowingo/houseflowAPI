@@ -18,6 +18,7 @@ type ConfigExternal struct {
 type ConfigInternal struct {
 	JWT           ConfigJWT           `json:"jwt"`
 	PasswordReset ConfigPasswordReset `json:"passwordReset"`
+	SMTP          ConfigSMTP          `json:"smtp"`
 }
 
 type ConfigPasswordReset struct {
@@ -27,6 +28,10 @@ type ConfigPasswordReset struct {
 
 type ConfigJWT struct {
 	ApiSecret string `json:"apiSecret"`
+}
+
+type ConfigSMTP struct {
+	Password string `json:"password"`
 }
 
 type ConfigMongo struct {
@@ -67,6 +72,10 @@ func LoadConfig() (*ConfigModel, error) {
 
 		if resetSecret := os.Getenv("RESET_CODE_SECRET"); resetSecret != "" {
 			config.Internal.PasswordReset.Secret = resetSecret
+		}
+
+		if smtpPassword := os.Getenv("SMTP_PASSWORD"); smtpPassword != "" {
+			config.Internal.SMTP.Password = smtpPassword
 		}
 	}
 

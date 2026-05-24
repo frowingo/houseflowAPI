@@ -12,6 +12,9 @@
         "passwordReset": {
             "secret": "HOUSEFLOW_RESET_SECRET",
             "validityMinutes": 3
+        },
+        "smtp": {
+            "password": "SMTP_APP_PASSWORD"
         }
     }
 }
