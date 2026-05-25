@@ -28,6 +28,7 @@ type UpdateUserModel struct {
 	PhoneNumber   *string `json:"phoneNumber,omitempty" validate:"omitempty,min=10,max=15"`
 	Age           *int    `json:"age,omitempty" validate:"omitempty,gte=0,lte=150"`
 	ImageURL      *string `json:"imageUrl,omitempty"`
+	ImageUrl      *string `json:"ImageUrl,omitempty"`
 	IsVerifyPhone *bool   `json:"isVerifyPhone,omitempty"`
 	IsVerifyEmail *bool   `json:"isVerifyEmail,omitempty"`
 }

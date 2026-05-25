@@ -19,7 +19,8 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 	baseRoutes.Get("/health", controllers.HealthController)
 
 	// - AUTH -
-	authService := services.NewAuthService(abstract.New[entities.User](client, dbName))
+	notificationService := services.NewNotificationService()
+	authService := services.NewAuthService(abstract.New[entities.User](client, dbName), notificationService)
 	authController := controllers.NewAuthController(authService)
 
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit())

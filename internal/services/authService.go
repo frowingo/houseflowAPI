@@ -13,13 +13,24 @@ import (
 )
 
 type AuthService struct {
-	dbRepository *abstract.DbRepository[entities.User]
+	dbRepository        *abstract.DbRepository[entities.User]
+	notificationService *NotificationService
 }
 
-func NewAuthService(dbRepository *abstract.DbRepository[entities.User]) *AuthService {
+func NewAuthService(dbRepository *abstract.DbRepository[entities.User], notificationService *NotificationService) *AuthService {
 	return &AuthService{
-		dbRepository: dbRepository,
+		dbRepository:        dbRepository,
+		notificationService: notificationService,
 	}
+}
+
+func (r *AuthService) GetUserByID(userId string) (*entities.User, error) {
+	objectId, err := helpers.ToMongoId(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.dbRepository.FindById(objectId)
 }
 
 func (r *AuthService) Login(email string, password string) (string, error) {
@@ -102,25 +113,30 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 	return token, nil
 }
 
-func (r *AuthService) ForgotPassword(email string) (string, error) {
+func (r *AuthService) ForgotPassword(email string) error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	user, err := r.dbRepository.FindByColumn("email", email)
 	if err != nil {
 
 		if user == nil || err.Error() == "document not found" {
-			return "", errors.New("user not found")
+			return errors.New("user not found")
 		}
 
-		return "", err
+		return err
 	}
 
 	window := helpers.ResetCodeWindow(cfg.Internal.PasswordReset.ValidityMinutes)
 	code := helpers.GenerateResetCode(email, cfg.Internal.PasswordReset.Secret, window)
-	return code, nil
+
+	if err := r.notificationService.SendResetCodeEmail(email, code, cfg.Internal.PasswordReset.ValidityMinutes); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *AuthService) ResetPassword(email, code, newPassword string) error {

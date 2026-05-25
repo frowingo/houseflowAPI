@@ -29,5 +29,8 @@ func AllMigrations() []migration.Migration {
 		// --- Field Additions ---
 		&userAddRoleAndLastLogin{},
 		&userAddFailedLoginAttempts{},
+		// --- Image Asset Storage ---
+		&createImageAssetCollection{},
+		&imageAssetIndexes{},
 	}
 }

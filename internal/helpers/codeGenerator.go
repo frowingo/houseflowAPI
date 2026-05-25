@@ -10,6 +10,8 @@ import (
 )
 
 const alphanumericChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const codeLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const codeDigits = "0123456789"
 
 func GenerateInviteCode(length int) (string, error) {
 	result := make([]byte, length)
@@ -39,10 +41,22 @@ func GenerateResetCode(email, secret string, window time.Time) string {
 	mac.Write([]byte(payload))
 	sum := mac.Sum(nil)
 
-	charset := []byte(alphanumericChars)
-	result := make([]byte, 6)
-	for i := 0; i < 6; i++ {
-		result[i] = charset[int(sum[i])%len(charset)]
+	letters := []byte(codeLetters)
+	digits := []byte(codeDigits)
+
+	result := make([]byte, 0, 6)
+	for i := 0; i < 4; i++ {
+		result = append(result, letters[int(sum[i])%len(letters)])
 	}
+	for i := 0; i < 2; i++ {
+		result = append(result, digits[int(sum[4+i])%len(digits)])
+	}
+
+	// Shuffle deterministically so reset verification remains stable within the time window.
+	for i := len(result) - 1; i > 0; i-- {
+		j := int(sum[6+(len(result)-1-i)]) % (i + 1)
+		result[i], result[j] = result[j], result[i]
+	}
+
 	return string(result)
 }
