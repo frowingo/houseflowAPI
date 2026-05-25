@@ -20,7 +20,7 @@
             "validityMinutes": 3
         },
         "smtp": {
-            "password": "SMTP_APP_PASSWORD"
+            "password": "SMTP_PASSWORD"
         }
     }
 }
