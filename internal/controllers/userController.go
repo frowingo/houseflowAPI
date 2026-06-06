@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 
@@ -119,9 +120,9 @@ func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param email query string true "User email"
-// @Success 200 {object} entities.User
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Success 200 {object} dtos.UserResultModel
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Router /user/getByEmail [get]
 func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 
@@ -149,9 +150,9 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param houseId query string true "House ID"
-// @Success 200 {array} entities.User
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Success 200 {array} dtos.UserResultModel
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Router /user/getUsersByHouse [get]
 func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 
@@ -180,33 +181,27 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Param id path string true "User ID"
 // @Param user body dtos.UpdateUserModel true "Fields to update"
-// @Success 200 {object} entities.User
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Success 200 {object} core.ApiResponse[dtos.UserResultModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse
 // @Router /user/profile/{id} [put]
 func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 
 	model := new(dtos.UpdateUserModel)
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
 	}
 
 	updated, err := r.userService.UpdateProfile(userId, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
 	}
 
-	return c.Status(200).JSON(updated)
+	return c.Status(200).JSON(core.Success(updated))
 }

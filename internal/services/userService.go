@@ -105,7 +105,7 @@ func (r *UserService) GetUsersByHouse(houseId string) ([]entities.User, error) {
 	return users, nil
 }
 
-func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (*entities.User, error) {
+func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (*dtos.UserResultModel, error) {
 	objectId, err := helpers.ToMongoId(userId)
 	if err != nil {
 		return nil, err
@@ -144,5 +144,7 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		return nil, err
 	}
 
-	return updated, nil
+	result := dtos.UserToResultModel(*updated)
+
+	return &result, nil
 }
