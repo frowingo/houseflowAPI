@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -11,17 +12,20 @@ import (
 )
 
 type UserService struct {
-	dbRepository    *abstract.DbRepository[entities.User]
-	houseRepository *abstract.DbRepository[entities.House]
+	dbRepository         *abstract.DbRepository[entities.User]
+	houseRepository      *abstract.DbRepository[entities.House]
+	imageAssetRepository *abstract.DbRepository[entities.ImageAsset]
 }
 
 func NewUserService(
 	dbRepository *abstract.DbRepository[entities.User],
 	houseRepository *abstract.DbRepository[entities.House],
+	imageAssetRepository *abstract.DbRepository[entities.ImageAsset],
 ) *UserService {
 	return &UserService{
-		dbRepository:    dbRepository,
-		houseRepository: houseRepository,
+		dbRepository:         dbRepository,
+		houseRepository:      houseRepository,
+		imageAssetRepository: imageAssetRepository,
 	}
 }
 
@@ -147,4 +151,66 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 	result := dtos.UserToResultModel(*updated)
 
 	return &result, nil
+}
+
+func (r *UserService) GetImagesByCategory(category string) ([]dtos.ImageAssetResultModel, error) {
+	assets, err := r.imageAssetRepository.FindManyByFilter(bson.M{"category": category, "isActive": true})
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]dtos.ImageAssetResultModel, 0, len(assets))
+	for _, a := range assets {
+		results = append(results, dtos.ToImageAssetResultModel(a))
+	}
+
+	return results, nil
+}
+
+func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResultModel, error) {
+	asset, err := r.imageAssetRepository.FindByColumn("publicId", publicId)
+	if err != nil {
+		return nil, err
+	}
+	if !asset.IsActive {
+		return nil, errors.New("image asset bulunamadı")
+	}
+
+	result := dtos.ToImageAssetResultModel(*asset)
+
+	return &result, nil
+}
+
+func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
+	asset, err := r.imageAssetRepository.FindByColumn("publicId", model.PublicID)
+	if err != nil {
+		return errors.New("image asset bulunamadı")
+	}
+
+	fields := bson.M{"updatedOn": time.Now()}
+
+	if model.FileURL != nil {
+		fields["fileUrl"] = *model.FileURL
+	}
+	if model.IsActive != nil {
+		fields["isActive"] = *model.IsActive
+	}
+
+	return r.imageAssetRepository.UpdateFields(asset.Id, fields)
+}
+
+func (r *UserService) CreateImageAsset(model dtos.CreateImageAssetModel) error {
+	entity := model.ToEntity()
+
+	exists, err := r.imageAssetRepository.ExistsByFilter(bson.M{"publicId": entity.PublicID})
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("bu kategori ve dosya adına ait bir kayıt zaten mevcut")
+	}
+
+	_, err = r.imageAssetRepository.Insert(entity)
+
+	return err
 }

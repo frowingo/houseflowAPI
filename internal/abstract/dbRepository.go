@@ -167,6 +167,27 @@ func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) err
 	return nil
 }
 
+func (r *DbRepository[T]) FindManyByFilter(filter bson.M) ([]T, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	collection := r.getCollection()
+
+	cursor, err := collection.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []T
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
 func (r *DbRepository[T]) ExistsByFilter(filter bson.M) (bool, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
