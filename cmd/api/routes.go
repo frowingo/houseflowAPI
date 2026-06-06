@@ -35,14 +35,19 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 	userService := services.NewUserService(
 		abstract.New[entities.User](client, dbName),
 		abstract.New[entities.House](client, dbName),
+		abstract.New[entities.ImageAsset](client, dbName),
 	)
 	userController := controllers.NewUserController(userService)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired(), middleware.UserRateLimit())
-	userRoutes.Post("", userController.NewUser, middleware.RequireRole(int(entities.SuperAdmin)))
+	userRoutes.Post("", middleware.RequireRole(int(entities.SuperAdmin)), userController.NewUser)
 	userRoutes.Get("/usersList", middleware.RequireRole(int(entities.SuperAdmin)), userController.ListUsers)
 	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
 	userRoutes.Get("/getUsersByHouse", userController.GetUsersByHouse)
+	userRoutes.Get("/getImages", userController.GetImages)
+	userRoutes.Get("/getImage", userController.GetImage)
+	userRoutes.Post("/images", middleware.RequireRole(int(entities.SuperAdmin)), userController.CreateImageAsset)
+	userRoutes.Put("/images", middleware.RequireRole(int(entities.SuperAdmin)), userController.UpdateImageAsset)
 	userRoutes.Put("/profile/:id", userController.UpdateProfile)
 	userRoutes.Delete("/:id", middleware.RequireRole(int(entities.SuperAdmin)), userController.DeleteUser)
 	// ----------

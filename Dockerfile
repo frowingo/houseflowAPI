@@ -19,7 +19,7 @@ RUN go install github.com/swaggo/swag/cmd/swag@latest
 COPY . .
 
 # Swagger docs'u generate et
-RUN swag init -g cmd/api/main.go -o external/swagger/docs
+RUN swag init -g cmd/api/main.go -o external/swagger/docs --parseDependency --parseInternal
 
 # Binary'yi build et
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o houseflowapi ./cmd/api

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 
@@ -119,9 +120,9 @@ func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param email query string true "User email"
-// @Success 200 {object} entities.User
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Success 200 {object} dtos.UserResultModel
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Router /user/getByEmail [get]
 func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 
@@ -149,9 +150,9 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param houseId query string true "House ID"
-// @Success 200 {array} entities.User
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Success 200 {array} dtos.UserResultModel
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Router /user/getUsersByHouse [get]
 func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 
@@ -180,33 +181,137 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Param id path string true "User ID"
 // @Param user body dtos.UpdateUserModel true "Fields to update"
-// @Success 200 {object} entities.User
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Success 200 {object} core.ApiResponse[dtos.UserResultModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse
 // @Router /user/profile/{id} [put]
 func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 
 	model := new(dtos.UpdateUserModel)
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
 	}
 
 	updated, err := r.userService.UpdateProfile(userId, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
 	}
 
-	return c.Status(200).JSON(updated)
+	return c.Status(200).JSON(core.Success(updated))
+}
+
+// @Summary Get images by category
+// @Description Retrieve all image assets for a given category
+// @Tags User
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param category query string true "Image category"
+// @Success 200 {object} core.ApiResponse[[]dtos.ImageAssetResultModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Router /user/getImages [get]
+func (r *UserController) GetImages(c *fiber.Ctx) error {
+	category := c.Query("category")
+	if category == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error("category query param is required"))
+	}
+
+	images, err := r.userService.GetImagesByCategory(category)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+	}
+
+	return c.Status(200).JSON(core.Success(images))
+}
+
+// @Summary Get image by public ID
+// @Description Retrieve an image asset by its public ID
+// @Tags User
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param publicId query string true "Image public ID"
+// @Success 200 {object} core.ApiResponse[[]dtos.ImageAssetResultModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Router /user/getImage [get]
+func (r *UserController) GetImage(c *fiber.Ctx) error {
+	publicId := c.Query("publicId")
+	if publicId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error("publicId query param is required"))
+	}
+
+	image, err := r.userService.GetImageByPublicID(publicId)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+	}
+
+	return c.Status(200).JSON(core.Success([]dtos.ImageAssetResultModel{*image}))
+}
+
+// @Summary Update image asset
+// @Description Update fileURL and/or isActive of an image asset by publicId (SuperAdmin only)
+// @Tags User
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param image body dtos.UpdateImageAssetModel true "Fields to update"
+// @Success 200 {object} core.ApiResponse[any]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Forbidden"
+// @Router /user/images [put]
+func (r *UserController) UpdateImageAsset(c *fiber.Ctx) error {
+	model := new(dtos.UpdateImageAssetModel)
+
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
+	}
+
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+	}
+
+	if err := r.userService.UpdateImageAsset(*model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+	}
+
+	return c.Status(200).JSON(core.Success[any](nil))
+}
+
+// @Summary Create image asset
+// @Description Create a new image asset (SuperAdmin only)
+// @Tags User
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param image body dtos.CreateImageAssetModel true "Image asset data"
+// @Success 201 {object} core.ApiResponse[any]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Forbidden"
+// @Router /user/images [post]
+func (r *UserController) CreateImageAsset(c *fiber.Ctx) error {
+	model := new(dtos.CreateImageAssetModel)
+
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
+	}
+
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+	}
+
+	if err := r.userService.CreateImageAsset(*model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+	}
+
+	return c.Status(201).JSON(core.Success[any](nil))
 }

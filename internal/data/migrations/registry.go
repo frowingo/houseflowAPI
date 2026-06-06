@@ -32,5 +32,9 @@ func AllMigrations() []migration.Migration {
 		// --- Image Asset Storage ---
 		&createImageAssetCollection{},
 		&imageAssetIndexes{},
+		// --- Image Asset Field Additions ---
+		&imageAssetNewFields{},
+		// --- User Field Changes ---
+		&userAgeTobirthDay{},
 	}
 }

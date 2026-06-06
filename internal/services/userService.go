@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -10,18 +11,23 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+var imageAssetCache = helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
+
 type UserService struct {
-	dbRepository    *abstract.DbRepository[entities.User]
-	houseRepository *abstract.DbRepository[entities.House]
+	dbRepository         *abstract.DbRepository[entities.User]
+	houseRepository      *abstract.DbRepository[entities.House]
+	imageAssetRepository *abstract.DbRepository[entities.ImageAsset]
 }
 
 func NewUserService(
 	dbRepository *abstract.DbRepository[entities.User],
 	houseRepository *abstract.DbRepository[entities.House],
+	imageAssetRepository *abstract.DbRepository[entities.ImageAsset],
 ) *UserService {
 	return &UserService{
-		dbRepository:    dbRepository,
-		houseRepository: houseRepository,
+		dbRepository:         dbRepository,
+		houseRepository:      houseRepository,
+		imageAssetRepository: imageAssetRepository,
 	}
 }
 
@@ -105,7 +111,7 @@ func (r *UserService) GetUsersByHouse(houseId string) ([]entities.User, error) {
 	return users, nil
 }
 
-func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (*entities.User, error) {
+func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (*dtos.UserResultModel, error) {
 	objectId, err := helpers.ToMongoId(userId)
 	if err != nil {
 		return nil, err
@@ -122,8 +128,8 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 	if model.PhoneNumber != nil {
 		fields["phoneNumber"] = *model.PhoneNumber
 	}
-	if model.Age != nil {
-		fields["age"] = *model.Age
+	if model.BirthDay != nil {
+		fields["birthDay"] = *model.BirthDay
 	}
 	if model.ImageURL != nil {
 		fields["imageUrl"] = *model.ImageURL
@@ -144,5 +150,86 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		return nil, err
 	}
 
-	return updated, nil
+	result := dtos.UserToResultModel(*updated)
+
+	return &result, nil
+}
+
+func (r *UserService) GetImagesByCategory(category string) ([]dtos.ImageAssetResultModel, error) {
+
+	if cached, ok := imageAssetCache.Get("images_" + category); ok {
+		return cached, nil
+	}
+
+	assets, err := r.imageAssetRepository.FindManyByFilter(bson.M{"category": category, "isActive": true})
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]dtos.ImageAssetResultModel, 0, len(assets))
+	for _, a := range assets {
+		results = append(results, dtos.ToImageAssetResultModel(a))
+	}
+
+	if len(results) > 0 {
+		imageAssetCache.Set("images_"+category, results)
+	}
+
+	return results, nil
+}
+
+func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResultModel, error) {
+
+	asset, err := r.imageAssetRepository.FindByColumn("publicId", publicId)
+	if err != nil {
+		return nil, err
+	}
+	if !asset.IsActive {
+		return nil, errors.New("image asset bulunamadı")
+	}
+
+	result := dtos.ToImageAssetResultModel(*asset)
+
+	return &result, nil
+}
+
+func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
+
+	asset, err := r.imageAssetRepository.FindByColumn("publicId", model.PublicID)
+	if err != nil {
+		return errors.New("image asset bulunamadı")
+	}
+
+	fields := bson.M{"updatedOn": time.Now()}
+
+	if model.FileURL != nil {
+		fields["fileUrl"] = *model.FileURL
+	}
+	if model.IsActive != nil {
+		fields["isActive"] = *model.IsActive
+	}
+
+	if err := r.imageAssetRepository.UpdateFields(asset.Id, fields); err != nil {
+		return err
+	}
+
+	imageAssetCache.Delete("images_" + asset.Category)
+
+	return nil
+}
+
+func (r *UserService) CreateImageAsset(model dtos.CreateImageAssetModel) error {
+	entity := model.ToEntity()
+
+	exists, err := r.imageAssetRepository.ExistsByFilter(bson.M{"publicId": entity.PublicID})
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("bu kategori ve dosya adına ait bir kayıt zaten mevcut")
+	}
+
+	_, err = r.imageAssetRepository.Insert(entity)
+
+	return err
 }
