@@ -21,7 +21,7 @@ type User struct {
 	PhoneNumber         string             `bson:"phoneNumber" json:"phoneNumber"`
 	Email               string             `bson:"email" json:"email"`
 	HashPassword        string             `bson:"password" json:"password"`
-	Age                 int                `bson:"age" json:"age"`
+	BirthDay            time.Time          `bson:"birthDay" json:"birthDay"`
 	ImageURL            string             `bson:"imageUrl" json:"imageUrl"`
 	HouseIds            []string           `bson:"houseIds" json:"houseIds"`
 	IsActive            bool               `bson:"isActive" json:"isActive"`

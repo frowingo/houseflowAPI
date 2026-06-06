@@ -11,6 +11,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+var imageAssetCache = helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
+
 type UserService struct {
 	dbRepository         *abstract.DbRepository[entities.User]
 	houseRepository      *abstract.DbRepository[entities.House]
@@ -126,8 +128,8 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 	if model.PhoneNumber != nil {
 		fields["phoneNumber"] = *model.PhoneNumber
 	}
-	if model.Age != nil {
-		fields["age"] = *model.Age
+	if model.BirthDay != nil {
+		fields["birthDay"] = *model.BirthDay
 	}
 	if model.ImageURL != nil {
 		fields["imageUrl"] = *model.ImageURL
@@ -154,6 +156,11 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 }
 
 func (r *UserService) GetImagesByCategory(category string) ([]dtos.ImageAssetResultModel, error) {
+
+	if cached, ok := imageAssetCache.Get("images_" + category); ok {
+		return cached, nil
+	}
+
 	assets, err := r.imageAssetRepository.FindManyByFilter(bson.M{"category": category, "isActive": true})
 	if err != nil {
 		return nil, err
@@ -164,10 +171,15 @@ func (r *UserService) GetImagesByCategory(category string) ([]dtos.ImageAssetRes
 		results = append(results, dtos.ToImageAssetResultModel(a))
 	}
 
+	if len(results) > 0 {
+		imageAssetCache.Set("images_"+category, results)
+	}
+
 	return results, nil
 }
 
 func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResultModel, error) {
+
 	asset, err := r.imageAssetRepository.FindByColumn("publicId", publicId)
 	if err != nil {
 		return nil, err
@@ -182,6 +194,7 @@ func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResul
 }
 
 func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
+
 	asset, err := r.imageAssetRepository.FindByColumn("publicId", model.PublicID)
 	if err != nil {
 		return errors.New("image asset bulunamadı")
@@ -196,7 +209,13 @@ func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
 		fields["isActive"] = *model.IsActive
 	}
 
-	return r.imageAssetRepository.UpdateFields(asset.Id, fields)
+	if err := r.imageAssetRepository.UpdateFields(asset.Id, fields); err != nil {
+		return err
+	}
+
+	imageAssetCache.Delete("images_" + asset.Category)
+
+	return nil
 }
 
 func (r *UserService) CreateImageAsset(model dtos.CreateImageAssetModel) error {

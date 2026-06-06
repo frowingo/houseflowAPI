@@ -11,7 +11,7 @@ type UserResultModel struct {
 	Lastname      string    `json:"lastName"`
 	PhoneNumber   string    `json:"phoneNumber"`
 	Email         string    `json:"email"`
-	Age           int       `json:"age"`
+	BirthDay      time.Time `json:"birthDay"`
 	ImageURL      string    `json:"imageUrl"`
 	HouseIds      []string  `json:"houseIds"`
 	IsActive      bool      `json:"isActive"`
@@ -43,7 +43,7 @@ func UserToResultModel(u entities.User) UserResultModel {
 		Lastname:      u.Lastname,
 		PhoneNumber:   u.PhoneNumber,
 		Email:         u.Email,
-		Age:           u.Age,
+		BirthDay:      u.BirthDay,
 		ImageURL:      u.ImageURL,
 		HouseIds:      u.HouseIds,
 		IsActive:      u.IsActive,
