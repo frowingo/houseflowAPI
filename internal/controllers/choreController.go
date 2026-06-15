@@ -131,7 +131,9 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 		})
 	}
 
-	updatedChore, err := r.choreService.UpdateChore(id, *chore)
+	userId := c.Locals("userID").(string)
+
+	updatedChore, err := r.choreService.UpdateChore(id, *chore, userId)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),

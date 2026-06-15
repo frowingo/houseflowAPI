@@ -11,6 +11,15 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+func stringContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 type HouseService struct {
 	houseRepository           *abstract.DbRepository[entities.House]
 	userRepository            *abstract.DbRepository[entities.User]
@@ -85,7 +94,7 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 }
 
 // GetHouseDetails returns house details with member user objects
-func (s *HouseService) GetHouseDetails(houseId string) (*dtos.HouseDetailsModel, error) {
+func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dtos.HouseDetailsModel, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
 		return nil, errors.New("invalid house ID format")
@@ -94,6 +103,9 @@ func (s *HouseService) GetHouseDetails(houseId string) (*dtos.HouseDetailsModel,
 	house, err := s.houseRepository.FindById(houseObjectId)
 	if err != nil {
 		return nil, errors.New("house not found")
+	}
+	if !stringContains(house.MemberIds, requesterId) {
+		return nil, errors.New("forbidden: user is not a member of this house")
 	}
 
 	members := make([]dtos.UserResultModel, 0, len(house.MemberIds))

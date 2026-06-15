@@ -12,7 +12,7 @@ import (
 // NewDatabase returns a *mongo.Database using the configured connection string and db name.
 // Caller is responsible for disconnecting the returned client.
 func NewDatabase(ctx context.Context) (*mongo.Client, *mongo.Database, error) {
-	cfg, err := config.LoadConfig()
+	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		return nil, nil, err
 	}

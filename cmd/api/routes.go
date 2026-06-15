@@ -71,6 +71,8 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 	// - CHORE -
 	choreService := services.NewChoreService(
 		abstract.New[entities.Chore](client, dbName),
+		abstract.New[entities.House](client, dbName),
+		abstract.New[entities.User](client, dbName),
 		client,
 		dbName,
 	)

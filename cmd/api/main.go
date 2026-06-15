@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -54,16 +55,32 @@ func main() {
 	docs.SwaggerInfo.Schemes = []string{}
 
 	app := fiber.New(fiber.Config{
-		AppName: "HouseFlow API",
+		AppName:     "HouseFlow API",
+		ProxyHeader: fiber.HeaderXForwardedFor,
 	})
 
 	app.Use(recover.New())
 	app.Use(logger.New())
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: getAllowedOrigins(),
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+	}))
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
 	SetupRoutes(app, mongoClient, db.Name())
 
 	log.Fatal(app.Listen(":3162"))
+}
+
+func getAllowedOrigins() string {
+	if origins := os.Getenv("CORS_ALLOW_ORIGINS"); origins != "" {
+		return origins
+	}
+	if os.Getenv("APP_ENV") == "production" {
+		log.Println("CORS_ALLOW_ORIGINS is empty in production; using Fiber's default origin policy")
+		return ""
+	}
+	return "*"
 }

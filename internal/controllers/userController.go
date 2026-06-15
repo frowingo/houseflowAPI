@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
@@ -132,6 +133,11 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 			"error": "Email query param is required",
 		})
 	}
+	userEmail := c.Locals("userEmail").(string)
+	userRole := c.Locals("userRole").(int)
+	if email != userEmail && userRole != int(entities.SuperAdmin) {
+		return c.Status(fiber.StatusForbidden).JSON(core.Error("Forbidden"))
+	}
 
 	user, err := r.userService.GetUserByEmail(email)
 	if err != nil {
@@ -163,7 +169,9 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 		})
 	}
 
-	users, err := r.userService.GetUsersByHouse(houseId)
+	userId := c.Locals("userID").(string)
+
+	users, err := r.userService.GetUsersByHouse(houseId, userId)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
