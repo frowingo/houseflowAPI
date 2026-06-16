@@ -23,13 +23,11 @@ type SignUpUserModel struct {
 
 // UpdateUserModel — sadece gönderilen (non-nil) alanlar güncellenir.
 type UpdateUserModel struct {
-	Firstname     *string    `json:"firstName,omitempty"`
-	Lastname      *string    `json:"lastName,omitempty"`
-	PhoneNumber   *string    `json:"phoneNumber,omitempty" validate:"omitempty,min=10,max=15"`
-	BirthDay      *time.Time `json:"birthDay,omitempty"`
-	ImageURL      *string    `json:"imageUrl,omitempty"`
-	IsVerifyPhone *bool      `json:"isVerifyPhone,omitempty"`
-	IsVerifyEmail *bool      `json:"isVerifyEmail,omitempty"`
+	Firstname   *string    `json:"firstName,omitempty"`
+	Lastname    *string    `json:"lastName,omitempty"`
+	PhoneNumber *string    `json:"phoneNumber,omitempty" validate:"omitempty,min=10,max=15"`
+	BirthDay    *time.Time `json:"birthDay,omitempty"`
+	ImageURL    *string    `json:"imageUrl,omitempty"`
 }
 
 func (m *NewUserModel) ToEntity() entities.User {

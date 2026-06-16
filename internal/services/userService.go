@@ -49,24 +49,30 @@ func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, er
 	return &user, nil
 }
 
-func (r *UserService) GetUserByEmail(email string) (*entities.User, error) {
+func (r *UserService) GetUserByEmail(email string) (*dtos.UserResultModel, error) {
 
 	user, err := r.dbRepository.FindByColumn("email", email)
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	result := dtos.UserToResultModel(*user)
+	return &result, nil
 }
 
-func (r *UserService) ListByUsers() ([]entities.User, error) {
+func (r *UserService) ListByUsers() ([]dtos.UserResultModel, error) {
 
 	users, err := r.dbRepository.FindAll()
 	if err != nil {
 		return nil, err
 	}
 
-	return users, nil
+	results := make([]dtos.UserResultModel, 0, len(users))
+	for _, user := range users {
+		results = append(results, dtos.UserToResultModel(user))
+	}
+
+	return results, nil
 }
 
 func (r *UserService) DeleteUser(userId string) error {
@@ -84,7 +90,7 @@ func (r *UserService) DeleteUser(userId string) error {
 	return nil
 }
 
-func (r *UserService) GetUsersByHouse(houseId string) ([]entities.User, error) {
+func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dtos.UserResultModel, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
 		return nil, err
@@ -94,8 +100,11 @@ func (r *UserService) GetUsersByHouse(houseId string) ([]entities.User, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !stringContains(house.MemberIds, requesterId) {
+		return nil, errors.New("forbidden: user is not a member of this house")
+	}
 
-	users := make([]entities.User, 0, len(house.MemberIds))
+	users := make([]dtos.UserResultModel, 0, len(house.MemberIds))
 	for _, memberId := range house.MemberIds {
 		userObjectId, err := helpers.ToMongoId(memberId)
 		if err != nil {
@@ -105,7 +114,7 @@ func (r *UserService) GetUsersByHouse(houseId string) ([]entities.User, error) {
 		if err != nil {
 			continue
 		}
-		users = append(users, *user)
+		users = append(users, dtos.UserToResultModel(*user))
 	}
 
 	return users, nil
@@ -134,13 +143,6 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 	if model.ImageURL != nil {
 		fields["imageUrl"] = *model.ImageURL
 	}
-	if model.IsVerifyPhone != nil {
-		fields["isVerifyPhone"] = *model.IsVerifyPhone
-	}
-	if model.IsVerifyEmail != nil {
-		fields["isVerifyEmail"] = *model.IsVerifyEmail
-	}
-
 	if err := r.dbRepository.UpdateFields(objectId, fields); err != nil {
 		return nil, err
 	}

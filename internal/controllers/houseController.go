@@ -76,7 +76,9 @@ func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
 		})
 	}
 
-	details, err := r.houseService.GetHouseDetails(houseId)
+	userId := c.Locals("userID").(string)
+
+	details, err := r.houseService.GetHouseDetails(houseId, userId)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),

@@ -114,7 +114,7 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 }
 
 func (r *AuthService) ForgotPassword(email string) error {
-	cfg, err := config.LoadConfig()
+	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func (r *AuthService) ForgotPassword(email string) error {
 }
 
 func (r *AuthService) ResetPassword(email, code, newPassword string) error {
-	cfg, err := config.LoadConfig()
+	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		return err
 	}
