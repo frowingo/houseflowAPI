@@ -14,23 +14,65 @@ import (
 
 type ChoreService struct {
 	dbRepository              *abstract.DbRepository[entities.Chore]
+	houseRepository           *abstract.DbRepository[entities.House]
+	userRepository            *abstract.DbRepository[entities.User]
 	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
 }
 
 func NewChoreService(
 	dbRepository *abstract.DbRepository[entities.Chore],
+	houseRepository *abstract.DbRepository[entities.House],
+	userRepository *abstract.DbRepository[entities.User],
 	client *mongo.Client,
 	dbName string,
 ) *ChoreService {
 	return &ChoreService{
 		dbRepository:              dbRepository,
+		houseRepository:           houseRepository,
+		userRepository:            userRepository,
 		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](client, dbName),
 	}
 }
 
-func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, houseOwnerId string) (*dtos.ChoreResponseModel, error) {
+func (r *ChoreService) validateHouseMember(houseId string, userId string) (*entities.House, error) {
+	houseObjectId, err := helpers.ToMongoId(houseId)
+	if err != nil {
+		return nil, errors.New("invalid house ID format")
+	}
+	house, err := r.houseRepository.FindById(houseObjectId)
+	if err != nil {
+		return nil, errors.New("house not found")
+	}
+	if !stringContains(house.MemberIds, userId) {
+		return nil, errors.New("forbidden: user is not a member of this house")
+	}
+	return house, nil
+}
 
-	entity := chore.ToEntity(houseOwnerId)
+func (r *ChoreService) validateAssignee(house *entities.House, assigneeId string) error {
+	assigneeObjectId, err := helpers.ToMongoId(assigneeId)
+	if err != nil {
+		return errors.New("invalid assignee ID format")
+	}
+	if !stringContains(house.MemberIds, assigneeId) {
+		return errors.New("assigned user is not a member of this house")
+	}
+	if _, err := r.userRepository.FindById(assigneeObjectId); err != nil {
+		return errors.New("assigned user not found")
+	}
+	return nil
+}
+
+func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
+	house, err := r.validateHouseMember(chore.HouseId, requesterId)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.validateAssignee(house, chore.AssignedTo); err != nil {
+		return nil, err
+	}
+
+	entity := chore.ToEntity(house.OwnerId)
 
 	createdChore, err := r.dbRepository.Insert(entity)
 	if err != nil {
@@ -47,7 +89,7 @@ func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, houseOwnerId str
 			ChoreId:  createdChore.Id.Hex(),
 			Status:   entities.Draft,
 			DateTime: time.Now(),
-			Updater:  houseOwnerId,
+			Updater:  requesterId,
 		}
 		_, err = r.choreStatusHistRepository.Insert(statusHistory)
 		if err != nil {
@@ -83,14 +125,28 @@ func (r *ChoreService) UpdateChoreStatus(id string, status entities.ChoreStatus)
 	return &response, nil
 }
 
-func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel) (*dtos.ChoreResponseModel, error) {
+func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
 
 	mongoId, err := helpers.ToMongoId(id)
 	if err != nil {
 		return nil, err
 	}
+	currentChore, err := r.dbRepository.FindById(mongoId)
+	if err != nil {
+		return nil, err
+	}
+	if currentChore.HouseId != chore.HouseId {
+		return nil, errors.New("chore house cannot be changed")
+	}
+	house, err := r.validateHouseMember(currentChore.HouseId, requesterId)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.validateAssignee(house, chore.AssignedTo); err != nil {
+		return nil, err
+	}
 
-	entity := chore.ToEntity("")
+	entity := chore.ToEntity(currentChore.HouseOwnerId)
 	updatedChore, err := r.dbRepository.Update(mongoId, entity)
 	if err != nil {
 		return nil, err
@@ -104,6 +160,9 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 
 	if len(model.Chores) == 0 {
 		return false, nil
+	}
+	if _, err := r.validateHouseMember(model.HouseId, userId); err != nil {
+		return false, err
 	}
 
 	choreIdMap := make(map[string]bool)

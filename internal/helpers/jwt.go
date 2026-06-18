@@ -16,7 +16,7 @@ type customClaims struct {
 
 func GenerateToken(email string, userId string, role int) (string, error) {
 
-	config, err := config.LoadConfig()
+	config, err := config.MustLoadConfig()
 	if err != nil {
 		return "", errors.New("config not found")
 	}
@@ -42,7 +42,7 @@ func GenerateToken(email string, userId string, role int) (string, error) {
 
 func ValidateToken(token string) (dtos.JwtModel, error) {
 
-	config, err := config.LoadConfig()
+	config, err := config.MustLoadConfig()
 	if err != nil {
 		return dtos.JwtModel{}, errors.New("config not found")
 	}
