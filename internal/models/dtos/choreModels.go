@@ -51,12 +51,27 @@ type BulkUpdateChoreStatusModel struct {
 	Chores  []UpdateChoreStatusModel `json:"chores" validate:"required,min=1,dive"`
 }
 
+type ReviewChoreModel struct {
+	ChoreId    string `json:"choreId" validate:"required,len=24"`
+	IsApproved *bool  `json:"isApproved" validate:"required"`
+}
+
 type ChoreStatusHistoryModel struct {
 	Id       string               `json:"id"`
 	ChoreId  string               `json:"choreId"`
 	Status   entities.ChoreStatus `json:"status"`
 	DateTime time.Time            `json:"dateTime"`
 	Updater  string               `json:"updater"`
+}
+
+type ChoreReviewVoteModel struct {
+	Id          string    `json:"id"`
+	ChoreId     string    `json:"choreId"`
+	HouseId     string    `json:"houseId"`
+	ReviewRound int       `json:"reviewRound"`
+	ReviewerId  string    `json:"reviewerId"`
+	IsApproved  bool      `json:"isApproved"`
+	CreatedOn   time.Time `json:"createdOn"`
 }
 
 type ChoreResponseModel struct {
@@ -73,9 +88,11 @@ type ChoreResponseModel struct {
 	HouseOwnerId      string                    `json:"houseOwnerId"`
 	Level             entities.ChoreLevel       `json:"level"`
 	Status            entities.ChoreStatus      `json:"status"`
+	ReviewRound       int                       `json:"reviewRound"`
 	IsRecurring       bool                      `json:"isRecurring"`
 	RecurringInterval int                       `json:"recurringInterval"`
 	StatusHistories   []ChoreStatusHistoryModel `json:"statusHistories"`
+	ReviewVotes       []ChoreReviewVoteModel    `json:"reviewVotes"`
 }
 
 func (m *CreateChoreModel) ToEntity(houseOwnerId string) entities.Chore {
@@ -90,12 +107,17 @@ func (m *CreateChoreModel) ToEntity(houseOwnerId string) entities.Chore {
 		HouseOwnerId:      houseOwnerId,
 		Level:             m.Level,
 		Status:            entities.Draft,
+		ReviewRound:       0,
 		IsRecurring:       m.IsRecurring,
 		RecurringInterval: m.RecurringInterval,
 	}
 }
 
 func ChoreToResponseModel(chore entities.Chore, histories []entities.ChoreStatusHistory) ChoreResponseModel {
+	return ChoreToResponseModelWithReview(chore, histories, nil)
+}
+
+func ChoreToResponseModelWithReview(chore entities.Chore, histories []entities.ChoreStatusHistory, votes []entities.ChoreReviewVote) ChoreResponseModel {
 	statusHistories := make([]ChoreStatusHistoryModel, 0, len(histories))
 	for _, h := range histories {
 		statusHistories = append(statusHistories, ChoreStatusHistoryModel{
@@ -106,6 +128,20 @@ func ChoreToResponseModel(chore entities.Chore, histories []entities.ChoreStatus
 			Updater:  h.Updater,
 		})
 	}
+
+	reviewVotes := make([]ChoreReviewVoteModel, 0, len(votes))
+	for _, vote := range votes {
+		reviewVotes = append(reviewVotes, ChoreReviewVoteModel{
+			Id:          vote.Id.Hex(),
+			ChoreId:     vote.ChoreId,
+			HouseId:     vote.HouseId,
+			ReviewRound: vote.ReviewRound,
+			ReviewerId:  vote.ReviewerId,
+			IsApproved:  vote.IsApproved,
+			CreatedOn:   vote.CreatedOn,
+		})
+	}
+
 	return ChoreResponseModel{
 		Id:                chore.Id.Hex(),
 		Title:             chore.Title,
@@ -120,8 +156,10 @@ func ChoreToResponseModel(chore entities.Chore, histories []entities.ChoreStatus
 		HouseOwnerId:      chore.HouseOwnerId,
 		Level:             chore.Level,
 		Status:            chore.Status,
+		ReviewRound:       chore.ReviewRound,
 		IsRecurring:       chore.IsRecurring,
 		RecurringInterval: chore.RecurringInterval,
 		StatusHistories:   statusHistories,
+		ReviewVotes:       reviewVotes,
 	}
 }

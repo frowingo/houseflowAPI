@@ -36,5 +36,8 @@ func AllMigrations() []migration.Migration {
 		&imageAssetNewFields{},
 		// --- User Field Changes ---
 		&userAgeTobirthDay{},
+		// --- Chore Review Flow ---
+		&createChoreReviewVoteCollection{},
+		&choreAddReviewRound{},
 	}
 }

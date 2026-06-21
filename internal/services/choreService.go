@@ -17,6 +17,7 @@ type ChoreService struct {
 	houseRepository           *abstract.DbRepository[entities.House]
 	userRepository            *abstract.DbRepository[entities.User]
 	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
+	choreReviewVoteRepository *abstract.DbRepository[entities.ChoreReviewVote]
 }
 
 func NewChoreService(
@@ -31,6 +32,7 @@ func NewChoreService(
 		houseRepository:           houseRepository,
 		userRepository:            userRepository,
 		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](client, dbName),
+		choreReviewVoteRepository: abstract.New[entities.ChoreReviewVote](client, dbName),
 	}
 }
 
@@ -63,6 +65,28 @@ func (r *ChoreService) validateAssignee(house *entities.House, assigneeId string
 	return nil
 }
 
+func (r *ChoreService) addStatusHistory(choreId string, status entities.ChoreStatus, updaterId string) error {
+	statusHistory := entities.ChoreStatusHistory{
+		ChoreId:  choreId,
+		Status:   status,
+		DateTime: time.Now(),
+		Updater:  updaterId,
+	}
+	_, err := r.choreStatusHistRepository.Insert(statusHistory)
+	return err
+}
+
+func nextChoreStatus(current entities.ChoreStatus) (entities.ChoreStatus, bool) {
+	switch current {
+	case entities.Draft:
+		return entities.Progress, true
+	case entities.Progress:
+		return entities.InTest, true
+	default:
+		return current, false
+	}
+}
+
 func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
 	house, err := r.validateHouseMember(chore.HouseId, requesterId)
 	if err != nil {
@@ -85,43 +109,12 @@ func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, requesterId stri
 	}
 
 	if !exists {
-		statusHistory := entities.ChoreStatusHistory{
-			ChoreId:  createdChore.Id.Hex(),
-			Status:   entities.Draft,
-			DateTime: time.Now(),
-			Updater:  requesterId,
-		}
-		_, err = r.choreStatusHistRepository.Insert(statusHistory)
-		if err != nil {
+		if err := r.addStatusHistory(createdChore.Id.Hex(), entities.Draft, requesterId); err != nil {
 			return nil, err
 		}
 	}
 
 	response := dtos.ChoreToResponseModel(*createdChore, nil)
-	return &response, nil
-}
-
-func (r *ChoreService) UpdateChoreStatus(id string, status entities.ChoreStatus) (*dtos.ChoreResponseModel, error) {
-
-	mongoId, err := helpers.ToMongoId(id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get current chore
-	currentChore, err := r.dbRepository.FindById(mongoId)
-	if err != nil {
-		return nil, err
-	}
-
-	// Update only the status
-	currentChore.Status = status
-	updatedChore, err := r.dbRepository.Update(mongoId, *currentChore)
-	if err != nil {
-		return nil, err
-	}
-
-	response := dtos.ChoreToResponseModel(*updatedChore, nil)
 	return &response, nil
 }
 
@@ -147,13 +140,46 @@ func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, reque
 	}
 
 	entity := chore.ToEntity(currentChore.HouseOwnerId)
+	entity.CreatedOn = currentChore.CreatedOn
+	entity.IsCompleted = currentChore.IsCompleted
+	entity.CompletedAt = currentChore.CompletedAt
+	entity.CompletedBy = currentChore.CompletedBy
+	entity.Status = currentChore.Status
+	entity.ReviewRound = currentChore.ReviewRound
 	updatedChore, err := r.dbRepository.Update(mongoId, entity)
 	if err != nil {
 		return nil, err
 	}
+	updatedChore.Id = currentChore.Id
 
 	response := dtos.ChoreToResponseModel(*updatedChore, nil)
 	return &response, nil
+}
+
+func (r *ChoreService) advanceChoreStatus(currentChore *entities.Chore, targetStatus entities.ChoreStatus, house *entities.House, userId string) error {
+	if currentChore.AssignedTo != userId {
+		return errors.New("only assigned user can advance chore status")
+	}
+
+	nextStatus, ok := nextChoreStatus(currentChore.Status)
+	if !ok || targetStatus != nextStatus {
+		return errors.New("invalid chore status transition")
+	}
+
+	currentChore.Status = targetStatus
+	currentChore.IsCompleted = false
+	currentChore.CompletedBy = ""
+	currentChore.CompletedAt = time.Time{}
+	if targetStatus == entities.InTest {
+		currentChore.ReviewRound++
+		if len(house.MemberIds) <= 1 {
+			currentChore.Status = entities.Completed
+			currentChore.IsCompleted = true
+			currentChore.CompletedBy = currentChore.AssignedTo
+			currentChore.CompletedAt = time.Now()
+		}
+	}
+	return nil
 }
 
 func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusModel, userId string) (bool, error) {
@@ -161,7 +187,8 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 	if len(model.Chores) == 0 {
 		return false, nil
 	}
-	if _, err := r.validateHouseMember(model.HouseId, userId); err != nil {
+	house, err := r.validateHouseMember(model.HouseId, userId)
+	if err != nil {
 		return false, err
 	}
 
@@ -187,31 +214,116 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 			return false, errors.New("chore " + update.ChoreId + " does not belong to the given house")
 		}
 
-		currentChore.Status = update.Status
+		previousStatus := currentChore.Status
+		if err := r.advanceChoreStatus(currentChore, update.Status, house, userId); err != nil {
+			return false, err
+		}
+
 		_, err = r.dbRepository.Update(mongoId, *currentChore)
 		if err != nil {
 			return false, err
 		}
 
-		exists, err := r.choreStatusHistRepository.ExistsByFilter(bson.M{"choreId": update.ChoreId, "status": update.Status})
-		if err != nil {
+		if err := r.addStatusHistory(update.ChoreId, update.Status, userId); err != nil {
 			return false, err
 		}
-		if exists {
-			return false, errors.New("status history already exists for chore: " + update.ChoreId)
-		}
-
-		statusHistory := entities.ChoreStatusHistory{
-			ChoreId:  update.ChoreId,
-			Status:   update.Status,
-			DateTime: time.Now(),
-			Updater:  userId,
-		}
-		_, err = r.choreStatusHistRepository.Insert(statusHistory)
-		if err != nil {
-			return false, err
+		if previousStatus == entities.Progress && currentChore.Status == entities.Completed {
+			if err := r.addStatusHistory(update.ChoreId, entities.Completed, userId); err != nil {
+				return false, err
+			}
 		}
 	}
 
 	return true, nil
+}
+
+func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId string) (*dtos.ChoreResponseModel, error) {
+	choreObjectId, err := helpers.ToMongoId(model.ChoreId)
+	if err != nil {
+		return nil, err
+	}
+
+	currentChore, err := r.dbRepository.FindById(choreObjectId)
+	if err != nil {
+		return nil, err
+	}
+	if currentChore.Status != entities.InTest {
+		return nil, errors.New("chore is not in review")
+	}
+
+	house, err := r.validateHouseMember(currentChore.HouseId, reviewerId)
+	if err != nil {
+		return nil, err
+	}
+	if currentChore.AssignedTo == reviewerId {
+		return nil, errors.New("assigned user cannot review own chore")
+	}
+
+	vote := entities.ChoreReviewVote{
+		ChoreId:     model.ChoreId,
+		HouseId:     currentChore.HouseId,
+		ReviewRound: currentChore.ReviewRound,
+		ReviewerId:  reviewerId,
+		IsApproved:  *model.IsApproved,
+		CreatedOn:   time.Now(),
+	}
+	if _, err := r.choreReviewVoteRepository.Insert(vote); err != nil {
+		return nil, errors.New("review vote already exists for this chore round")
+	}
+
+	if !*model.IsApproved {
+		currentChore.Status = entities.Progress
+		currentChore.IsCompleted = false
+		currentChore.CompletedBy = ""
+		currentChore.CompletedAt = time.Time{}
+		if _, err := r.dbRepository.Update(choreObjectId, *currentChore); err != nil {
+			return nil, err
+		}
+		if err := r.addStatusHistory(model.ChoreId, entities.Progress, reviewerId); err != nil {
+			return nil, err
+		}
+		votes, err := r.currentReviewVotes(model.ChoreId, currentChore.ReviewRound)
+		if err != nil {
+			return nil, err
+		}
+		response := dtos.ChoreToResponseModelWithReview(*currentChore, nil, votes)
+		return &response, nil
+	}
+
+	approvedVotes, err := r.choreReviewVoteRepository.FindManyByFilter(bson.M{
+		"choreId":     model.ChoreId,
+		"reviewRound": currentChore.ReviewRound,
+		"isApproved":  true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	requiredApprovals := len(house.MemberIds) - 1
+	if len(approvedVotes) >= requiredApprovals {
+		currentChore.Status = entities.Completed
+		currentChore.IsCompleted = true
+		currentChore.CompletedBy = currentChore.AssignedTo
+		currentChore.CompletedAt = time.Now()
+		if _, err := r.dbRepository.Update(choreObjectId, *currentChore); err != nil {
+			return nil, err
+		}
+		if err := r.addStatusHistory(model.ChoreId, entities.Completed, reviewerId); err != nil {
+			return nil, err
+		}
+	}
+
+	votes, err := r.currentReviewVotes(model.ChoreId, currentChore.ReviewRound)
+	if err != nil {
+		return nil, err
+	}
+	response := dtos.ChoreToResponseModelWithReview(*currentChore, nil, votes)
+	return &response, nil
+}
+
+func (r *ChoreService) currentReviewVotes(choreId string, reviewRound int) ([]entities.ChoreReviewVote, error) {
+	return r.choreReviewVoteRepository.FindManyByFilter(bson.M{
+		"choreId":     choreId,
+		"reviewRound": reviewRound,
+	})
 }
