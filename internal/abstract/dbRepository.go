@@ -114,7 +114,19 @@ func (r *DbRepository[T]) Update(id primitive.ObjectID, updatedEntity T) (*T, er
 
 	collection := r.getCollection()
 
-	result, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updatedEntity})
+	updateFields := bson.M{}
+	payload, err := bson.Marshal(updatedEntity)
+	if err != nil {
+		var zero *T
+		return zero, err
+	}
+	if err := bson.Unmarshal(payload, &updateFields); err != nil {
+		var zero *T
+		return zero, err
+	}
+	delete(updateFields, "_id")
+
+	result, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updateFields})
 	if err != nil {
 		var zero *T
 		return zero, err

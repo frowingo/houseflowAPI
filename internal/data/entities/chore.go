@@ -20,6 +20,7 @@ type Chore struct {
 	HouseOwnerId      string             `bson:"houseOwnerId" json:"houseOwnerId"`
 	Level             ChoreLevel         `bson:"level" json:"level"`
 	Status            ChoreStatus        `bson:"status" json:"status"`
+	ReviewRound       int                `bson:"reviewRound" json:"reviewRound"`
 	IsRecurring       bool               `bson:"isRecurring" json:"isRecurring"`
 	RecurringInterval int                `bson:"recurringInterval" json:"recurringInterval"`
 }

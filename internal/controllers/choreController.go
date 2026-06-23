@@ -100,6 +100,46 @@ func (r *ChoreController) UpdateChoreStatus(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(result)
 }
 
+// @Summary Review chore
+// @Description Approve or reject a chore that is in review
+// @Tags Chore
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param review body dtos.ReviewChoreModel true "Review object"
+// @Success 200 {object} dtos.ChoreResponseModel
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 500 {object} map[string]interface{} "Internal error"
+// @Router /chore/review [put]
+func (r *ChoreController) ReviewChore(c *fiber.Ctx) error {
+
+	review := new(dtos.ReviewChoreModel)
+
+	if err := c.BodyParser(review); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if err := r.validator.Validate(review); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	userId := c.Locals("userID").(string)
+
+	result, err := r.choreService.ReviewChore(*review, userId)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
 // @Summary Update chore
 // @Description Update an existing chore
 // @Tags Chore
