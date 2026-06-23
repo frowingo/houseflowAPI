@@ -81,6 +81,7 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(), middleware.UserRateLimit())
 	choreRoutes.Post("", choreController.CreateChore)
 	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
+	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Put("/:id", choreController.UpdateChore)
 	// ----------
 }
