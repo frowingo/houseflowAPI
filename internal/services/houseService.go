@@ -8,6 +8,7 @@ import (
 	"houseflowApi/internal/models/dtos"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -25,6 +26,7 @@ type HouseService struct {
 	userRepository            *abstract.DbRepository[entities.User]
 	choreRepository           *abstract.DbRepository[entities.Chore]
 	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
+	choreReviewVoteRepository *abstract.DbRepository[entities.ChoreReviewVote]
 }
 
 func NewHouseService(
@@ -39,7 +41,38 @@ func NewHouseService(
 		userRepository:            userRepository,
 		choreRepository:           choreRepository,
 		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](client, dbName),
+		choreReviewVoteRepository: abstract.New[entities.ChoreReviewVote](client, dbName),
 	}
+}
+
+func (s *HouseService) getCurrentReviewVotes(chores []entities.Chore) (map[string][]entities.ChoreReviewVote, error) {
+	votesByChoreId := make(map[string][]entities.ChoreReviewVote)
+	filters := make(bson.A, 0, len(chores))
+
+	for _, chore := range chores {
+		if chore.ReviewRound == 0 {
+			continue
+		}
+		filters = append(filters, bson.M{
+			"choreId":     chore.Id.Hex(),
+			"reviewRound": chore.ReviewRound,
+		})
+	}
+
+	if len(filters) == 0 {
+		return votesByChoreId, nil
+	}
+
+	votes, err := s.choreReviewVoteRepository.FindManyByFilter(bson.M{"$or": filters})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, vote := range votes {
+		votesByChoreId[vote.ChoreId] = append(votesByChoreId[vote.ChoreId], vote)
+	}
+
+	return votesByChoreId, nil
 }
 
 // CreateHouse creates a new house with generated invite code
@@ -122,10 +155,15 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 	}
 
 	choreEntities, _ := s.choreRepository.FindManyByColumn("houseId", houseId)
+	reviewVotesByChoreId, err := s.getCurrentReviewVotes(choreEntities)
+	if err != nil {
+		return nil, errors.New("failed to load chore review votes")
+	}
+
 	chores := make([]dtos.ChoreResponseModel, 0, len(choreEntities))
 	for _, c := range choreEntities {
 		histories, _ := s.choreStatusHistRepository.FindManyByColumn("choreId", c.Id.Hex())
-		chores = append(chores, dtos.ChoreToResponseModel(c, histories))
+		chores = append(chores, dtos.ChoreToResponseModelWithReview(c, histories, reviewVotesByChoreId[c.Id.Hex()]))
 	}
 
 	return &dtos.HouseDetailsModel{
