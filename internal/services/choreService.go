@@ -12,6 +12,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+const (
+	maxChoreReviewRounds = 3
+	systemCompletedBy    = "system"
+)
+
 type ChoreService struct {
 	dbRepository              *abstract.DbRepository[entities.Chore]
 	houseRepository           *abstract.DbRepository[entities.House]
@@ -171,6 +176,9 @@ func (r *ChoreService) advanceChoreStatus(currentChore *entities.Chore, targetSt
 	currentChore.CompletedBy = ""
 	currentChore.CompletedAt = time.Time{}
 	if targetStatus == entities.InTest {
+		if currentChore.ReviewRound >= maxChoreReviewRounds {
+			return errors.New("maximum review round limit reached")
+		}
 		currentChore.ReviewRound++
 		if len(house.MemberIds) <= 1 {
 			currentChore.Status = entities.Completed
@@ -272,17 +280,27 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 	}
 
 	if !*model.IsApproved {
-		currentChore.Status = entities.Progress
-		currentChore.IsCompleted = false
-		currentChore.CompletedBy = ""
-		currentChore.CompletedAt = time.Time{}
+		nextStatus := entities.Progress
+		historyUpdater := reviewerId
+		if currentChore.ReviewRound >= maxChoreReviewRounds {
+			nextStatus = entities.Completed
+			historyUpdater = systemCompletedBy
+			currentChore.IsCompleted = true
+			currentChore.CompletedBy = systemCompletedBy
+			currentChore.CompletedAt = time.Now()
+		} else {
+			currentChore.IsCompleted = false
+			currentChore.CompletedBy = ""
+			currentChore.CompletedAt = time.Time{}
+		}
+		currentChore.Status = nextStatus
 		if _, err := r.dbRepository.Update(choreObjectId, *currentChore); err != nil {
 			return nil, err
 		}
-		if err := r.addStatusHistory(model.ChoreId, entities.Progress, reviewerId); err != nil {
+		if err := r.addStatusHistory(model.ChoreId, nextStatus, historyUpdater); err != nil {
 			return nil, err
 		}
-		votes, err := r.currentReviewVotes(model.ChoreId, currentChore.ReviewRound)
+		votes, err := r.allReviewVotes(model.ChoreId)
 		if err != nil {
 			return nil, err
 		}
@@ -313,7 +331,7 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		}
 	}
 
-	votes, err := r.currentReviewVotes(model.ChoreId, currentChore.ReviewRound)
+	votes, err := r.allReviewVotes(model.ChoreId)
 	if err != nil {
 		return nil, err
 	}
@@ -321,9 +339,8 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 	return &response, nil
 }
 
-func (r *ChoreService) currentReviewVotes(choreId string, reviewRound int) ([]entities.ChoreReviewVote, error) {
+func (r *ChoreService) allReviewVotes(choreId string) ([]entities.ChoreReviewVote, error) {
 	return r.choreReviewVoteRepository.FindManyByFilter(bson.M{
-		"choreId":     choreId,
-		"reviewRound": reviewRound,
+		"choreId": choreId,
 	})
 }
