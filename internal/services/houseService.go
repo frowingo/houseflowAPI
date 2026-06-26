@@ -45,25 +45,22 @@ func NewHouseService(
 	}
 }
 
-func (s *HouseService) getCurrentReviewVotes(chores []entities.Chore) (map[string][]entities.ChoreReviewVote, error) {
+func (s *HouseService) getReviewVotes(chores []entities.Chore) (map[string][]entities.ChoreReviewVote, error) {
 	votesByChoreId := make(map[string][]entities.ChoreReviewVote)
-	filters := make(bson.A, 0, len(chores))
+	choreIds := make(bson.A, 0, len(chores))
 
 	for _, chore := range chores {
 		if chore.ReviewRound == 0 {
 			continue
 		}
-		filters = append(filters, bson.M{
-			"choreId":     chore.Id.Hex(),
-			"reviewRound": chore.ReviewRound,
-		})
+		choreIds = append(choreIds, chore.Id.Hex())
 	}
 
-	if len(filters) == 0 {
+	if len(choreIds) == 0 {
 		return votesByChoreId, nil
 	}
 
-	votes, err := s.choreReviewVoteRepository.FindManyByFilter(bson.M{"$or": filters})
+	votes, err := s.choreReviewVoteRepository.FindManyByFilter(bson.M{"choreId": bson.M{"$in": choreIds}})
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +152,7 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 	}
 
 	choreEntities, _ := s.choreRepository.FindManyByColumn("houseId", houseId)
-	reviewVotesByChoreId, err := s.getCurrentReviewVotes(choreEntities)
+	reviewVotesByChoreId, err := s.getReviewVotes(choreEntities)
 	if err != nil {
 		return nil, errors.New("failed to load chore review votes")
 	}
