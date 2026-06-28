@@ -172,8 +172,8 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 		Members:        members,
 		MaxMemberCount: house.MaxMemberCount,
 		ProfileImage:   house.ProfileImage,
-		CreatedOn:      house.CreatedOn,
-		UpdatedOn:      house.UpdatedOn,
+		CreatedOn:      dtos.NewUTCDateTime(house.CreatedOn),
+		UpdatedOn:      dtos.NewUTCDateTime(house.UpdatedOn),
 		Chores:         chores,
 	}, nil
 }

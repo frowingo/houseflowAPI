@@ -92,6 +92,18 @@ func nextChoreStatus(current entities.ChoreStatus) (entities.ChoreStatus, bool) 
 	}
 }
 
+func (r *ChoreService) choreResponse(chore entities.Chore) (dtos.ChoreResponseModel, error) {
+	histories, err := r.choreStatusHistRepository.FindManyByColumn("choreId", chore.Id.Hex())
+	if err != nil {
+		return dtos.ChoreResponseModel{}, err
+	}
+	votes, err := r.allReviewVotes(chore.Id.Hex())
+	if err != nil {
+		return dtos.ChoreResponseModel{}, err
+	}
+	return dtos.ChoreToResponseModelWithReview(chore, histories, votes), nil
+}
+
 func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
 	house, err := r.validateHouseMember(chore.HouseId, requesterId)
 	if err != nil {
@@ -119,7 +131,10 @@ func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, requesterId stri
 		}
 	}
 
-	response := dtos.ChoreToResponseModel(*createdChore, nil)
+	response, err := r.choreResponse(*createdChore)
+	if err != nil {
+		return nil, err
+	}
 	return &response, nil
 }
 
@@ -157,7 +172,10 @@ func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, reque
 	}
 	updatedChore.Id = currentChore.Id
 
-	response := dtos.ChoreToResponseModel(*updatedChore, nil)
+	response, err := r.choreResponse(*updatedChore)
+	if err != nil {
+		return nil, err
+	}
 	return &response, nil
 }
 
@@ -190,59 +208,67 @@ func (r *ChoreService) advanceChoreStatus(currentChore *entities.Chore, targetSt
 	return nil
 }
 
-func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusModel, userId string) (bool, error) {
+func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusModel, userId string) ([]dtos.ChoreResponseModel, error) {
 
 	if len(model.Chores) == 0 {
-		return false, nil
+		return []dtos.ChoreResponseModel{}, nil
 	}
 	house, err := r.validateHouseMember(model.HouseId, userId)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	choreIdMap := make(map[string]bool)
 	for _, update := range model.Chores {
 		if choreIdMap[update.ChoreId] {
-			return false, errors.New("Duplicate choreId: " + update.ChoreId)
+			return nil, errors.New("Duplicate choreId: " + update.ChoreId)
 		}
 		choreIdMap[update.ChoreId] = true
 	}
 
+	updatedChores := make([]dtos.ChoreResponseModel, 0, len(model.Chores))
 	for _, update := range model.Chores {
 		mongoId, err := helpers.ToMongoId(update.ChoreId)
 		if err != nil {
-			return false, errors.New("invalid choreId: " + update.ChoreId)
+			return nil, errors.New("invalid choreId: " + update.ChoreId)
 		}
 
 		currentChore, err := r.dbRepository.FindById(mongoId)
 		if err != nil {
-			return false, errors.New("chore not found: " + update.ChoreId)
+			return nil, errors.New("chore not found: " + update.ChoreId)
 		}
 		if currentChore.HouseId != model.HouseId {
-			return false, errors.New("chore " + update.ChoreId + " does not belong to the given house")
+			return nil, errors.New("chore " + update.ChoreId + " does not belong to the given house")
 		}
 
 		previousStatus := currentChore.Status
 		if err := r.advanceChoreStatus(currentChore, update.Status, house, userId); err != nil {
-			return false, err
+			return nil, err
 		}
 
-		_, err = r.dbRepository.Update(mongoId, *currentChore)
+		updatedChore, err := r.dbRepository.Update(mongoId, *currentChore)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
+		updatedChore.Id = currentChore.Id
 
 		if err := r.addStatusHistory(update.ChoreId, update.Status, userId); err != nil {
-			return false, err
+			return nil, err
 		}
 		if previousStatus == entities.Progress && currentChore.Status == entities.Completed {
 			if err := r.addStatusHistory(update.ChoreId, entities.Completed, userId); err != nil {
-				return false, err
+				return nil, err
 			}
 		}
+
+		response, err := r.choreResponse(*updatedChore)
+		if err != nil {
+			return nil, err
+		}
+		updatedChores = append(updatedChores, response)
 	}
 
-	return true, nil
+	return updatedChores, nil
 }
 
 func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId string) (*dtos.ChoreResponseModel, error) {
@@ -300,11 +326,10 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		if err := r.addStatusHistory(model.ChoreId, nextStatus, historyUpdater); err != nil {
 			return nil, err
 		}
-		votes, err := r.allReviewVotes(model.ChoreId)
+		response, err := r.choreResponse(*currentChore)
 		if err != nil {
 			return nil, err
 		}
-		response := dtos.ChoreToResponseModelWithReview(*currentChore, nil, votes)
 		return &response, nil
 	}
 
@@ -331,11 +356,10 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		}
 	}
 
-	votes, err := r.allReviewVotes(model.ChoreId)
+	response, err := r.choreResponse(*currentChore)
 	if err != nil {
 		return nil, err
 	}
-	response := dtos.ChoreToResponseModelWithReview(*currentChore, nil, votes)
 	return &response, nil
 }
 

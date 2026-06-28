@@ -43,7 +43,7 @@ func (r *AuthController) IsAuth(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 	}
 
-	if time.Now().Before(jwtData.ExpiresAt) {
+	if time.Now().Before(jwtData.ExpiresAt.Time) {
 		user, err := r.authService.GetUserByID(jwtData.Subject)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})

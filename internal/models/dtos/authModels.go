@@ -1,7 +1,5 @@
 package dtos
 
-import "time"
-
 type LoginRequestModel struct {
 	Email    string `bson:"email" json:"email"`
 	Password string `bson:"password" json:"password"`
@@ -22,11 +20,11 @@ type SuccessResponseModel struct {
 }
 
 type JwtModel struct {
-	Issuer     string    `bson:"issuer" json:"issuer"`
-	Subject    string    `bson:"subject" json:"subject"`
-	IssuerRole int       `bson:"issuerRole" json:"issuerRole"`
-	ExpiresAt  time.Time `bson:"expiresAt" json:"expiresAt"`
-	IssuedAt   time.Time `bson:"issuedAt" json:"issuedAt"`
+	Issuer     string      `bson:"issuer" json:"issuer"`
+	Subject    string      `bson:"subject" json:"subject"`
+	IssuerRole int         `bson:"issuerRole" json:"issuerRole"`
+	ExpiresAt  UTCDateTime `bson:"expiresAt" json:"expiresAt"`
+	IssuedAt   UTCDateTime `bson:"issuedAt" json:"issuedAt"`
 }
 
 type ForgotPasswordRequest struct {

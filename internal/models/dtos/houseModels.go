@@ -6,20 +6,20 @@ import (
 )
 
 type UserResultModel struct {
-	Id            string    `json:"id"`
-	Firstname     string    `json:"firstName"`
-	Lastname      string    `json:"lastName"`
-	PhoneNumber   string    `json:"phoneNumber"`
-	Email         string    `json:"email"`
-	BirthDay      time.Time `json:"birthDay"`
-	ImageURL      string    `json:"imageUrl"`
-	HouseIds      []string  `json:"houseIds"`
-	IsActive      bool      `json:"isActive"`
-	IsVerifyPhone bool      `json:"isVerifyPhone"`
-	IsVerifyEmail bool      `json:"isVerifyEmail"`
-	CreatedOn     time.Time `json:"createdOn"`
-	UpdatedOn     time.Time `json:"updatedOn"`
-	LastLogin     time.Time `json:"lastLogin"`
+	Id            string      `json:"id"`
+	Firstname     string      `json:"firstName"`
+	Lastname      string      `json:"lastName"`
+	PhoneNumber   string      `json:"phoneNumber"`
+	Email         string      `json:"email"`
+	BirthDay      UTCDateTime `json:"birthDay"`
+	ImageURL      string      `json:"imageUrl"`
+	HouseIds      []string    `json:"houseIds"`
+	IsActive      bool        `json:"isActive"`
+	IsVerifyPhone bool        `json:"isVerifyPhone"`
+	IsVerifyEmail bool        `json:"isVerifyEmail"`
+	CreatedOn     UTCDateTime `json:"createdOn"`
+	UpdatedOn     UTCDateTime `json:"updatedOn"`
+	LastLogin     UTCDateTime `json:"lastLogin"`
 }
 
 type HouseDetailsModel struct {
@@ -31,8 +31,8 @@ type HouseDetailsModel struct {
 	Members        []UserResultModel    `json:"members"`
 	MaxMemberCount int                  `json:"maxMemberCount"`
 	ProfileImage   string               `json:"profileImage"`
-	CreatedOn      time.Time            `json:"createdOn"`
-	UpdatedOn      time.Time            `json:"updatedOn"`
+	CreatedOn      UTCDateTime          `json:"createdOn"`
+	UpdatedOn      UTCDateTime          `json:"updatedOn"`
 	Chores         []ChoreResponseModel `json:"chores"`
 }
 
@@ -43,15 +43,15 @@ func UserToResultModel(u entities.User) UserResultModel {
 		Lastname:      u.Lastname,
 		PhoneNumber:   u.PhoneNumber,
 		Email:         u.Email,
-		BirthDay:      u.BirthDay,
+		BirthDay:      NewUTCDateTime(u.BirthDay),
 		ImageURL:      u.ImageURL,
 		HouseIds:      u.HouseIds,
 		IsActive:      u.IsActive,
 		IsVerifyPhone: u.IsVerifyPhone,
 		IsVerifyEmail: u.IsVerifyEmail,
-		CreatedOn:     u.CreatedOn,
-		UpdatedOn:     u.UpdatedOn,
-		LastLogin:     u.LastLogin,
+		CreatedOn:     NewUTCDateTime(u.CreatedOn),
+		UpdatedOn:     NewUTCDateTime(u.UpdatedOn),
+		LastLogin:     NewUTCDateTime(u.LastLogin),
 	}
 }
 
@@ -76,8 +76,8 @@ type HouseResponseModel struct {
 	MemberIds      []string           `json:"memberIds"`
 	MaxMemberCount int                `json:"maxMemberCount"`
 	ProfileImage   string             `json:"profileImage"`
-	CreatedOn      time.Time          `json:"createdOn"`
-	UpdatedOn      time.Time          `json:"updatedOn"`
+	CreatedOn      UTCDateTime        `json:"createdOn"`
+	UpdatedOn      UTCDateTime        `json:"updatedOn"`
 }
 
 func (m *CreateHouseModel) ToEntity(inviteCode string) entities.House {
@@ -103,7 +103,7 @@ func HouseToResponseModel(house entities.House) HouseResponseModel {
 		MemberIds:      house.MemberIds,
 		MaxMemberCount: house.MaxMemberCount,
 		ProfileImage:   house.ProfileImage,
-		CreatedOn:      house.CreatedOn,
-		UpdatedOn:      house.UpdatedOn,
+		CreatedOn:      NewUTCDateTime(house.CreatedOn),
+		UpdatedOn:      NewUTCDateTime(house.UpdatedOn),
 	}
 }

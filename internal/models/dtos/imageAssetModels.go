@@ -33,11 +33,11 @@ type UpdateImageAssetModel struct {
 
 // ImageAssetResultModel - Id ve Category alanları hariç tutulmuştur.
 type ImageAssetResultModel struct {
-	FileName  string    `json:"fileName"`
-	FileURL   string    `json:"fileURL"`
-	PublicID  string    `json:"publicId"`
-	CreatedOn time.Time `json:"createdOn"`
-	UpdatedOn time.Time `json:"updatedOn"`
+	FileName  string      `json:"fileName"`
+	FileURL   string      `json:"fileURL"`
+	PublicID  string      `json:"publicId"`
+	CreatedOn UTCDateTime `json:"createdOn"`
+	UpdatedOn UTCDateTime `json:"updatedOn"`
 }
 
 func ToImageAssetResultModel(e entities.ImageAsset) ImageAssetResultModel {
@@ -45,7 +45,7 @@ func ToImageAssetResultModel(e entities.ImageAsset) ImageAssetResultModel {
 		FileName:  e.FileName,
 		FileURL:   e.FileURL,
 		PublicID:  e.PublicID,
-		CreatedOn: e.CreatedOn,
-		UpdatedOn: e.UpdatedOn,
+		CreatedOn: NewUTCDateTime(e.CreatedOn),
+		UpdatedOn: NewUTCDateTime(e.UpdatedOn),
 	}
 }

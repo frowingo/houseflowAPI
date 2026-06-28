@@ -28,7 +28,7 @@ func NewChoreController(choreService *services.ChoreService) *ChoreController {
 // @Produce json
 // @Security BearerAuth
 // @Param chore body dtos.CreateChoreModel true "Chore object"
-// @Success 201 {object} dtos.ChoreResponseModel
+// @Success 200 {object} dtos.ChoreResponseModel
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /chore [post]
@@ -57,7 +57,7 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(createdChore)
+	return c.Status(fiber.StatusOK).JSON(createdChore)
 }
 
 // @Summary Update chore status
@@ -67,7 +67,7 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param statusUpdates body dtos.BulkUpdateChoreStatusModel true "Array of status updates"
-// @Success 200 {boolean} bool
+// @Success 200 {array} dtos.ChoreResponseModel
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Failure 500 {object} map[string]interface{} "Internal error"
