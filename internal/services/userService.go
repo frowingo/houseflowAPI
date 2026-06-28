@@ -138,7 +138,7 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		fields["phoneNumber"] = *model.PhoneNumber
 	}
 	if model.BirthDay != nil {
-		fields["birthDay"] = *model.BirthDay
+		fields["birthDay"] = model.BirthDay.Time
 	}
 	if model.ImageURL != nil {
 		fields["imageUrl"] = *model.ImageURL

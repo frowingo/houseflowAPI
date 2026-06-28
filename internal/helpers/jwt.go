@@ -59,8 +59,8 @@ func ValidateToken(token string) (dtos.JwtModel, error) {
 			Issuer:     claims.Issuer,
 			Subject:    claims.Subject,
 			IssuerRole: claims.Role,
-			ExpiresAt:  claims.ExpiresAt.Time,
-			IssuedAt:   claims.IssuedAt.Time,
+			ExpiresAt:  dtos.NewUTCDateTime(claims.ExpiresAt.Time),
+			IssuedAt:   dtos.NewUTCDateTime(claims.IssuedAt.Time),
 		}, nil
 	} else {
 		return dtos.JwtModel{}, errors.New("invalid token")
