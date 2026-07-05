@@ -144,6 +144,9 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		fields["imageUrl"] = *model.ImageURL
 	}
 	if model.Language != nil {
+		if !helpers.IsSupportedLanguage(*model.Language) {
+			return nil, helpers.NewLocalizedError("localization.error.unsupported_language")
+		}
 		fields["language"] = helpers.NormalizeLanguage(*model.Language)
 	}
 	if err := r.dbRepository.UpdateFields(objectId, fields); err != nil {

@@ -103,7 +103,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 // IPRateLimit limits each IP to x requests per minute.
 func IPRateLimit(localizers ...helpers.MessageLocalizer) fiber.Handler {
 	return RateLimit(RateLimitConfig{
-		Max:       100,
+		Max:       50,
 		Window:    time.Minute,
 		Localizer: firstLocalizer(localizers),
 	})
@@ -124,7 +124,7 @@ func StrictRateLimit(localizers ...helpers.MessageLocalizer) fiber.Handler {
 // Must be placed after AuthRequired() in the middleware chain.
 func UserRateLimit(localizers ...helpers.MessageLocalizer) fiber.Handler {
 	return RateLimit(RateLimitConfig{
-		Max:       100,
+		Max:       20,
 		Window:    time.Minute,
 		Localizer: firstLocalizer(localizers),
 		KeyFunc: func(c *fiber.Ctx) string {

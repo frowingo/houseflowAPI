@@ -12,7 +12,7 @@ type NewUserModel struct {
 	Email       string      `bson:"email" json:"email" validate:"required,email"`
 	Password    string      `bson:"password" json:"password" validate:"required,min=6"`
 	BirthDay    UTCDateTime `bson:"birthDay" json:"birthDay" validate:"omitempty"`
-	Language    string      `bson:"language" json:"language" validate:"omitempty,oneof=en eng tr"`
+	Language    string      `bson:"language" json:"language" validate:"omitempty,oneof=en tr"`
 }
 
 type SignUpUserModel struct {
@@ -29,7 +29,7 @@ type UpdateUserModel struct {
 	PhoneNumber *string      `json:"phoneNumber,omitempty" validate:"omitempty,min=10,max=15"`
 	BirthDay    *UTCDateTime `json:"birthDay,omitempty"`
 	ImageURL    *string      `json:"imageUrl,omitempty"`
-	Language    *string      `json:"language,omitempty" validate:"omitempty,oneof=en eng tr"`
+	Language    *string      `json:"language,omitempty" validate:"omitempty,oneof=en tr"`
 }
 
 func (m *NewUserModel) ToEntity() entities.User {
