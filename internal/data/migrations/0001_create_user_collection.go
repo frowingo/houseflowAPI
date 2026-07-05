@@ -26,6 +26,7 @@ func (m *createUserCollection) Up(ctx context.Context, db *mongo.Database) error
 				"password":    bson.M{"bsonType": "string"},
 				"age":         bson.M{"bsonType": "int"},
 				"imageUrl":    bson.M{"bsonType": "string"},
+				"language":    bson.M{"bsonType": "string"},
 				"houseIds":    bson.M{"bsonType": "array"},
 				"isActive":    bson.M{"bsonType": "bool"},
 				"createdOn":   bson.M{"bsonType": "date"},

@@ -2,6 +2,7 @@ package validator
 
 import (
 	"fmt"
+	"houseflowApi/internal/helpers"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -40,33 +41,33 @@ func (cv *CustomValidator) getErrorMessage(e validator.FieldError) string {
 
 	switch e.Tag() {
 	case "required":
-		return fmt.Sprintf("%s is required", field)
+		return helpers.LocalizationMessage("validation.error.required", field)
 	case "email":
-		return fmt.Sprintf("%s must be a valid email address", field)
+		return helpers.LocalizationMessage("validation.error.email", field)
 	case "min":
-		return fmt.Sprintf("%s must be at least %s characters", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.min", field, e.Param())
 	case "max":
-		return fmt.Sprintf("%s must not exceed %s characters", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.max", field, e.Param())
 	case "len":
-		return fmt.Sprintf("%s must be exactly %s characters", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.len", field, e.Param())
 	case "oneof":
-		return fmt.Sprintf("%s must be one of: %s", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.oneof", field, e.Param())
 	case "gte":
-		return fmt.Sprintf("%s must be greater than or equal to %s", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.gte", field, e.Param())
 	case "lte":
-		return fmt.Sprintf("%s must be less than or equal to %s", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.lte", field, e.Param())
 	case "gt":
-		return fmt.Sprintf("%s must be greater than %s", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.gt", field, e.Param())
 	case "lt":
-		return fmt.Sprintf("%s must be less than %s", field, e.Param())
+		return helpers.LocalizationMessage("validation.error.lt", field, e.Param())
 	case "alphanum":
-		return fmt.Sprintf("%s must contain only alphanumeric characters", field)
+		return helpers.LocalizationMessage("validation.error.alphanum", field)
 	case "numeric":
-		return fmt.Sprintf("%s must be numeric", field)
+		return helpers.LocalizationMessage("validation.error.numeric", field)
 	case "url":
-		return fmt.Sprintf("%s must be a valid URL", field)
+		return helpers.LocalizationMessage("validation.error.url", field)
 	default:
-		return fmt.Sprintf("%s failed validation on tag: %s", field, e.Tag())
+		return helpers.LocalizationMessage("validation.error.failed", field, e.Tag())
 	}
 }
 

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/data/entities"
@@ -37,21 +36,21 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 	const MaxFailedAttempts = 10
 
 	user, err := r.dbRepository.FindByColumn("email", email)
-	if err != nil && err.Error() == "document not found" {
-		return "", errors.New("sen kimsin birader, böyle bi mail yok") //invalid email or password
+	if err != nil && err.Error() == "database.error.document_not_found" {
+		return "", helpers.NewLocalizedError("auth.error.email_not_found")
 	} else if err != nil {
 		return "", err
 	}
 
 	// Check if account is locked
 	if !user.IsActive {
-		return "", errors.New("sen şimdi naneyi yimedin mi? BANLANDIN!") //account is locked due to multiple failed login attempts
+		return "", helpers.NewLocalizedError("auth.error.account_locked")
 	}
 
 	isValid := helpers.CheckPasswordHash(password, user.HashPassword)
 	if isValid {
 		// Password correct: reset failed attempts and update last login
-		token, err := helpers.GenerateToken(user.Email, user.Id.Hex(), int(user.Role))
+		token, err := helpers.GenerateToken(user.Email, user.Id.Hex(), int(user.Role), user.Language)
 		if err != nil {
 			return "", err
 		}
@@ -72,11 +71,11 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 	if user.FailedLoginAttempts >= MaxFailedAttempts {
 		updateData["isActive"] = false
 		_ = r.dbRepository.UpdateFields(user.Id, updateData)
-		return "", errors.New("sen şimdi naneyi yimedin mi? BANLANDIN!") //too many failed login attempts, account has been locked
+		return "", helpers.NewLocalizedError("auth.error.account_locked")
 	}
 
 	_ = r.dbRepository.UpdateFields(user.Id, updateData)
-	return "", errors.New("TEZGAHHH LAN BU, yanlış şifre!") //invalid email or password
+	return "", helpers.NewLocalizedError("auth.error.invalid_password")
 }
 
 func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
@@ -85,9 +84,9 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 
 	// user email must unique
 	if user != nil {
-		return "", errors.New("user already exists")
+		return "", helpers.NewLocalizedError("auth.error.user_already_exists")
 	} else {
-		if err != nil && err.Error() != "document not found" {
+		if err != nil && err.Error() != "database.error.document_not_found" {
 			return "", err
 		}
 	}
@@ -105,7 +104,7 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 		return "", err
 	}
 
-	token, err := helpers.GenerateToken(newUser.Email, newUser.Id.Hex(), int(newUser.Role))
+	token, err := helpers.GenerateToken(newUser.Email, newUser.Id.Hex(), int(newUser.Role), newUser.Language)
 	if err != nil {
 		return "", err
 	}
@@ -122,8 +121,8 @@ func (r *AuthService) ForgotPassword(email string) error {
 	user, err := r.dbRepository.FindByColumn("email", email)
 	if err != nil {
 
-		if user == nil || err.Error() == "document not found" {
-			return errors.New("user not found")
+		if user == nil || err.Error() == "database.error.document_not_found" {
+			return helpers.NewLocalizedError("user.error.not_found")
 		}
 
 		return err
@@ -155,7 +154,7 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 	previousCode := helpers.GenerateResetCode(email, secret, previousWindow)
 
 	if code != currentCode && code != previousCode {
-		return errors.New("invalid or expired reset code")
+		return helpers.NewLocalizedError("auth.error.invalid_or_expired_reset_code")
 	}
 
 	user, err := r.dbRepository.FindByColumn("email", email)
@@ -163,7 +162,7 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 		return err
 	}
 	if user == nil {
-		return errors.New("user not found")
+		return helpers.NewLocalizedError("user.error.not_found")
 	}
 
 	hashedPassword, err := helpers.HashPassword(newPassword)

@@ -23,6 +23,7 @@ type JwtModel struct {
 	Issuer     string      `bson:"issuer" json:"issuer"`
 	Subject    string      `bson:"subject" json:"subject"`
 	IssuerRole int         `bson:"issuerRole" json:"issuerRole"`
+	Language   string      `bson:"language" json:"language"`
 	ExpiresAt  UTCDateTime `bson:"expiresAt" json:"expiresAt"`
 	IssuedAt   UTCDateTime `bson:"issuedAt" json:"issuedAt"`
 }

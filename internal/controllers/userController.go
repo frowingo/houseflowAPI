@@ -3,6 +3,7 @@ package controllers
 import (
 	"houseflowApi/external/validator"
 	"houseflowApi/internal/data/entities"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
@@ -12,13 +13,19 @@ import (
 
 type UserController struct {
 	userService *services.UserService
+	localizer   helpers.MessageLocalizer
 	validator   *validator.CustomValidator
 }
 
 // NewUserController constructor for UserController
-func NewUserController(userService *services.UserService) *UserController {
+func NewUserController(userService *services.UserService, localizers ...helpers.MessageLocalizer) *UserController {
+	var localizer helpers.MessageLocalizer
+	if len(localizers) > 0 {
+		localizer = localizers[0]
+	}
 	return &UserController{
 		userService: userService,
+		localizer:   localizer,
 		validator:   validator.NewValidator(),
 	}
 }
@@ -39,22 +46,16 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 	user := new(dtos.NewUserModel)
 
 	if err := c.BodyParser(user); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if err := r.validator.Validate(user); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	_, err := r.userService.CreateUser(*user)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(201).JSON(user)
@@ -75,9 +76,7 @@ func (r *UserController) ListUsers(c *fiber.Ctx) error {
 
 	users, err := r.userService.ListByUsers()
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(users)
@@ -99,16 +98,12 @@ func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 	userId := c.Params("id")
 
 	if userId == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "User ID is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "user.error.user_id_required"))
 	}
 
 	err := r.userService.DeleteUser(userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.SendStatus(204)
@@ -129,21 +124,17 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 
 	email := c.Query("email")
 	if email == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Email query param is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "user.error.email_query_required"))
 	}
 	userEmail := c.Locals("userEmail").(string)
 	userRole := c.Locals("userRole").(int)
 	if email != userEmail && userRole != int(entities.SuperAdmin) {
-		return c.Status(fiber.StatusForbidden).JSON(core.Error("Forbidden"))
+		return c.Status(fiber.StatusForbidden).JSON(helpers.LocalizedCoreError(c, r.localizer, "auth.error.forbidden"))
 	}
 
 	user, err := r.userService.GetUserByEmail(email)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(user)
@@ -164,18 +155,14 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 
 	houseId := c.Query("houseId")
 	if houseId == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "houseId query param is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "house.error.house_id_query_required"))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	users, err := r.userService.GetUsersByHouse(houseId, userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(users)
@@ -197,18 +184,18 @@ func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 
 	model := new(dtos.UpdateUserModel)
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	updated, err := r.userService.UpdateProfile(userId, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(core.Success(updated))
@@ -228,12 +215,12 @@ func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 func (r *UserController) GetImages(c *fiber.Ctx) error {
 	category := c.Query("category")
 	if category == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error("category query param is required"))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "image_asset.error.category_query_required"))
 	}
 
 	images, err := r.userService.GetImagesByCategory(category)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(core.Success(images))
@@ -253,12 +240,12 @@ func (r *UserController) GetImages(c *fiber.Ctx) error {
 func (r *UserController) GetImage(c *fiber.Ctx) error {
 	publicId := c.Query("publicId")
 	if publicId == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error("publicId query param is required"))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "image_asset.error.public_id_query_required"))
 	}
 
 	image, err := r.userService.GetImageByPublicID(publicId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(core.Success([]dtos.ImageAssetResultModel{*image}))
@@ -280,15 +267,15 @@ func (r *UserController) UpdateImageAsset(c *fiber.Ctx) error {
 	model := new(dtos.UpdateImageAssetModel)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	if err := r.userService.UpdateImageAsset(*model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(200).JSON(core.Success[any](nil))
@@ -310,15 +297,15 @@ func (r *UserController) CreateImageAsset(c *fiber.Ctx) error {
 	model := new(dtos.CreateImageAssetModel)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error("Cannot parse JSON"))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	if err := r.userService.CreateImageAsset(*model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(core.Error(err.Error()))
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(201).JSON(core.Success[any](nil))

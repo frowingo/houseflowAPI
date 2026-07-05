@@ -30,7 +30,7 @@ func (t *UTCDateTime) UnmarshalJSON(data []byte) error {
 
 	parsed, err := time.Parse(time.RFC3339Nano, strings.Trim(value, `"`))
 	if err != nil {
-		return fmt.Errorf("cannot parse %s as ISO-8601 UTC datetime, expected format: 2026-07-12T00:00:00Z", value)
+		return fmt.Errorf("common.error.invalid_utc_datetime||%s", value)
 	}
 
 	t.Time = parsed.UTC()

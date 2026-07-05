@@ -2,7 +2,7 @@ package abstract
 
 import (
 	"context"
-	"errors"
+	"houseflowApi/internal/helpers"
 	"reflect"
 	"time"
 
@@ -16,11 +16,23 @@ type DbRepository[T any] struct {
 	dbName string
 }
 
+type collectionNameProvider interface {
+	CollectionName() string
+}
+
 func New[T any](client *mongo.Client, dbName string) *DbRepository[T] {
 	return &DbRepository[T]{client: client, dbName: dbName}
 }
 
 func (r *DbRepository[T]) getCollection() *mongo.Collection {
+	var zero T
+	if provider, ok := any(zero).(collectionNameProvider); ok {
+		return r.client.Database(r.dbName).Collection(provider.CollectionName())
+	}
+	if provider, ok := any(&zero).(collectionNameProvider); ok {
+		return r.client.Database(r.dbName).Collection(provider.CollectionName())
+	}
+
 	entityType := reflect.TypeOf(new(T)).Elem()
 	return r.client.Database(r.dbName).Collection(entityType.Name())
 }
@@ -58,7 +70,7 @@ func (r *DbRepository[T]) FindById(id primitive.ObjectID) (*T, error) {
 	var result T
 	err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&result)
 	if err != nil {
-		return nil, errors.New("document not found")
+		return nil, helpers.NewLocalizedError("database.error.document_not_found")
 	}
 
 	return &result, nil
@@ -75,7 +87,7 @@ func (r *DbRepository[T]) FindByColumn(columnName string, columnValue string) (*
 	var result T
 	err := collection.FindOne(ctx, bson.M{columnName: columnValue}).Decode(&result)
 	if err == mongo.ErrNoDocuments {
-		return nil, errors.New("document not found")
+		return nil, helpers.NewLocalizedError("database.error.document_not_found")
 	} else if err != nil {
 		return nil, err
 	}
@@ -133,7 +145,7 @@ func (r *DbRepository[T]) Update(id primitive.ObjectID, updatedEntity T) (*T, er
 	}
 
 	if result.MatchedCount == 0 {
-		return nil, errors.New("Olmayan şeyi nasıl güncelliyim altan mal mısın?")
+		return nil, helpers.NewLocalizedError("database.error.update_not_found")
 	}
 
 	return &updatedEntity, nil
@@ -173,7 +185,7 @@ func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) err
 	}
 
 	if result.MatchedCount == 0 {
-		return errors.New("user not found")
+		return helpers.NewLocalizedError("database.error.document_not_found")
 	}
 
 	return nil
@@ -228,7 +240,7 @@ func (r *DbRepository[T]) Delete(id primitive.ObjectID) error {
 	}
 
 	if result.DeletedCount == 0 {
-		return errors.New("Olmayan şeyi nasıl silerim altan mal mısın?")
+		return helpers.NewLocalizedError("database.error.delete_not_found")
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"houseflowApi/internal/helpers"
 	"sync"
 	"time"
 
@@ -16,6 +17,8 @@ type RateLimitConfig struct {
 	KeyFunc func(c *fiber.Ctx) string
 
 	Message string
+
+	Localizer helpers.MessageLocalizer
 }
 
 type windowEntry struct {
@@ -31,7 +34,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		}
 	}
 	if cfg.Message == "" {
-		cfg.Message = "Too many requests, please try again later"
+		cfg.Message = "rate_limit.error.too_many_requests"
 	}
 
 	var store sync.Map
@@ -89,7 +92,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			}
 			c.Set("Retry-After", fmt.Sprintf("%d", retryAfter))
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": cfg.Message,
+				"error": helpers.LocalizedMessage(c, cfg.Localizer, cfg.Message),
 			})
 		}
 
@@ -98,29 +101,32 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 }
 
 // IPRateLimit limits each IP to x requests per minute.
-func IPRateLimit() fiber.Handler {
+func IPRateLimit(localizers ...helpers.MessageLocalizer) fiber.Handler {
 	return RateLimit(RateLimitConfig{
-		Max:    100,
-		Window: time.Minute,
+		Max:       50,
+		Window:    time.Minute,
+		Localizer: firstLocalizer(localizers),
 	})
 }
 
 // StrictRateLimit limits each IP to x requests per y minutes.
-func StrictRateLimit() fiber.Handler {
+func StrictRateLimit(localizers ...helpers.MessageLocalizer) fiber.Handler {
 	return RateLimit(RateLimitConfig{
-		Max:     10,
-		Window:  15 * time.Minute,
-		Message: "Too many attempts, please try again later",
+		Max:       10,
+		Window:    15 * time.Minute,
+		Message:   "rate_limit.error.too_many_attempts",
+		Localizer: firstLocalizer(localizers),
 	})
 }
 
 // UserRateLimit limits each authenticated user to x requests per minute.
 // Falls back to IP when the user ID is not present in context.
 // Must be placed after AuthRequired() in the middleware chain.
-func UserRateLimit() fiber.Handler {
+func UserRateLimit(localizers ...helpers.MessageLocalizer) fiber.Handler {
 	return RateLimit(RateLimitConfig{
-		Max:    100,
-		Window: time.Minute,
+		Max:       20,
+		Window:    time.Minute,
+		Localizer: firstLocalizer(localizers),
 		KeyFunc: func(c *fiber.Ctx) string {
 			if userID, ok := c.Locals("userID").(string); ok && userID != "" {
 				return "user:" + userID
@@ -128,4 +134,11 @@ func UserRateLimit() fiber.Handler {
 			return c.IP()
 		},
 	})
+}
+
+func firstLocalizer(localizers []helpers.MessageLocalizer) helpers.MessageLocalizer {
+	if len(localizers) == 0 {
+		return nil
+	}
+	return localizers[0]
 }

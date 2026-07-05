@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -77,18 +76,18 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 	// Validate owner exists
 	ownerObjectId, err := helpers.ToMongoId(model.OwnerId)
 	if err != nil {
-		return nil, errors.New("invalid owner ID format")
+		return nil, helpers.NewLocalizedError("house.error.invalid_owner_id")
 	}
 
 	owner, err := s.userRepository.FindById(ownerObjectId)
 	if err != nil || owner == nil {
-		return nil, errors.New("owner not found")
+		return nil, helpers.NewLocalizedError("house.error.owner_not_found")
 	}
 
 	// Generate unique invite code
 	inviteCode, err := helpers.GenerateInviteCode(8)
 	if err != nil {
-		return nil, errors.New("failed to generate invite code")
+		return nil, helpers.NewLocalizedError("house.error.failed_generate_invite_code")
 	}
 
 	// Check if invite code already exists (very rare but possible)
@@ -97,7 +96,7 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 		// Try one more time with a new code
 		inviteCode, err = helpers.GenerateInviteCode(8)
 		if err != nil {
-			return nil, errors.New("failed to generate invite code")
+			return nil, helpers.NewLocalizedError("house.error.failed_generate_invite_code")
 		}
 	}
 
@@ -107,7 +106,7 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 	// Insert into database
 	house, err := s.houseRepository.Insert(entity)
 	if err != nil {
-		return nil, errors.New("failed to create house: " + err.Error())
+		return nil, helpers.NewLocalizedError("house.error.failed_create_house", err.Error())
 	}
 
 	// Update user's house list
@@ -127,15 +126,15 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dtos.HouseDetailsModel, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
-		return nil, errors.New("invalid house ID format")
+		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
 	}
 
 	house, err := s.houseRepository.FindById(houseObjectId)
 	if err != nil {
-		return nil, errors.New("house not found")
+		return nil, helpers.NewLocalizedError("house.error.not_found")
 	}
 	if !stringContains(house.MemberIds, requesterId) {
-		return nil, errors.New("forbidden: user is not a member of this house")
+		return nil, helpers.NewLocalizedError("house.error.user_not_member")
 	}
 
 	members := make([]dtos.UserResultModel, 0, len(house.MemberIds))
@@ -154,7 +153,7 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 	choreEntities, _ := s.choreRepository.FindManyByColumn("houseId", houseId)
 	reviewVotesByChoreId, err := s.getReviewVotes(choreEntities)
 	if err != nil {
-		return nil, errors.New("failed to load chore review votes")
+		return nil, helpers.NewLocalizedError("house.error.failed_load_chore_review_votes")
 	}
 
 	chores := make([]dtos.ChoreResponseModel, 0, len(choreEntities))
@@ -183,30 +182,30 @@ func (s *HouseService) JoinHouseByCode(model dtos.JoinHouseByCodeModel) (*entiti
 	// Validate user exists
 	userObjectId, err := helpers.ToMongoId(model.UserId)
 	if err != nil {
-		return nil, errors.New("invalid user ID format")
+		return nil, helpers.NewLocalizedError("user.error.invalid_user_id")
 	}
 
 	user, err := s.userRepository.FindById(userObjectId)
 	if err != nil || user == nil {
-		return nil, errors.New("user not found")
+		return nil, helpers.NewLocalizedError("user.error.not_found")
 	}
 
 	// Find house by invite code
 	house, err := s.houseRepository.FindByColumn("inviteCode", model.InviteCode)
 	if err != nil || house == nil {
-		return nil, errors.New("invalid invite code")
+		return nil, helpers.NewLocalizedError("house.error.invalid_invite_code")
 	}
 
 	// Check if user is already a member
 	for _, memberId := range house.MemberIds {
 		if memberId == model.UserId {
-			return nil, errors.New("user is already a member of this house")
+			return nil, helpers.NewLocalizedError("house.error.user_already_member")
 		}
 	}
 
 	// Check if house is full
 	if len(house.MemberIds) >= house.MaxMemberCount {
-		return nil, errors.New("house is full")
+		return nil, helpers.NewLocalizedError("house.error.full")
 	}
 
 	// Add user to house members
@@ -216,7 +215,7 @@ func (s *HouseService) JoinHouseByCode(model dtos.JoinHouseByCodeModel) (*entiti
 	// Update house in database
 	updatedHouse, err := s.houseRepository.Update(house.Id, *house)
 	if err != nil {
-		return nil, errors.New("failed to join house: " + err.Error())
+		return nil, helpers.NewLocalizedError("house.error.failed_join", err.Error())
 	}
 
 	// Update user's house list

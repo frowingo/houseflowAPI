@@ -7,13 +7,18 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func AuthRequired() fiber.Handler {
+func AuthRequired(localizers ...helpers.MessageLocalizer) fiber.Handler {
+	var localizer helpers.MessageLocalizer
+	if len(localizers) > 0 {
+		localizer = localizers[0]
+	}
+
 	return func(c *fiber.Ctx) error {
 
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Authorization header required",
+				"error": helpers.LocalizedMessage(c, localizer, "auth.error.authorization_header_required"),
 			})
 		}
 
@@ -21,7 +26,7 @@ func AuthRequired() fiber.Handler {
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authorization format",
+				"error": helpers.LocalizedMessage(c, localizer, "auth.error.invalid_authorization_format"),
 			})
 		}
 
@@ -30,7 +35,7 @@ func AuthRequired() fiber.Handler {
 		jwtData, err := helpers.ValidateToken(token)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid or expired token",
+				"error": helpers.LocalizedMessage(c, localizer, "auth.error.invalid_or_expired_token"),
 			})
 		}
 
@@ -38,17 +43,22 @@ func AuthRequired() fiber.Handler {
 		c.Locals("userEmail", jwtData.Issuer)
 		c.Locals("userID", jwtData.Subject)
 		c.Locals("userRole", jwtData.IssuerRole)
+		c.Locals("language", helpers.NormalizeLanguage(jwtData.Language))
 
 		return c.Next()
 	}
 }
 
 func RequireRole(requiredRoles ...int) fiber.Handler {
+	return RequireRoleWithLocalizer(nil, requiredRoles...)
+}
+
+func RequireRoleWithLocalizer(localizer helpers.MessageLocalizer, requiredRoles ...int) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userRole, ok := c.Locals("userRole").(int)
 		if !ok {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Unauthorized",
+				"error": helpers.LocalizedMessage(c, localizer, "auth.error.unauthorized"),
 			})
 		}
 
@@ -59,7 +69,7 @@ func RequireRole(requiredRoles ...int) fiber.Handler {
 		}
 
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "Sen onu yapaman",
+			"error": helpers.LocalizedMessage(c, localizer, "auth.error.insufficient_role"),
 		})
 	}
 }
