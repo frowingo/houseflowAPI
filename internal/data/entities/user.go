@@ -23,6 +23,7 @@ type User struct {
 	HashPassword        string             `bson:"password" json:"-"`
 	BirthDay            time.Time          `bson:"birthDay" json:"birthDay"`
 	ImageURL            string             `bson:"imageUrl" json:"imageUrl"`
+	Language            string             `bson:"language" json:"language"`
 	HouseIds            []string           `bson:"houseIds" json:"houseIds"`
 	IsActive            bool               `bson:"isActive" json:"isActive"`
 	IsVerifyPhone       bool               `bson:"isVerifyPhone" json:"isVerifyPhone"`

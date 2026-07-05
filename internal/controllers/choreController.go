@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 
@@ -10,13 +11,19 @@ import (
 
 type ChoreController struct {
 	choreService *services.ChoreService
+	localizer    helpers.MessageLocalizer
 	validator    *validator.CustomValidator
 }
 
 // NewChoreController constructor for ChoreController
-func NewChoreController(choreService *services.ChoreService) *ChoreController {
+func NewChoreController(choreService *services.ChoreService, localizers ...helpers.MessageLocalizer) *ChoreController {
+	var localizer helpers.MessageLocalizer
+	if len(localizers) > 0 {
+		localizer = localizers[0]
+	}
 	return &ChoreController{
 		choreService: choreService,
+		localizer:    localizer,
 		validator:    validator.NewValidator(),
 	}
 }
@@ -37,24 +44,18 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 	chore := new(dtos.CreateChoreModel)
 
 	if err := c.BodyParser(chore); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.invalid_request_body"))
 	}
 
 	if err := r.validator.Validate(chore); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	createdChore, err := r.choreService.CreateChore(*chore, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(createdChore)
@@ -77,24 +78,18 @@ func (r *ChoreController) UpdateChoreStatus(c *fiber.Ctx) error {
 	var statusUpdates dtos.BulkUpdateChoreStatusModel
 
 	if err := c.BodyParser(&statusUpdates); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.invalid_request_body"))
 	}
 
 	if err := r.validator.Validate(statusUpdates); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	result, err := r.choreService.UpdateChoreStatusBulk(statusUpdates, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -117,24 +112,18 @@ func (r *ChoreController) ReviewChore(c *fiber.Ctx) error {
 	review := new(dtos.ReviewChoreModel)
 
 	if err := c.BodyParser(review); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.invalid_request_body"))
 	}
 
 	if err := r.validator.Validate(review); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	result, err := r.choreService.ReviewChore(*review, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -160,24 +149,18 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 	chore := new(dtos.CreateChoreModel)
 
 	if err := c.BodyParser(chore); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.invalid_request_body"))
 	}
 
 	if err := r.validator.Validate(chore); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	updatedChore, err := r.choreService.UpdateChore(id, *chore, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(updatedChore)

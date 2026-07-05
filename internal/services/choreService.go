@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -44,14 +43,14 @@ func NewChoreService(
 func (r *ChoreService) validateHouseMember(houseId string, userId string) (*entities.House, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
-		return nil, errors.New("invalid house ID format")
+		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
 	}
 	house, err := r.houseRepository.FindById(houseObjectId)
 	if err != nil {
-		return nil, errors.New("house not found")
+		return nil, helpers.NewLocalizedError("house.error.not_found")
 	}
 	if !stringContains(house.MemberIds, userId) {
-		return nil, errors.New("forbidden: user is not a member of this house")
+		return nil, helpers.NewLocalizedError("house.error.user_not_member")
 	}
 	return house, nil
 }
@@ -59,13 +58,13 @@ func (r *ChoreService) validateHouseMember(houseId string, userId string) (*enti
 func (r *ChoreService) validateAssignee(house *entities.House, assigneeId string) error {
 	assigneeObjectId, err := helpers.ToMongoId(assigneeId)
 	if err != nil {
-		return errors.New("invalid assignee ID format")
+		return helpers.NewLocalizedError("chore.error.invalid_assignee_id")
 	}
 	if !stringContains(house.MemberIds, assigneeId) {
-		return errors.New("assigned user is not a member of this house")
+		return helpers.NewLocalizedError("chore.error.assignee_not_member")
 	}
 	if _, err := r.userRepository.FindById(assigneeObjectId); err != nil {
-		return errors.New("assigned user not found")
+		return helpers.NewLocalizedError("chore.error.assignee_not_found")
 	}
 	return nil
 }
@@ -149,7 +148,7 @@ func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, reque
 		return nil, err
 	}
 	if currentChore.HouseId != chore.HouseId {
-		return nil, errors.New("chore house cannot be changed")
+		return nil, helpers.NewLocalizedError("chore.error.house_cannot_change")
 	}
 	house, err := r.validateHouseMember(currentChore.HouseId, requesterId)
 	if err != nil {
@@ -181,12 +180,12 @@ func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, reque
 
 func (r *ChoreService) advanceChoreStatus(currentChore *entities.Chore, targetStatus entities.ChoreStatus, house *entities.House, userId string) error {
 	if currentChore.AssignedTo != userId {
-		return errors.New("only assigned user can advance chore status")
+		return helpers.NewLocalizedError("chore.error.only_assignee_can_advance")
 	}
 
 	nextStatus, ok := nextChoreStatus(currentChore.Status)
 	if !ok || targetStatus != nextStatus {
-		return errors.New("invalid chore status transition")
+		return helpers.NewLocalizedError("chore.error.invalid_status_transition")
 	}
 
 	currentChore.Status = targetStatus
@@ -195,7 +194,7 @@ func (r *ChoreService) advanceChoreStatus(currentChore *entities.Chore, targetSt
 	currentChore.CompletedAt = time.Time{}
 	if targetStatus == entities.InTest {
 		if currentChore.ReviewRound >= maxChoreReviewRounds {
-			return errors.New("maximum review round limit reached")
+			return helpers.NewLocalizedError("chore.error.max_review_round_reached")
 		}
 		currentChore.ReviewRound++
 		if len(house.MemberIds) <= 1 {
@@ -221,7 +220,7 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 	choreIdMap := make(map[string]bool)
 	for _, update := range model.Chores {
 		if choreIdMap[update.ChoreId] {
-			return nil, errors.New("Duplicate choreId: " + update.ChoreId)
+			return nil, helpers.NewLocalizedError("chore.error.duplicate_chore_id", update.ChoreId)
 		}
 		choreIdMap[update.ChoreId] = true
 	}
@@ -230,15 +229,15 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 	for _, update := range model.Chores {
 		mongoId, err := helpers.ToMongoId(update.ChoreId)
 		if err != nil {
-			return nil, errors.New("invalid choreId: " + update.ChoreId)
+			return nil, helpers.NewLocalizedError("chore.error.invalid_chore_id", update.ChoreId)
 		}
 
 		currentChore, err := r.dbRepository.FindById(mongoId)
 		if err != nil {
-			return nil, errors.New("chore not found: " + update.ChoreId)
+			return nil, helpers.NewLocalizedError("chore.error.not_found", update.ChoreId)
 		}
 		if currentChore.HouseId != model.HouseId {
-			return nil, errors.New("chore " + update.ChoreId + " does not belong to the given house")
+			return nil, helpers.NewLocalizedError("chore.error.not_in_house", update.ChoreId)
 		}
 
 		previousStatus := currentChore.Status
@@ -282,7 +281,7 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		return nil, err
 	}
 	if currentChore.Status != entities.InTest {
-		return nil, errors.New("chore is not in review")
+		return nil, helpers.NewLocalizedError("chore.error.not_in_review")
 	}
 
 	house, err := r.validateHouseMember(currentChore.HouseId, reviewerId)
@@ -290,7 +289,7 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		return nil, err
 	}
 	if currentChore.AssignedTo == reviewerId {
-		return nil, errors.New("assigned user cannot review own chore")
+		return nil, helpers.NewLocalizedError("chore.error.assignee_cannot_review_own")
 	}
 
 	vote := entities.ChoreReviewVote{
@@ -302,7 +301,7 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		CreatedOn:   time.Now(),
 	}
 	if _, err := r.choreReviewVoteRepository.Insert(vote); err != nil {
-		return nil, errors.New("review vote already exists for this chore round")
+		return nil, helpers.NewLocalizedError("chore.error.review_vote_already_exists")
 	}
 
 	if !*model.IsApproved {

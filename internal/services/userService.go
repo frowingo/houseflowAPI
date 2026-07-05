@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -34,6 +33,7 @@ func NewUserService(
 func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, error) {
 
 	entity := user.ToEntity()
+	entity.Language = helpers.NormalizeLanguage(entity.Language)
 
 	hashedPassword, err := helpers.HashPassword(user.Password)
 	if err != nil {
@@ -101,7 +101,7 @@ func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dto
 		return nil, err
 	}
 	if !stringContains(house.MemberIds, requesterId) {
-		return nil, errors.New("forbidden: user is not a member of this house")
+		return nil, helpers.NewLocalizedError("house.error.user_not_member")
 	}
 
 	users := make([]dtos.UserResultModel, 0, len(house.MemberIds))
@@ -142,6 +142,9 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 	}
 	if model.ImageURL != nil {
 		fields["imageUrl"] = *model.ImageURL
+	}
+	if model.Language != nil {
+		fields["language"] = helpers.NormalizeLanguage(*model.Language)
 	}
 	if err := r.dbRepository.UpdateFields(objectId, fields); err != nil {
 		return nil, err
@@ -187,7 +190,7 @@ func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResul
 		return nil, err
 	}
 	if !asset.IsActive {
-		return nil, errors.New("image asset bulunamadı")
+		return nil, helpers.NewLocalizedError("image_asset.error.not_found")
 	}
 
 	result := dtos.ToImageAssetResultModel(*asset)
@@ -199,7 +202,7 @@ func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
 
 	asset, err := r.imageAssetRepository.FindByColumn("publicId", model.PublicID)
 	if err != nil {
-		return errors.New("image asset bulunamadı")
+		return helpers.NewLocalizedError("image_asset.error.not_found")
 	}
 
 	fields := bson.M{"updatedOn": time.Now()}
@@ -228,7 +231,7 @@ func (r *UserService) CreateImageAsset(model dtos.CreateImageAssetModel) error {
 		return err
 	}
 	if exists {
-		return errors.New("bu kategori ve dosya adına ait bir kayıt zaten mevcut")
+		return helpers.NewLocalizedError("image_asset.error.duplicate")
 	}
 
 	_, err = r.imageAssetRepository.Insert(entity)

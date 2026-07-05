@@ -13,12 +13,18 @@ import (
 
 type AuthController struct {
 	authService *services.AuthService
+	localizer   helpers.MessageLocalizer
 	validator   *validator.CustomValidator
 }
 
-func NewAuthController(authService *services.AuthService) *AuthController {
+func NewAuthController(authService *services.AuthService, localizers ...helpers.MessageLocalizer) *AuthController {
+	var localizer helpers.MessageLocalizer
+	if len(localizers) > 0 {
+		localizer = localizers[0]
+	}
 	return &AuthController{
 		authService: authService,
+		localizer:   localizer,
 		validator:   validator.NewValidator(),
 	}
 }
@@ -73,28 +79,20 @@ func (r *AuthController) Login(c *fiber.Ctx) error {
 	model := new(dtos.LoginRequestModel)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if model.Email == "" || model.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Email and password are required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "auth.error.email_password_required"))
 	}
 
 	token, err := r.authService.Login(model.Email, model.Password)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	if token == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid credentials",
-		})
+		return c.Status(fiber.StatusUnauthorized).JSON(helpers.LocalizedErrorMap(c, r.localizer, "auth.error.invalid_credentials"))
 	} else {
 		return c.Status(200).JSON(fiber.Map{"token": token})
 	}
@@ -114,22 +112,16 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 	model := new(dtos.SignUpUserModel)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	token, err := r.authService.SignUp(*model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(201).JSON(fiber.Map{"token": token})
@@ -176,24 +168,16 @@ func (r *AuthController) ResetPassword(c *fiber.Ctx) error {
 	model := new(dtos.ResetPasswordRequest)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	if err := r.authService.ResetPassword(model.Email, model.Code, model.NewPassword); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Password reset successful",
-	})
+	return c.Status(fiber.StatusOK).JSON(helpers.LocalizedMessageMap(c, r.localizer, "auth.message.password_reset_successful"))
 }

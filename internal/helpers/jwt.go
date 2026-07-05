@@ -1,7 +1,6 @@
 package helpers
 
 import (
-	"errors"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/models/dtos"
 	"time"
@@ -10,19 +9,21 @@ import (
 )
 
 type customClaims struct {
-	Role int `json:"role"`
+	Role     int    `json:"role"`
+	Language string `json:"language"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(email string, userId string, role int) (string, error) {
+func GenerateToken(email string, userId string, role int, language string) (string, error) {
 
 	config, err := config.MustLoadConfig()
 	if err != nil {
-		return "", errors.New("config not found")
+		return "", NewLocalizedError("config.error.not_found")
 	}
 
 	claim := customClaims{
-		Role: role,
+		Role:     role,
+		Language: NormalizeLanguage(language),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    email,
 			Subject:   userId,
@@ -44,7 +45,7 @@ func ValidateToken(token string) (dtos.JwtModel, error) {
 
 	config, err := config.MustLoadConfig()
 	if err != nil {
-		return dtos.JwtModel{}, errors.New("config not found")
+		return dtos.JwtModel{}, NewLocalizedError("config.error.not_found")
 	}
 
 	parsedToken, err := jwt.ParseWithClaims(token, &customClaims{}, func(t *jwt.Token) (interface{}, error) {
@@ -59,10 +60,11 @@ func ValidateToken(token string) (dtos.JwtModel, error) {
 			Issuer:     claims.Issuer,
 			Subject:    claims.Subject,
 			IssuerRole: claims.Role,
+			Language:   NormalizeLanguage(claims.Language),
 			ExpiresAt:  dtos.NewUTCDateTime(claims.ExpiresAt.Time),
 			IssuedAt:   dtos.NewUTCDateTime(claims.IssuedAt.Time),
 		}, nil
 	} else {
-		return dtos.JwtModel{}, errors.New("invalid token")
+		return dtos.JwtModel{}, NewLocalizedError("auth.error.invalid_token")
 	}
 }

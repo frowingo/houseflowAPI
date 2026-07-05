@@ -39,5 +39,9 @@ func AllMigrations() []migration.Migration {
 		// --- Chore Review Flow ---
 		&createChoreReviewVoteCollection{},
 		&choreAddReviewRound{},
+		// --- Localization ---
+		&createLocalizationCollection{},
+		&userAddLanguage{},
+		&localizationTypeLanguageIndex{},
 	}
 }

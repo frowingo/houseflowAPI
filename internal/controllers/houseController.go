@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 
@@ -10,12 +11,18 @@ import (
 
 type HouseController struct {
 	houseService *services.HouseService
+	localizer    helpers.MessageLocalizer
 	validator    *validator.CustomValidator
 }
 
-func NewHouseController(houseService *services.HouseService) *HouseController {
+func NewHouseController(houseService *services.HouseService, localizers ...helpers.MessageLocalizer) *HouseController {
+	var localizer helpers.MessageLocalizer
+	if len(localizers) > 0 {
+		localizer = localizers[0]
+	}
 	return &HouseController{
 		houseService: houseService,
+		localizer:    localizer,
 		validator:    validator.NewValidator(),
 	}
 }
@@ -34,24 +41,18 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 	model := new(dtos.CreateHouseModel)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	model.OwnerId = c.Locals("userID").(string)
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	house, err := r.houseService.CreateHouse(*model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	response := dtos.HouseToResponseModel(*house)
@@ -71,18 +72,14 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
 	houseId := c.Query("houseId")
 	if houseId == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "houseId query param is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "house.error.house_id_query_required"))
 	}
 
 	userId := c.Locals("userID").(string)
 
 	details, err := r.houseService.GetHouseDetails(houseId, userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(details)
@@ -102,24 +99,18 @@ func (r *HouseController) JoinHouseByCode(c *fiber.Ctx) error {
 	model := new(dtos.JoinHouseByCodeModel)
 
 	if err := c.BodyParser(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
 	}
 
 	if err := r.validator.Validate(model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	model.UserId = c.Locals("userID").(string)
 
 	house, err := r.houseService.JoinHouseByCode(*model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
 	response := dtos.HouseToResponseModel(*house)

@@ -13,6 +13,7 @@ type UserResultModel struct {
 	Email         string      `json:"email"`
 	BirthDay      UTCDateTime `json:"birthDay"`
 	ImageURL      string      `json:"imageUrl"`
+	Language      string      `json:"language"`
 	HouseIds      []string    `json:"houseIds"`
 	IsActive      bool        `json:"isActive"`
 	IsVerifyPhone bool        `json:"isVerifyPhone"`
@@ -45,6 +46,7 @@ func UserToResultModel(u entities.User) UserResultModel {
 		Email:         u.Email,
 		BirthDay:      NewUTCDateTime(u.BirthDay),
 		ImageURL:      u.ImageURL,
+		Language:      u.Language,
 		HouseIds:      u.HouseIds,
 		IsActive:      u.IsActive,
 		IsVerifyPhone: u.IsVerifyPhone,
