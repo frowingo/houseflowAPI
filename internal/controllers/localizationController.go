@@ -28,13 +28,9 @@ func NewLocalizationController(localizationService *services.LocalizationService
 // @Param language path string true "Language code"
 // @Success 200 {object} core.ApiResponse[[]dtos.LocalizationPlaintextResponseModel]
 // @Failure 400 {object} core.ErrorResponse
-// @Router /localization/plaintext [get]
-// @Router /localization/plaintexts/{language} [get]
+// @Router /localization/plaintext/{language} [get]
 func (r *LocalizationController) GetPlaintexts(c *fiber.Ctx) error {
 	language := c.Params("language")
-	if language == "" {
-		language = c.Query("language")
-	}
 
 	plaintexts, err := r.localizationService.GetPlaintexts(language)
 	if err != nil {

@@ -134,7 +134,7 @@ func (s *LocalizationService) GetPlaintexts(language string) ([]dtos.Localizatio
 }
 
 func (s *LocalizationService) GetLanguages() ([]dtos.LocalizationLanguageResponseModel, error) {
-	languages, err := s.languageRepository.FindManyByFilter(bson.M{"isActive": true})
+	languages, err := s.languageRepository.FindAll()
 	if err != nil {
 		return nil, err
 	}

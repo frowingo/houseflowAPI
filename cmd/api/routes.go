@@ -33,8 +33,7 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 	localizationRoutes.Get("/languages", middleware.AuthRequired(localizationService), localizationController.GetLanguages)
 	localizationRoutes.Get("/language/:prefix", middleware.AuthRequired(localizationService), localizationController.GetLanguage)
 	localizationRoutes.Post("/language", middleware.AuthRequired(localizationService), middleware.RequireRoleWithLocalizer(localizationService, int(entities.SuperAdmin)), localizationController.InsertLocalizationLanguage)
-	localizationRoutes.Get("/plaintext", localizationController.GetPlaintexts)
-	localizationRoutes.Get("/plaintexts/:language", localizationController.GetPlaintexts)
+	localizationRoutes.Get("/plaintext/:language", localizationController.GetPlaintexts)
 
 	languageRoutes := api.Group("/language", middleware.AuthRequired(localizationService), middleware.UserRateLimit(localizationService))
 	languageRoutes.Post("", middleware.RequireRoleWithLocalizer(localizationService, int(entities.SuperAdmin)), localizationController.InsertLocalizations)
