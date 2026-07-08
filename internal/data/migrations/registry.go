@@ -43,5 +43,6 @@ func AllMigrations() []migration.Migration {
 		&createLocalizationCollection{},
 		&userAddLanguage{},
 		&localizationTypeLanguageIndex{},
+		&createLocalizationLanguagesCollection{},
 	}
 }

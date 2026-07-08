@@ -15,17 +15,22 @@ import (
 )
 
 type LocalizationService struct {
-	dbRepository *abstract.DbRepository[entities.Localization]
-	mu           sync.RWMutex
-	messages     map[string]map[string]string
-	plaintexts   map[string]map[string]string
+	dbRepository       *abstract.DbRepository[entities.Localization]
+	languageRepository *abstract.DbRepository[entities.LocalizationLanguageOption]
+	mu                 sync.RWMutex
+	messages           map[string]map[string]string
+	plaintexts         map[string]map[string]string
 }
 
-func NewLocalizationService(dbRepository *abstract.DbRepository[entities.Localization]) *LocalizationService {
+func NewLocalizationService(
+	dbRepository *abstract.DbRepository[entities.Localization],
+	languageRepository *abstract.DbRepository[entities.LocalizationLanguageOption],
+) *LocalizationService {
 	return &LocalizationService{
-		dbRepository: dbRepository,
-		messages:     make(map[string]map[string]string),
-		plaintexts:   make(map[string]map[string]string),
+		dbRepository:       dbRepository,
+		languageRepository: languageRepository,
+		messages:           make(map[string]map[string]string),
+		plaintexts:         make(map[string]map[string]string),
 	}
 }
 
@@ -128,6 +133,48 @@ func (s *LocalizationService) GetPlaintexts(language string) ([]dtos.Localizatio
 	return plaintextResponseModels(normalizedLanguage, plaintexts), nil
 }
 
+func (s *LocalizationService) GetLanguages() ([]dtos.LocalizationLanguageResponseModel, error) {
+	languages, err := s.languageRepository.FindManyByFilter(bson.M{"isActive": true})
+	if err != nil {
+		return nil, err
+	}
+
+	sortLanguages(languages)
+	return languageResponseModels(languages), nil
+}
+
+func (s *LocalizationService) GetLanguage(prefix string) ([]dtos.LocalizationLanguageResponseModel, error) {
+	normalizedPrefix := normalizeLanguageOptionPrefix(prefix)
+	languages, err := s.languageRepository.FindManyByFilter(bson.M{
+		"code":     normalizedPrefix,
+		"isActive": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sortLanguages(languages)
+	return languageResponseModels(languages), nil
+}
+
+func (s *LocalizationService) InsertLocalizationLanguage(model dtos.LocalizationLanguageRequestModel) error {
+	normalizedPrefix := normalizeLanguageOptionPrefix(model.Prefix)
+	if normalizedPrefix == "" {
+		return helpers.NewLocalizedError("localization.error.unsupported_language")
+	}
+
+	entity := model.ToEntity()
+	entity.Code = normalizedPrefix
+	if _, err := s.languageRepository.Insert(entity); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return helpers.NewLocalizedError("localization.error.duplicate_key")
+		}
+		return err
+	}
+
+	return nil
+}
+
 func (s *LocalizationService) LocalizeMessage(language string, keyOrMessage string) string {
 	normalizedLanguage := helpers.NormalizeLanguage(language)
 	if strings.Contains(keyOrMessage, "; ") {
@@ -218,6 +265,31 @@ func plaintextResponseModels(language string, plaintexts map[string]string) []dt
 	}
 
 	return result
+}
+
+func sortLanguages(languages []entities.LocalizationLanguageOption) {
+	sort.Slice(languages, func(i, j int) bool {
+		return languages[i].Code < languages[j].Code
+	})
+}
+
+func languageResponseModels(languages []entities.LocalizationLanguageOption) []dtos.LocalizationLanguageResponseModel {
+	result := make([]dtos.LocalizationLanguageResponseModel, 0, len(languages))
+	for _, language := range languages {
+		result = append(result, dtos.LocalizationLanguageResponseModel{
+			Prefix:     language.Code,
+			Name:       language.Name,
+			NativeName: language.NativeName,
+			IsDefault:  language.IsDefault,
+			IsActive:   language.IsActive,
+			Image:      language.Image,
+		})
+	}
+	return result
+}
+
+func normalizeLanguageOptionPrefix(prefix string) string {
+	return strings.ToLower(strings.TrimSpace(prefix))
 }
 
 func formatLocalizedMessage(value string, args []string) string {
