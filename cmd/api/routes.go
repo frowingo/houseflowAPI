@@ -14,7 +14,10 @@ import (
 
 func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 
-	localizationService := services.NewLocalizationService(abstract.New[entities.Localization](client, dbName))
+	localizationService := services.NewLocalizationService(
+		abstract.New[entities.Localization](client, dbName),
+		abstract.New[entities.LocalizationLanguageOption](client, dbName),
+	)
 	if err := localizationService.LoadCache(); err != nil {
 		log.Println("localization cache warmup failed:", err)
 	}
@@ -27,6 +30,10 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 
 	// - LOCALIZATION -
 	localizationRoutes := api.Group("/localization", middleware.UserRateLimit(localizationService))
+	localizationRoutes.Get("/languages", middleware.AuthRequired(localizationService), localizationController.GetLanguages)
+	localizationRoutes.Get("/language/:prefix", middleware.AuthRequired(localizationService), localizationController.GetLanguage)
+	localizationRoutes.Post("/language", middleware.AuthRequired(localizationService), middleware.RequireRoleWithLocalizer(localizationService, int(entities.SuperAdmin)), localizationController.InsertLocalizationLanguage)
+	localizationRoutes.Get("/plaintext", localizationController.GetPlaintexts)
 	localizationRoutes.Get("/plaintexts/:language", localizationController.GetPlaintexts)
 
 	languageRoutes := api.Group("/language", middleware.AuthRequired(localizationService), middleware.UserRateLimit(localizationService))
