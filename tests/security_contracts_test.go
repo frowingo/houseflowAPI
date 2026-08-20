@@ -18,6 +18,7 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	t.Setenv("JWT_SECRET", "jwt-secret")
 	t.Setenv("RESET_CODE_SECRET", "reset-secret")
 	t.Setenv("RESET_CODE_VALIDITY_MINUTES", "7")
+	t.Setenv("SMTP_PASSWORD", "smtp-secret")
 
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
@@ -29,6 +30,9 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	}
 	if cfg.Internal.PasswordReset.ValidityMinutes != 7 {
 		t.Fatalf("unexpected reset validity: %d", cfg.Internal.PasswordReset.ValidityMinutes)
+	}
+	if cfg.Internal.SMTP.Password != "smtp-secret" {
+		t.Fatal("SMTP password environment override was not applied")
 	}
 }
 

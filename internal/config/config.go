@@ -8,6 +8,7 @@ import (
 	"strconv"
 )
 
+//go:embed staticFiles/code-email.html
 var staticFiles embed.FS
 
 func ReadStaticFile(name string) ([]byte, error) {
