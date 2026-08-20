@@ -1,11 +1,18 @@
 package config
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
 )
+
+var staticFiles embed.FS
+
+func ReadStaticFile(name string) ([]byte, error) {
+	return staticFiles.ReadFile("staticFiles/" + name)
+}
 
 type ConfigModel struct {
 	External ConfigExternal `json:"external"`

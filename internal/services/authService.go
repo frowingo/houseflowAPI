@@ -144,16 +144,7 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 		return err
 	}
 
-	secret := cfg.Internal.PasswordReset.Secret
-	validityMinutes := cfg.Internal.PasswordReset.ValidityMinutes
-
-	currentWindow := helpers.ResetCodeWindow(validityMinutes)
-	previousWindow := currentWindow.Add(-time.Duration(validityMinutes) * time.Minute)
-
-	currentCode := helpers.GenerateResetCode(email, secret, currentWindow)
-	previousCode := helpers.GenerateResetCode(email, secret, previousWindow)
-
-	if code != currentCode && code != previousCode {
+	if !helpers.IsResetCodeValid(email, code, cfg.Internal.PasswordReset.Secret, cfg.Internal.PasswordReset.ValidityMinutes) {
 		return helpers.NewLocalizedError("auth.error.invalid_or_expired_reset_code")
 	}
 
@@ -175,5 +166,56 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 		"isActive":            true,
 		"failedLoginAttempts": 0,
 		"updatedOn":           time.Now(),
+	})
+}
+
+func (r *AuthService) SendEmailVerificationCode(email string) error {
+	cfg, err := config.MustLoadConfig()
+	if err != nil {
+		return err
+	}
+
+	user, err := r.dbRepository.FindByColumn("email", email)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return helpers.NewLocalizedError("user.error.not_found")
+	}
+	if user.IsVerifyEmail {
+		return nil
+	}
+
+	window := helpers.ResetCodeWindow(cfg.Internal.PasswordReset.ValidityMinutes)
+	code := helpers.GenerateResetCode(email, cfg.Internal.PasswordReset.Secret, window)
+
+	return r.notificationService.SendEmailVerificationCode(email, code, cfg.Internal.PasswordReset.ValidityMinutes)
+}
+
+func (r *AuthService) ValidateEmail(email, code string) error {
+
+	cfg, err := config.MustLoadConfig()
+	if err != nil {
+		return err
+	}
+
+	if !helpers.IsResetCodeValid(email, code, cfg.Internal.PasswordReset.Secret, cfg.Internal.PasswordReset.ValidityMinutes) {
+		return helpers.NewLocalizedError("auth.error.invalid_or_expired_email_verification_code")
+	}
+
+	user, err := r.dbRepository.FindByColumn("email", email)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return helpers.NewLocalizedError("user.error.not_found")
+	}
+	if user.IsVerifyEmail {
+		return nil
+	}
+
+	return r.dbRepository.UpdateFields(user.Id, bson.M{
+		"isVerifyEmail": true,
+		"updatedOn":     time.Now(),
 	})
 }
