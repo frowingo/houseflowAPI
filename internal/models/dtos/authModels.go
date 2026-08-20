@@ -37,3 +37,7 @@ type ResetPasswordRequest struct {
 	Code        string `json:"code" validate:"required,len=6"`
 	NewPassword string `json:"newPassword" validate:"required,min=6"`
 }
+
+type ValidateEmailRequest struct {
+	Code string `json:"code" validate:"required,len=6"`
+}

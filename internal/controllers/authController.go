@@ -38,6 +38,7 @@ func NewAuthController(authService *services.AuthService, localizers ...helpers.
 // @Failure 400 {object} dtos.IsAuthResponseModel
 // @Router /auth/isAuth [get]
 func (r *AuthController) IsAuth(c *fiber.Ctx) error {
+
 	authHeader := c.Get("Authorization")
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
@@ -109,6 +110,7 @@ func (r *AuthController) Login(c *fiber.Ctx) error {
 // @Failure 401 {object} map[string]interface{} "Invalid credentials"
 // @Router /auth/signup [post]
 func (r *AuthController) Signup(c *fiber.Ctx) error {
+
 	model := new(dtos.SignUpUserModel)
 
 	if err := c.BodyParser(model); err != nil {
@@ -137,6 +139,7 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 // @Failure 400 {object} dtos.SuccessResponseModel "Bad request"
 // @Router /auth/forget [post]
 func (r *AuthController) ForgotPassword(c *fiber.Ctx) error {
+
 	model := new(dtos.ForgotPasswordRequest)
 
 	if err := c.BodyParser(model); err != nil {
@@ -165,6 +168,7 @@ func (r *AuthController) ForgotPassword(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Bad request or invalid code"
 // @Router /auth/reset [post]
 func (r *AuthController) ResetPassword(c *fiber.Ctx) error {
+
 	model := new(dtos.ResetPasswordRequest)
 
 	if err := c.BodyParser(model); err != nil {
@@ -180,4 +184,59 @@ func (r *AuthController) ResetPassword(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(helpers.LocalizedMessageMap(c, r.localizer, "auth.message.password_reset_successful"))
+}
+
+// @Summary Send Email Verification Code
+// @Description Sends a 6-character verification code to the authenticated user's email address.
+// @Tags Auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} dtos.SuccessResponseModel "Verification code sent"
+// @Failure 400 {object} dtos.SuccessResponseModel "Bad request"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /auth/validate-email [get]
+func (r *AuthController) SendEmailVerificationCode(c *fiber.Ctx) error {
+
+	email, ok := c.Locals("userEmail").(string)
+	if !ok || email == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(dtos.SuccessResponseModel{Success: false})
+	}
+
+	if err := r.authService.SendEmailVerificationCode(email); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(dtos.SuccessResponseModel{Success: true})
+}
+
+// @Summary Validate Email
+// @Description Verifies the authenticated user's email address with the submitted 6-character code.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body dtos.ValidateEmailRequest true "Verification code"
+// @Success 200 {object} dtos.SuccessResponseModel "Email verified"
+// @Failure 400 {object} dtos.SuccessResponseModel "Bad request or invalid code"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /auth/validate-email [post]
+func (r *AuthController) ValidateEmail(c *fiber.Ctx) error {
+	model := new(dtos.ValidateEmailRequest)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
+	}
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
+	}
+
+	email, ok := c.Locals("userEmail").(string)
+	if !ok || email == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(dtos.SuccessResponseModel{Success: false})
+	}
+
+	if err := r.authService.ValidateEmail(email, model.Code); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(dtos.SuccessResponseModel{Success: true})
 }

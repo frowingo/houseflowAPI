@@ -60,3 +60,13 @@ func GenerateResetCode(email, secret string, window time.Time) string {
 
 	return string(result)
 }
+
+func IsResetCodeValid(email, code, secret string, validityMinutes int) bool {
+	currentWindow := ResetCodeWindow(validityMinutes)
+	previousWindow := currentWindow.Add(-time.Duration(validityMinutes) * time.Minute)
+
+	currentCode := GenerateResetCode(email, secret, currentWindow)
+	previousCode := GenerateResetCode(email, secret, previousWindow)
+
+	return code == currentCode || code == previousCode
+}

@@ -51,6 +51,8 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 	authRoutes.Post("/signup", authController.Signup)
 	authRoutes.Post("/forget", authController.ForgotPassword)
 	authRoutes.Post("/reset", authController.ResetPassword)
+	authRoutes.Get("/validate-email", middleware.AuthRequired(localizationService), authController.SendEmailVerificationCode)
+	authRoutes.Post("/validate-email", middleware.AuthRequired(localizationService), authController.ValidateEmail)
 	// ----------
 
 	// - USER -
