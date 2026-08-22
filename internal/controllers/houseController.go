@@ -85,6 +85,35 @@ func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(details)
 }
 
+// @Summary Create a house announcement
+// @Description Create an announcement that is displayed for 24 hours
+// @Tags House
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param announcement body dtos.CreateAnnouncementModel true "Announcement object"
+// @Success 200 {object} dtos.AnnouncementResponseModel
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /house/announcement [post]
+func (r *HouseController) CreateAnnouncement(c *fiber.Ctx) error {
+	model := new(dtos.CreateAnnouncementModel)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.invalid_request_body"))
+	}
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+	}
+
+	userId := c.Locals("userID").(string)
+	announcement, err := r.houseService.CreateAnnouncement(*model, userId)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+	}
+
+	return c.Status(fiber.StatusOK).JSON(announcement)
+}
+
 // @Summary Join house by invite code
 // @Tags House
 // @Accept json

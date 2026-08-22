@@ -330,6 +330,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/house/announcement": {
+            "post": {
+                "description": "Create an announcement that is displayed for 24 hours",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Create a house announcement",
+                "parameters": [
+                    {
+                        "description": "Announcement object",
+                        "name": "announcement",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.CreateAnnouncementModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.AnnouncementResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/house/create": {
             "post": {
                 "security": [
@@ -797,6 +850,29 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dtos.AnnouncementResponseModel": {
+            "type": "object",
+            "properties": {
+                "announcedBy": {
+                    "type": "string"
+                },
+                "createdOn": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "houseId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "dtos.ChoreResponseModel": {
             "type": "object",
             "properties": {
@@ -841,6 +917,25 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/entities.ChoreStatus"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.CreateAnnouncementModel": {
+            "type": "object",
+            "required": [
+                "description",
+                "houseId",
+                "title"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "houseId": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"
@@ -934,6 +1029,18 @@ const docTemplate = `{
         "dtos.HouseDetailsModel": {
             "type": "object",
             "properties": {
+                "announcements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dtos.AnnouncementResponseModel"
+                    }
+                },
+                "chores": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dtos.ChoreResponseModel"
+                    }
+                },
                 "createdOn": {
                     "type": "string"
                 },

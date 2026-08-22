@@ -5,6 +5,8 @@ import (
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
+	"sort"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -26,6 +28,7 @@ type HouseService struct {
 	choreRepository           *abstract.DbRepository[entities.Chore]
 	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
 	choreReviewVoteRepository *abstract.DbRepository[entities.ChoreReviewVote]
+	announcementRepository    *abstract.DbRepository[entities.Announcement]
 }
 
 func NewHouseService(
@@ -41,7 +44,80 @@ func NewHouseService(
 		choreRepository:           choreRepository,
 		choreStatusHistRepository: abstract.New[entities.ChoreStatusHistory](client, dbName),
 		choreReviewVoteRepository: abstract.New[entities.ChoreReviewVote](client, dbName),
+		announcementRepository:    abstract.New[entities.Announcement](client, dbName),
 	}
+}
+
+func userDisplayName(user entities.User) string {
+	return strings.TrimSpace(user.Firstname + " " + user.Lastname)
+}
+
+func (s *HouseService) validateHouseMember(houseId string, userId string) (*entities.House, error) {
+	houseObjectId, err := helpers.ToMongoId(houseId)
+	if err != nil {
+		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
+	}
+
+	house, err := s.houseRepository.FindById(houseObjectId)
+	if err != nil {
+		return nil, helpers.NewLocalizedError("house.error.not_found")
+	}
+	if !stringContains(house.MemberIds, userId) {
+		return nil, helpers.NewLocalizedError("house.error.user_not_member")
+	}
+
+	return house, nil
+}
+
+func recentAnnouncementFilter(houseId string, userId string, now time.Time) bson.M {
+	return bson.M{
+		"houseId": houseId,
+		"userId":  userId,
+		"createdOn": bson.M{
+			"$gte": now.Add(-24 * time.Hour),
+			"$lte": now,
+		},
+	}
+}
+
+func activeAnnouncementFilter(houseId string, now time.Time) bson.M {
+	return bson.M{
+		"houseId":      houseId,
+		"createdOn":    bson.M{"$lt": now},
+		"displayUntil": bson.M{"$gt": now},
+	}
+}
+
+func (s *HouseService) CreateAnnouncement(model dtos.CreateAnnouncementModel, userId string) (*dtos.AnnouncementResponseModel, error) {
+	if _, err := s.validateHouseMember(model.HouseId, userId); err != nil {
+		return nil, err
+	}
+
+	userObjectId, err := helpers.ToMongoId(userId)
+	if err != nil {
+		return nil, helpers.NewLocalizedError("user.error.invalid_user_id")
+	}
+	user, err := s.userRepository.FindById(userObjectId)
+	if err != nil {
+		return nil, helpers.NewLocalizedError("user.error.not_found")
+	}
+
+	now := time.Now()
+	hasRecentAnnouncement, err := s.announcementRepository.ExistsByFilter(recentAnnouncementFilter(model.HouseId, userId, now))
+	if err != nil {
+		return nil, helpers.NewLocalizedError("announcement.error.failed_check_recent")
+	}
+	if hasRecentAnnouncement {
+		return nil, helpers.NewLocalizedError("announcement.error.only_one_per_24_hours")
+	}
+
+	createdAnnouncement, err := s.announcementRepository.Insert(model.ToEntity(userId, now))
+	if err != nil {
+		return nil, helpers.NewLocalizedError("announcement.error.failed_create")
+	}
+
+	response := dtos.AnnouncementToResponseModel(*createdAnnouncement, userDisplayName(*user))
+	return &response, nil
 }
 
 func (s *HouseService) getReviewVotes(chores []entities.Chore) (map[string][]entities.ChoreReviewVote, error) {
@@ -124,20 +200,13 @@ func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House
 
 // GetHouseDetails returns house details with member user objects
 func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dtos.HouseDetailsModel, error) {
-	houseObjectId, err := helpers.ToMongoId(houseId)
+	house, err := s.validateHouseMember(houseId, requesterId)
 	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
-	}
-
-	house, err := s.houseRepository.FindById(houseObjectId)
-	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.not_found")
-	}
-	if !stringContains(house.MemberIds, requesterId) {
-		return nil, helpers.NewLocalizedError("house.error.user_not_member")
+		return nil, err
 	}
 
 	members := make([]dtos.UserResultModel, 0, len(house.MemberIds))
+	membersById := make(map[string]entities.User, len(house.MemberIds))
 	for _, memberId := range house.MemberIds {
 		userObjectId, err := helpers.ToMongoId(memberId)
 		if err != nil {
@@ -147,6 +216,7 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 		if err != nil {
 			continue
 		}
+		membersById[memberId] = *user
 		members = append(members, dtos.UserToResultModel(*user))
 	}
 
@@ -162,6 +232,28 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 		chores = append(chores, dtos.ChoreToResponseModelWithReview(c, histories, reviewVotesByChoreId[c.Id.Hex()]))
 	}
 
+	now := time.Now()
+	announcementEntities, err := s.announcementRepository.FindManyByFilter(activeAnnouncementFilter(houseId, now))
+	if err != nil {
+		return nil, helpers.NewLocalizedError("announcement.error.failed_load")
+	}
+	sort.Slice(announcementEntities, func(i, j int) bool {
+		return announcementEntities[i].CreatedOn.After(announcementEntities[j].CreatedOn)
+	})
+
+	announcements := make([]dtos.AnnouncementResponseModel, 0, len(announcementEntities))
+	for _, announcement := range announcementEntities {
+		announcedBy := ""
+		if user, ok := membersById[announcement.UserId]; ok {
+			announcedBy = userDisplayName(user)
+		} else if userObjectId, conversionErr := helpers.ToMongoId(announcement.UserId); conversionErr == nil {
+			if user, lookupErr := s.userRepository.FindById(userObjectId); lookupErr == nil {
+				announcedBy = userDisplayName(*user)
+			}
+		}
+		announcements = append(announcements, dtos.AnnouncementToResponseModel(announcement, announcedBy))
+	}
+
 	return &dtos.HouseDetailsModel{
 		Id:             house.Id.Hex(),
 		OwnerId:        house.OwnerId,
@@ -174,6 +266,7 @@ func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dto
 		CreatedOn:      dtos.NewUTCDateTime(house.CreatedOn),
 		UpdatedOn:      dtos.NewUTCDateTime(house.UpdatedOn),
 		Chores:         chores,
+		Announcements:  announcements,
 	}, nil
 }
 

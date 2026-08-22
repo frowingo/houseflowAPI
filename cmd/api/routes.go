@@ -88,6 +88,7 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 
 	houseRoutes := api.Group("/house", middleware.AuthRequired(localizationService), middleware.UserRateLimit(localizationService))
 	houseRoutes.Get("/details", houseController.GetHouseDetails)
+	houseRoutes.Post("/announcement", houseController.CreateAnnouncement)
 	houseRoutes.Post("/create", houseController.CreateHouse)
 	houseRoutes.Post("/join", houseController.JoinHouseByCode)
 	// ----------
