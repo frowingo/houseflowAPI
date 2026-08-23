@@ -46,5 +46,8 @@ func AllMigrations() []migration.Migration {
 		&createLocalizationLanguagesCollection{},
 		// --- Announcement Queries ---
 		&announcementQueryIndexes{},
+		// --- User Info History ---
+		&createUserInfoHistoryCollection{},
+		&userInfoHistoryLocalizations{},
 	}
 }

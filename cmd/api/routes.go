@@ -42,7 +42,11 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 
 	// - AUTH -
 	notificationService := services.NewNotificationService()
-	authService := services.NewAuthService(abstract.New[entities.User](client, dbName), notificationService)
+	authService := services.NewAuthService(
+		abstract.New[entities.User](client, dbName),
+		notificationService,
+		abstract.New[entities.UserInfoHistory](client, dbName),
+	)
 	authController := controllers.NewAuthController(authService, localizationService)
 
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit(localizationService))
@@ -60,6 +64,7 @@ func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
 		abstract.New[entities.User](client, dbName),
 		abstract.New[entities.House](client, dbName),
 		abstract.New[entities.ImageAsset](client, dbName),
+		abstract.New[entities.UserInfoHistory](client, dbName),
 	)
 	userController := controllers.NewUserController(userService, localizationService)
 
