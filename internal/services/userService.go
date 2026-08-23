@@ -13,20 +13,28 @@ import (
 var imageAssetCache = helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 
 type UserService struct {
-	dbRepository         *abstract.DbRepository[entities.User]
-	houseRepository      *abstract.DbRepository[entities.House]
-	imageAssetRepository *abstract.DbRepository[entities.ImageAsset]
+	dbRepository              *abstract.DbRepository[entities.User]
+	houseRepository           *abstract.DbRepository[entities.House]
+	imageAssetRepository      *abstract.DbRepository[entities.ImageAsset]
+	userInfoHistoryRepository *abstract.DbRepository[entities.UserInfoHistory]
 }
 
 func NewUserService(
 	dbRepository *abstract.DbRepository[entities.User],
 	houseRepository *abstract.DbRepository[entities.House],
 	imageAssetRepository *abstract.DbRepository[entities.ImageAsset],
+	userInfoHistoryRepositories ...*abstract.DbRepository[entities.UserInfoHistory],
 ) *UserService {
+	var userInfoHistoryRepository *abstract.DbRepository[entities.UserInfoHistory]
+	if len(userInfoHistoryRepositories) > 0 {
+		userInfoHistoryRepository = userInfoHistoryRepositories[0]
+	}
+
 	return &UserService{
-		dbRepository:         dbRepository,
-		houseRepository:      houseRepository,
-		imageAssetRepository: imageAssetRepository,
+		dbRepository:              dbRepository,
+		houseRepository:           houseRepository,
+		imageAssetRepository:      imageAssetRepository,
+		userInfoHistoryRepository: userInfoHistoryRepository,
 	}
 }
 
@@ -41,8 +49,14 @@ func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, er
 	}
 	entity.HashPassword = hashedPassword
 
-	_, err = r.dbRepository.Insert(entity)
+	createdUser, err := r.dbRepository.Insert(entity)
 	if err != nil {
+		return nil, err
+	}
+	if err := insertUserInfoHistory(
+		r.userInfoHistoryRepository,
+		newUserInfoHistoryEntries(*createdUser, createdUser.CreatedOn),
+	); err != nil {
 		return nil, err
 	}
 
@@ -121,12 +135,19 @@ func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dto
 }
 
 func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (*dtos.UserResultModel, error) {
+
 	objectId, err := helpers.ToMongoId(userId)
 	if err != nil {
 		return nil, err
 	}
 
-	fields := bson.M{"updatedOn": time.Now()}
+	now := time.Now()
+	historyChanges := profileUserInfoChanges(model)
+	if err := validateProfileUpdateIntervals(r.userInfoHistoryRepository, userId, historyChanges, now); err != nil {
+		return nil, err
+	}
+
+	fields := bson.M{"updatedOn": now}
 
 	if model.Firstname != nil {
 		fields["firstName"] = *model.Firstname
@@ -150,6 +171,12 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		fields["language"] = helpers.NormalizeLanguage(*model.Language)
 	}
 	if err := r.dbRepository.UpdateFields(objectId, fields); err != nil {
+		return nil, err
+	}
+	if err := insertUserInfoHistory(
+		r.userInfoHistoryRepository,
+		userInfoHistoryEntries(userId, historyChanges, now),
+	); err != nil {
 		return nil, err
 	}
 

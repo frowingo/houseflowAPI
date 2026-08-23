@@ -12,14 +12,25 @@ import (
 )
 
 type AuthService struct {
-	dbRepository        *abstract.DbRepository[entities.User]
-	notificationService *NotificationService
+	dbRepository              *abstract.DbRepository[entities.User]
+	userInfoHistoryRepository *abstract.DbRepository[entities.UserInfoHistory]
+	notificationService       *NotificationService
 }
 
-func NewAuthService(dbRepository *abstract.DbRepository[entities.User], notificationService *NotificationService) *AuthService {
+func NewAuthService(
+	dbRepository *abstract.DbRepository[entities.User],
+	notificationService *NotificationService,
+	userInfoHistoryRepositories ...*abstract.DbRepository[entities.UserInfoHistory],
+) *AuthService {
+	var userInfoHistoryRepository *abstract.DbRepository[entities.UserInfoHistory]
+	if len(userInfoHistoryRepositories) > 0 {
+		userInfoHistoryRepository = userInfoHistoryRepositories[0]
+	}
+
 	return &AuthService{
-		dbRepository:        dbRepository,
-		notificationService: notificationService,
+		dbRepository:              dbRepository,
+		userInfoHistoryRepository: userInfoHistoryRepository,
+		notificationService:       notificationService,
 	}
 }
 
@@ -101,6 +112,12 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 
 	newUser, err := r.dbRepository.Insert(entity)
 	if err != nil {
+		return "", err
+	}
+	if err := insertUserInfoHistory(
+		r.userInfoHistoryRepository,
+		newUserInfoHistoryEntries(*newUser, newUser.CreatedOn),
+	); err != nil {
 		return "", err
 	}
 

@@ -1,5 +1,20 @@
 basePath: /api/v1
 definitions:
+  dtos.AnnouncementResponseModel:
+    properties:
+      announcedBy:
+        type: string
+      createdOn:
+        type: string
+      description:
+        type: string
+      houseId:
+        type: string
+      id:
+        type: string
+      title:
+        type: string
+    type: object
   dtos.ChoreResponseModel:
     properties:
       assignedTo:
@@ -69,6 +84,19 @@ definitions:
     - level
     - title
     type: object
+  dtos.CreateAnnouncementModel:
+    properties:
+      description:
+        type: string
+      houseId:
+        type: string
+      title:
+        type: string
+    required:
+    - description
+    - houseId
+    - title
+    type: object
   dtos.CreateHouseModel:
     properties:
       maxMemberCount:
@@ -96,6 +124,14 @@ definitions:
     type: object
   dtos.HouseDetailsModel:
     properties:
+      announcements:
+        items:
+          $ref: '#/definitions/dtos.AnnouncementResponseModel'
+        type: array
+      chores:
+        items:
+          $ref: '#/definitions/dtos.ChoreResponseModel'
+        type: array
       createdOn:
         type: string
       id:
@@ -558,6 +594,40 @@ paths:
       summary: Update chore status
       tags:
       - Chore
+  /house/announcement:
+    post:
+      consumes:
+      - application/json
+      description: Create an announcement that is displayed for 24 hours
+      parameters:
+      - description: Announcement object
+        in: body
+        name: announcement
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateAnnouncementModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.AnnouncementResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a house announcement
+      tags:
+      - House
   /house/create:
     post:
       consumes:

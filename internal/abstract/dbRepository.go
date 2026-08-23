@@ -60,6 +60,23 @@ func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 	return &entity, nil
 }
 
+func (r *DbRepository[T]) InsertMany(entities []T) error {
+	if len(entities) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	documents := make([]any, 0, len(entities))
+	for _, entity := range entities {
+		documents = append(documents, entity)
+	}
+
+	_, err := r.getCollection().InsertMany(ctx, documents)
+	return err
+}
+
 func (r *DbRepository[T]) FindById(id primitive.ObjectID) (*T, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

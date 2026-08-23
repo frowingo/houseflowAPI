@@ -7,7 +7,7 @@ import (
 )
 
 type Announcement struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Id           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title        string             `bson:"title" json:"title"`
 	Description  string             `bson:"description" json:"description"`
 	UserId       string             `bson:"userId" json:"userId"`
