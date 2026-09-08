@@ -96,7 +96,7 @@ func (f *concurrencyFixture) seedUser(t *testing.T, password string) entities.Us
 
 func (f *concurrencyFixture) createHouse(t *testing.T, owner entities.User, capacity int) *entities.House {
 	t.Helper()
-	house, err := f.house.CreateHouse(dtos.CreateHouseModel{
+	house, err := f.house.CreateHouse(f.ctx, dtos.CreateHouseModel{
 		OwnerId: owner.Id.Hex(), Name: "Concurrent house", Type: entities.SharedHouse, MaxMemberCount: capacity,
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func TestConcurrentHouseJoinsRespectCapacityAndKeepMembershipConsistent(t *testi
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.house.JoinHouseByCode(dtos.JoinHouseByCodeModel{
+			_, errs[i] = f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{
 				UserId: users[i].Id.Hex(), InviteCode: house.InviteCode,
 			})
 		}(i)
@@ -174,7 +174,7 @@ func TestConcurrentHouseCreatesDoNotLoseUserMemberships(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.house.CreateHouse(dtos.CreateHouseModel{
+			_, errs[i] = f.house.CreateHouse(f.ctx, dtos.CreateHouseModel{
 				OwnerId: owner.Id.Hex(), Name: fmt.Sprintf("House %d", i),
 				Type: entities.SharedHouse, MaxMemberCount: 4,
 			})
@@ -205,11 +205,11 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 	owner := f.seedUser(t, "correct-password")
 	house := f.createHouse(t, owner, 2)
 	member := f.seedUser(t, "correct-password")
-	if _, err := f.house.JoinHouseByCode(dtos.JoinHouseByCodeModel{UserId: member.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
+	if _, err := f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{UserId: member.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
 		t.Fatal(err)
 	}
 	create := func(title string) *dtos.ChoreResponseModel {
-		result, err := f.chore.CreateChore(dtos.CreateChoreModel{
+		result, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
 			Title: title, Description: "Concurrency test chore", AssignedTo: owner.Id.Hex(),
 			DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Easy,
 		}, owner.Id.Hex())
@@ -220,7 +220,7 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 	}
 	first := create("First chore")
 	second := create("Second chore")
-	_, err := f.chore.UpdateChoreStatusBulk(dtos.BulkUpdateChoreStatusModel{
+	_, err := f.chore.UpdateChoreStatusBulk(f.ctx, dtos.BulkUpdateChoreStatusModel{
 		HouseId: house.Id.Hex(),
 		Chores: []dtos.UpdateChoreStatusModel{
 			{ChoreId: first.Id, Status: entities.Progress},
@@ -249,7 +249,7 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.chore.UpdateChoreStatusBulk(dtos.BulkUpdateChoreStatusModel{
+			_, errs[i] = f.chore.UpdateChoreStatusBulk(f.ctx, dtos.BulkUpdateChoreStatusModel{
 				HouseId: house.Id.Hex(), Chores: []dtos.UpdateChoreStatusModel{{ChoreId: first.Id, Status: entities.Progress}},
 			}, owner.Id.Hex())
 		}(i)
@@ -280,11 +280,11 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 	house := f.createHouse(t, owner, 3)
 	reviewers := []entities.User{f.seedUser(t, "correct-password"), f.seedUser(t, "correct-password")}
 	for _, reviewer := range reviewers {
-		if _, err := f.house.JoinHouseByCode(dtos.JoinHouseByCodeModel{UserId: reviewer.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
+		if _, err := f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{UserId: reviewer.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	chore, err := f.chore.CreateChore(dtos.CreateChoreModel{
+	chore, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
 		Title: "Review chore", Description: "Concurrent review test", AssignedTo: owner.Id.Hex(),
 		DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Medium,
 	}, owner.Id.Hex())
@@ -292,7 +292,7 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, status := range []entities.ChoreStatus{entities.Progress, entities.InTest} {
-		if _, err := f.chore.UpdateChoreStatusBulk(dtos.BulkUpdateChoreStatusModel{
+		if _, err := f.chore.UpdateChoreStatusBulk(f.ctx, dtos.BulkUpdateChoreStatusModel{
 			HouseId: house.Id.Hex(), Chores: []dtos.UpdateChoreStatusModel{{ChoreId: chore.Id, Status: status}},
 		}, owner.Id.Hex()); err != nil {
 			t.Fatal(err)
@@ -308,7 +308,7 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.chore.ReviewChore(dtos.ReviewChoreModel{ChoreId: chore.Id, IsApproved: &approved}, reviewers[i].Id.Hex())
+			_, errs[i] = f.chore.ReviewChore(f.ctx, dtos.ReviewChoreModel{ChoreId: chore.Id, IsApproved: &approved}, reviewers[i].Id.Hex())
 		}(i)
 	}
 	close(start)
@@ -343,7 +343,7 @@ func TestConcurrentFailedLoginsDoNotLoseIncrements(t *testing.T) {
 		go func() {
 			defer workers.Done()
 			<-start
-			_, _ = f.auth.Login(user.Email, "wrong-password")
+			_, _ = f.auth.Login(f.ctx, user.Email, "wrong-password")
 		}()
 	}
 	close(start)
@@ -369,7 +369,7 @@ func TestConcurrentAnnouncementAndProfileLimits(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, announcementErrors[i] = f.house.CreateAnnouncement(dtos.CreateAnnouncementModel{
+			_, announcementErrors[i] = f.house.CreateAnnouncement(f.ctx, dtos.CreateAnnouncementModel{
 				HouseId: house.Id.Hex(), Title: fmt.Sprintf("Notice %d", i), Description: "Concurrent announcement",
 			}, owner.Id.Hex())
 		}(i)
@@ -394,7 +394,7 @@ func TestConcurrentAnnouncementAndProfileLimits(t *testing.T) {
 		go func(i int, name *string) {
 			defer workers.Done()
 			<-start
-			_, profileErrors[i] = f.user.UpdateProfile(owner.Id.Hex(), dtos.UpdateUserModel{Firstname: name})
+			_, profileErrors[i] = f.user.UpdateProfile(f.ctx, owner.Id.Hex(), dtos.UpdateUserModel{Firstname: name})
 		}(i, name)
 	}
 	close(start)
@@ -431,7 +431,7 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		}).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.house.CreateHouse(dtos.CreateHouseModel{
+		if _, err := f.house.CreateHouse(f.ctx, dtos.CreateHouseModel{
 			OwnerId: owner.Id.Hex(), Name: "Must roll back", Type: entities.SharedHouse, MaxMemberCount: 2,
 		}); err == nil {
 			t.Fatal("expected user validation failure")
@@ -458,7 +458,7 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		}).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.house.JoinHouseByCode(dtos.JoinHouseByCodeModel{
+		if _, err := f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{
 			UserId: member.Id.Hex(), InviteCode: house.InviteCode,
 		}); err == nil {
 			t.Fatal("expected user validation failure")
@@ -484,7 +484,7 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		}).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.chore.CreateChore(dtos.CreateChoreModel{
+		if _, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
 			Title: "Must roll back", Description: "History insert must fail", AssignedTo: owner.Id.Hex(),
 			DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Easy,
 		}, owner.Id.Hex()); err == nil {

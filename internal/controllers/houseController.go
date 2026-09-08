@@ -51,9 +51,11 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
-	house, err := r.houseService.CreateHouse(*model)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	house, err := r.houseService.CreateHouse(ctx, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	response := dtos.HouseToResponseModel(*house)
@@ -78,9 +80,11 @@ func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	details, err := r.houseService.GetHouseDetails(houseId, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	details, err := r.houseService.GetHouseDetails(ctx, houseId, userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(core.Success(details))
@@ -107,9 +111,11 @@ func (r *HouseController) CreateAnnouncement(c *fiber.Ctx) error {
 	}
 
 	userId := c.Locals("userID").(string)
-	announcement, err := r.houseService.CreateAnnouncement(*model, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	announcement, err := r.houseService.CreateAnnouncement(ctx, *model, userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(core.Success(announcement))
@@ -138,9 +144,11 @@ func (r *HouseController) JoinHouseByCode(c *fiber.Ctx) error {
 
 	model.UserId = c.Locals("userID").(string)
 
-	house, err := r.houseService.JoinHouseByCode(*model)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	house, err := r.houseService.JoinHouseByCode(ctx, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	response := dtos.HouseToResponseModel(*house)

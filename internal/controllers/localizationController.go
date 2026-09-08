@@ -32,9 +32,11 @@ func NewLocalizationController(localizationService *services.LocalizationService
 func (r *LocalizationController) GetPlaintexts(c *fiber.Ctx) error {
 	language := c.Params("language")
 
-	plaintexts, err := r.localizationService.GetPlaintexts(language)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	plaintexts, err := r.localizationService.GetPlaintexts(ctx, language)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizationService, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizationService, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(core.Success(plaintexts))
@@ -48,9 +50,11 @@ func (r *LocalizationController) GetPlaintexts(c *fiber.Ctx) error {
 // @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Router /localization/languages [get]
 func (r *LocalizationController) GetLanguages(c *fiber.Ctx) error {
-	languages, err := r.localizationService.GetLanguages()
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	languages, err := r.localizationService.GetLanguages(ctx)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizationService, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizationService, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(core.Success(languages))
@@ -65,9 +69,11 @@ func (r *LocalizationController) GetLanguages(c *fiber.Ctx) error {
 // @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Router /localization/language/{prefix} [get]
 func (r *LocalizationController) GetLanguage(c *fiber.Ctx) error {
-	languages, err := r.localizationService.GetLanguage(c.Params("prefix"))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	languages, err := r.localizationService.GetLanguage(ctx, c.Params("prefix"))
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizationService, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizationService, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(core.Success(languages))
@@ -94,8 +100,10 @@ func (r *LocalizationController) InsertLocalizationLanguage(c *fiber.Ctx) error 
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizationService, err.Error()))
 	}
 
-	if err := r.localizationService.InsertLocalizationLanguage(*model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizationService, err.Error()))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.localizationService.InsertLocalizationLanguage(ctx, *model); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizationService, err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(core.Success[any](nil))
@@ -128,8 +136,10 @@ func (r *LocalizationController) InsertLocalizations(c *fiber.Ctx) error {
 		}
 	}
 
-	if err := r.localizationService.InsertLocalizations(models); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizationService, err.Error()))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.localizationService.InsertLocalizations(ctx, models); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizationService, err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(core.Success[any](nil))

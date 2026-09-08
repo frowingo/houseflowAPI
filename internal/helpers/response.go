@@ -1,6 +1,8 @@
 package helpers
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"houseflowApi/internal/models/core"
 	"strings"
@@ -9,7 +11,7 @@ import (
 )
 
 type MessageLocalizer interface {
-	LocalizeMessage(language string, keyOrMessage string) string
+	LocalizeMessage(ctx context.Context, language string, keyOrMessage string) string
 }
 
 func LocalizedMessage(c *fiber.Ctx, localizer MessageLocalizer, keyOrMessage string) string {
@@ -21,7 +23,7 @@ func LocalizedMessage(c *fiber.Ctx, localizer MessageLocalizer, keyOrMessage str
 		}
 		return fmt.Sprintf("%s: %s", key, strings.Join(args, ", "))
 	}
-	return localizer.LocalizeMessage(language, keyOrMessage)
+	return localizer.LocalizeMessage(c.UserContext(), language, keyOrMessage)
 }
 
 func LocalizedErrorMap(c *fiber.Ctx, localizer MessageLocalizer, keyOrMessage string) fiber.Map {
@@ -34,6 +36,32 @@ func LocalizedMessageMap(c *fiber.Ctx, localizer MessageLocalizer, keyOrMessage 
 
 func LocalizedCoreError(c *fiber.Ctx, localizer MessageLocalizer, keyOrMessage string) core.ErrorResponse {
 	return core.Error(LocalizedMessage(c, localizer, keyOrMessage))
+}
+
+func RespondLocalizedError(c *fiber.Ctx, localizer MessageLocalizer, err error) error {
+	status := fiber.StatusInternalServerError
+	message := "common.error.internal_server_error"
+	var applicationError *ApplicationError
+	if errors.As(err, &applicationError) {
+		message = err.Error()
+		switch applicationError.Kind {
+		case ErrorKindBadRequest:
+			status = fiber.StatusBadRequest
+		case ErrorKindNotFound:
+			status = fiber.StatusNotFound
+		case ErrorKindConflict:
+			status = fiber.StatusConflict
+		case ErrorKindRateLimited:
+			status = fiber.StatusTooManyRequests
+		case ErrorKindUnavailable:
+			status = fiber.StatusServiceUnavailable
+		}
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		status = fiber.StatusServiceUnavailable
+		message = "database.error.transaction_unavailable"
+	}
+
+	return c.Status(status).JSON(LocalizedCoreError(c, localizer, message))
 }
 
 func RequestLanguage(c *fiber.Ctx) string {

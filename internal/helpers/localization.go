@@ -53,8 +53,63 @@ func LocalizationMessage(key string, args ...string) string {
 	return strings.Join(parts, localizationArgSeparator)
 }
 
+type ErrorKind uint8
+
+const (
+	ErrorKindBadRequest ErrorKind = iota
+	ErrorKindNotFound
+	ErrorKindConflict
+	ErrorKindRateLimited
+	ErrorKindUnavailable
+)
+
+type ApplicationError struct {
+	Kind  ErrorKind
+	Key   string
+	Args  []string
+	Cause error
+}
+
+func (e *ApplicationError) Error() string {
+	return LocalizationMessage(e.Key, e.Args...)
+}
+
+func (e *ApplicationError) Unwrap() error {
+	return e.Cause
+}
+
 func NewLocalizedError(key string, args ...string) error {
-	return errors.New(LocalizationMessage(key, args...))
+	return newApplicationError(ErrorKindBadRequest, key, nil, args...)
+}
+
+func NewNotFoundError(key string, args ...string) error {
+	return newApplicationError(ErrorKindNotFound, key, nil, args...)
+}
+
+func NewConflictError(key string, args ...string) error {
+	return newApplicationError(ErrorKindConflict, key, nil, args...)
+}
+
+func NewRateLimitError(key string, args ...string) error {
+	return newApplicationError(ErrorKindRateLimited, key, nil, args...)
+}
+
+func NewUnavailableError(key string, cause error, args ...string) error {
+	return newApplicationError(ErrorKindUnavailable, key, cause, args...)
+}
+
+func newApplicationError(kind ErrorKind, key string, cause error, args ...string) error {
+	return &ApplicationError{
+		Kind:  kind,
+		Key:   key,
+		Args:  args,
+		Cause: cause,
+	}
+}
+
+func IsApplicationError(err error, key string) bool {
+	var applicationError *ApplicationError
+	return errors.As(err, &applicationError) && applicationError.Key == key
 }
 
 func SplitLocalizationMessage(value string) (string, []string) {

@@ -51,5 +51,7 @@ func AllMigrations() []migration.Migration {
 		&userInfoHistoryLocalizations{},
 		// --- Concurrency ---
 		&concurrencyFoundation{},
+		// --- HTTP Error Contract ---
+		&httpErrorContractLocalizations{},
 	}
 }

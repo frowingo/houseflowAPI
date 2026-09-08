@@ -88,7 +88,7 @@ func userInfoHistoryEntries(userId string, changes []userInfoChange, updateOn ti
 	return entries
 }
 
-func validateProfileUpdateIntervalsContext(
+func validateProfileUpdateIntervals(
 	ctx context.Context,
 	repository *abstract.DbRepository[entities.UserInfoHistory],
 	userId string,
@@ -106,7 +106,7 @@ func validateProfileUpdateIntervalsContext(
 			continue
 		}
 
-		hasRecentUpdate, err := repository.ExistsByFilterContext(ctx,
+		hasRecentUpdate, err := repository.ExistsByFilter(ctx,
 			recentUserInfoHistoryFilter(userId, change.columnName, now),
 		)
 
@@ -115,7 +115,7 @@ func validateProfileUpdateIntervalsContext(
 		}
 
 		if hasRecentUpdate {
-			return helpers.NewLocalizedError("user.error.profile_field_update_limit", change.columnName)
+			return helpers.NewRateLimitError("user.error.profile_field_update_limit", change.columnName)
 		}
 	}
 
@@ -132,7 +132,7 @@ func recentUserInfoHistoryFilter(userId string, columnName string, now time.Time
 	}
 }
 
-func insertUserInfoHistoryContext(
+func insertUserInfoHistory(
 	ctx context.Context,
 	repository *abstract.DbRepository[entities.UserInfoHistory],
 	entries []entities.UserInfoHistory,
@@ -140,5 +140,5 @@ func insertUserInfoHistoryContext(
 	if repository == nil || len(entries) == 0 {
 		return nil
 	}
-	return repository.InsertManyContext(ctx, entries)
+	return repository.InsertMany(ctx, entries)
 }

@@ -42,18 +42,12 @@ func NewChoreService(
 	}
 }
 
-func (r *ChoreService) validateHouseMember(houseId string, userId string) (*entities.House, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
-	return r.validateHouseMemberContext(ctx, houseId, userId)
-}
-
-func (r *ChoreService) validateHouseMemberContext(ctx context.Context, houseId string, userId string) (*entities.House, error) {
+func (r *ChoreService) validateHouseMember(ctx context.Context, houseId string, userId string) (*entities.House, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
 		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
 	}
-	house, err := r.houseRepository.FindByIDContext(ctx, houseObjectId)
+	house, err := r.houseRepository.FindByID(ctx, houseObjectId)
 	if err != nil {
 		return nil, helpers.NewLocalizedError("house.error.not_found")
 	}
@@ -63,13 +57,7 @@ func (r *ChoreService) validateHouseMemberContext(ctx context.Context, houseId s
 	return house, nil
 }
 
-func (r *ChoreService) validateAssignee(house *entities.House, assigneeId string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
-	return r.validateAssigneeContext(ctx, house, assigneeId)
-}
-
-func (r *ChoreService) validateAssigneeContext(ctx context.Context, house *entities.House, assigneeId string) error {
+func (r *ChoreService) validateAssignee(ctx context.Context, house *entities.House, assigneeId string) error {
 	assigneeObjectId, err := helpers.ToMongoId(assigneeId)
 	if err != nil {
 		return helpers.NewLocalizedError("chore.error.invalid_assignee_id")
@@ -77,20 +65,20 @@ func (r *ChoreService) validateAssigneeContext(ctx context.Context, house *entit
 	if !stringContains(house.MemberIds, assigneeId) {
 		return helpers.NewLocalizedError("chore.error.assignee_not_member")
 	}
-	if _, err := r.userRepository.FindByIDContext(ctx, assigneeObjectId); err != nil {
+	if _, err := r.userRepository.FindByID(ctx, assigneeObjectId); err != nil {
 		return helpers.NewLocalizedError("chore.error.assignee_not_found")
 	}
 	return nil
 }
 
-func (r *ChoreService) addStatusHistoryContext(ctx context.Context, choreId string, status entities.ChoreStatus, updaterId string) error {
+func (r *ChoreService) addStatusHistory(ctx context.Context, choreId string, status entities.ChoreStatus, updaterId string) error {
 	statusHistory := entities.ChoreStatusHistory{
 		ChoreId:  choreId,
 		Status:   status,
 		DateTime: time.Now(),
 		Updater:  updaterId,
 	}
-	_, err := r.choreStatusHistRepository.InsertContext(ctx, statusHistory)
+	_, err := r.choreStatusHistRepository.Insert(ctx, statusHistory)
 	return err
 }
 
@@ -105,65 +93,63 @@ func nextChoreStatus(current entities.ChoreStatus) (entities.ChoreStatus, bool) 
 	}
 }
 
-func (r *ChoreService) choreResponse(chore entities.Chore) (dtos.ChoreResponseModel, error) {
-	histories, err := r.choreStatusHistRepository.FindManyByColumn("choreId", chore.Id.Hex())
+func (r *ChoreService) choreResponse(ctx context.Context, chore entities.Chore) (dtos.ChoreResponseModel, error) {
+	histories, err := r.choreStatusHistRepository.FindManyByColumn(ctx, "choreId", chore.Id.Hex())
 	if err != nil {
 		return dtos.ChoreResponseModel{}, err
 	}
-	votes, err := r.allReviewVotes(chore.Id.Hex())
+	votes, err := r.allReviewVotes(ctx, chore.Id.Hex())
 	if err != nil {
 		return dtos.ChoreResponseModel{}, err
 	}
 	return dtos.ChoreToResponseModelWithReview(chore, histories, votes), nil
 }
 
-func (r *ChoreService) CreateChore(chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
+func (r *ChoreService) CreateChore(ctx context.Context, chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
 	var createdChore *entities.Chore
 	err := r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		house, err := r.validateHouseMemberContext(txCtx, chore.HouseId, requesterId)
+		house, err := r.validateHouseMember(txCtx, chore.HouseId, requesterId)
 		if err != nil {
 			return err
 		}
-		if err := r.validateAssigneeContext(txCtx, house, chore.AssignedTo); err != nil {
+		if err := r.validateAssignee(txCtx, house, chore.AssignedTo); err != nil {
 			return err
 		}
-		createdChore, err = r.dbRepository.InsertContext(txCtx, chore.ToEntity(house.OwnerId))
+		createdChore, err = r.dbRepository.Insert(txCtx, chore.ToEntity(house.OwnerId))
 		if err != nil {
 			return err
 		}
-		return r.addStatusHistoryContext(txCtx, createdChore.Id.Hex(), entities.Draft, requesterId)
+		return r.addStatusHistory(txCtx, createdChore.Id.Hex(), entities.Draft, requesterId)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	response, err := r.choreResponse(*createdChore)
+	response, err := r.choreResponse(ctx, *createdChore)
 	if err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
-func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
+func (r *ChoreService) UpdateChore(ctx context.Context, id string, chore dtos.CreateChoreModel, requesterId string) (*dtos.ChoreResponseModel, error) {
 
 	mongoId, err := helpers.ToMongoId(id)
 	if err != nil {
 		return nil, err
 	}
-	currentChore, err := r.dbRepository.FindByID(mongoId)
+	currentChore, err := r.dbRepository.FindByID(ctx, mongoId)
 	if err != nil {
 		return nil, err
 	}
 	if currentChore.HouseId != chore.HouseId {
 		return nil, helpers.NewLocalizedError("chore.error.house_cannot_change")
 	}
-	house, err := r.validateHouseMember(currentChore.HouseId, requesterId)
+	house, err := r.validateHouseMember(ctx, currentChore.HouseId, requesterId)
 	if err != nil {
 		return nil, err
 	}
-	if err := r.validateAssignee(house, chore.AssignedTo); err != nil {
+	if err := r.validateAssignee(ctx, house, chore.AssignedTo); err != nil {
 		return nil, err
 	}
 
@@ -173,19 +159,17 @@ func (r *ChoreService) UpdateChore(id string, chore dtos.CreateChoreModel, reque
 		"recurringInterval": chore.RecurringInterval,
 	}, "$inc": bson.M{"version": 1}}
 	var updatedChore entities.Chore
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	err = r.dbRepository.Collection().FindOneAndUpdate(ctx, bson.M{
 		"_id": mongoId, "version": currentChore.Version,
 	}, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedChore)
 	if err == mongo.ErrNoDocuments {
-		return nil, helpers.NewLocalizedError("chore.error.concurrent_update")
+		return nil, helpers.NewConflictError("chore.error.concurrent_update")
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	response, err := r.choreResponse(updatedChore)
+	response, err := r.choreResponse(ctx, updatedChore)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +205,7 @@ func (r *ChoreService) advanceChoreStatus(currentChore *entities.Chore, targetSt
 	return nil
 }
 
-func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusModel, userId string) ([]dtos.ChoreResponseModel, error) {
+func (r *ChoreService) UpdateChoreStatusBulk(ctx context.Context, model dtos.BulkUpdateChoreStatusModel, userId string) ([]dtos.ChoreResponseModel, error) {
 
 	if len(model.Chores) == 0 {
 		return []dtos.ChoreResponseModel{}, nil
@@ -234,12 +218,10 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 		choreIdMap[update.ChoreId] = true
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	updatedEntities := make([]entities.Chore, 0, len(model.Chores))
 	err := r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
 		updatedEntities = updatedEntities[:0]
-		house, err := r.validateHouseMemberContext(txCtx, model.HouseId, userId)
+		house, err := r.validateHouseMember(txCtx, model.HouseId, userId)
 		if err != nil {
 			return err
 		}
@@ -248,7 +230,7 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 			if err != nil {
 				return helpers.NewLocalizedError("chore.error.invalid_chore_id", updateRequest.ChoreId)
 			}
-			currentChore, err := r.dbRepository.FindByIDContext(txCtx, mongoID)
+			currentChore, err := r.dbRepository.FindByID(txCtx, mongoID)
 			if err != nil {
 				return helpers.NewLocalizedError("chore.error.not_found", updateRequest.ChoreId)
 			}
@@ -272,16 +254,16 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 			}, bson.M{"$set": updateFields, "$inc": bson.M{"version": 1}},
 				options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updated)
 			if err == mongo.ErrNoDocuments {
-				return helpers.NewLocalizedError("chore.error.concurrent_update")
+				return helpers.NewConflictError("chore.error.concurrent_update")
 			}
 			if err != nil {
 				return err
 			}
-			if err := r.addStatusHistoryContext(txCtx, updateRequest.ChoreId, updateRequest.Status, userId); err != nil {
+			if err := r.addStatusHistory(txCtx, updateRequest.ChoreId, updateRequest.Status, userId); err != nil {
 				return err
 			}
 			if previousStatus == entities.Progress && updated.Status == entities.Completed {
-				if err := r.addStatusHistoryContext(txCtx, updateRequest.ChoreId, entities.Completed, userId); err != nil {
+				if err := r.addStatusHistory(txCtx, updateRequest.ChoreId, entities.Completed, userId); err != nil {
 					return err
 				}
 			}
@@ -294,7 +276,7 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 	}
 	responses := make([]dtos.ChoreResponseModel, 0, len(updatedEntities))
 	for _, updated := range updatedEntities {
-		response, err := r.choreResponse(updated)
+		response, err := r.choreResponse(ctx, updated)
 		if err != nil {
 			return nil, err
 		}
@@ -303,24 +285,22 @@ func (r *ChoreService) UpdateChoreStatusBulk(model dtos.BulkUpdateChoreStatusMod
 	return responses, nil
 }
 
-func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId string) (*dtos.ChoreResponseModel, error) {
+func (r *ChoreService) ReviewChore(ctx context.Context, model dtos.ReviewChoreModel, reviewerId string) (*dtos.ChoreResponseModel, error) {
 	choreObjectId, err := helpers.ToMongoId(model.ChoreId)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	var currentChore *entities.Chore
 	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		current, err := r.dbRepository.FindByIDContext(txCtx, choreObjectId)
+		current, err := r.dbRepository.FindByID(txCtx, choreObjectId)
 		if err != nil {
 			return err
 		}
 		if current.Status != entities.InTest {
 			return helpers.NewLocalizedError("chore.error.not_in_review")
 		}
-		house, err := r.validateHouseMemberContext(txCtx, current.HouseId, reviewerId)
+		house, err := r.validateHouseMember(txCtx, current.HouseId, reviewerId)
 		if err != nil {
 			return err
 		}
@@ -337,7 +317,7 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		}, bson.M{"$inc": bson.M{"version": 1}},
 			options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&locked)
 		if err == mongo.ErrNoDocuments {
-			return helpers.NewLocalizedError("chore.error.concurrent_update")
+			return helpers.NewConflictError("chore.error.concurrent_update")
 		}
 		if err != nil {
 			return err
@@ -347,9 +327,9 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 			ChoreId: model.ChoreId, HouseId: locked.HouseId, ReviewRound: locked.ReviewRound,
 			ReviewerId: reviewerId, IsApproved: *model.IsApproved, CreatedOn: time.Now(),
 		}
-		if _, err := r.choreReviewVoteRepository.InsertContext(txCtx, vote); err != nil {
+		if _, err := r.choreReviewVoteRepository.Insert(txCtx, vote); err != nil {
 			if mongo.IsDuplicateKeyError(err) {
-				return helpers.NewLocalizedError("chore.error.review_vote_already_exists")
+				return helpers.NewConflictError("chore.error.review_vote_already_exists")
 			}
 			return err
 		}
@@ -386,13 +366,13 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 		}
 
 		if historyStatus >= 0 {
-			if err := r.dbRepository.UpdateFieldsContext(txCtx, choreObjectId, bson.M{
+			if err := r.dbRepository.UpdateFields(txCtx, choreObjectId, bson.M{
 				"status": locked.Status, "isCompleted": locked.IsCompleted,
 				"completedBy": locked.CompletedBy, "completedAt": locked.CompletedAt,
 			}); err != nil {
 				return err
 			}
-			if err := r.addStatusHistoryContext(txCtx, model.ChoreId, historyStatus, historyUpdater); err != nil {
+			if err := r.addStatusHistory(txCtx, model.ChoreId, historyStatus, historyUpdater); err != nil {
 				return err
 			}
 		}
@@ -402,15 +382,15 @@ func (r *ChoreService) ReviewChore(model dtos.ReviewChoreModel, reviewerId strin
 	if err != nil {
 		return nil, err
 	}
-	response, err := r.choreResponse(*currentChore)
+	response, err := r.choreResponse(ctx, *currentChore)
 	if err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
-func (r *ChoreService) allReviewVotes(choreId string) ([]entities.ChoreReviewVote, error) {
-	return r.choreReviewVoteRepository.FindManyByFilter(bson.M{
+func (r *ChoreService) allReviewVotes(ctx context.Context, choreId string) ([]entities.ChoreReviewVote, error) {
+	return r.choreReviewVoteRepository.FindManyByFilter(ctx, bson.M{
 		"choreId": choreId,
 	})
 }

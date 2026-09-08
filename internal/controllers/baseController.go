@@ -1,10 +1,20 @@
 package controllers
 
 import (
+	"context"
 	"houseflowApi/internal/helpers"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+const requestTimeout = 10 * time.Second
+
+func requestContext(c *fiber.Ctx) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(c.UserContext(), requestTimeout)
+	c.SetUserContext(ctx)
+	return ctx, cancel
+}
 
 // HealthCheck godoc
 // @Tags Base

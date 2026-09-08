@@ -28,8 +28,8 @@ Concurrency bakımından öne çıkan riskler:
   hata olursa önceki görevler güncellenmiş kalabilir.
 - Bazı sorgular N+1 biçiminde çalışır ve bazı okuma hatalarını atlayarak eksik
   veriyi başarılı cevap olarak döndürebilir.
-- Repository çağrıları çoğunlukla kendi `context.Background()` değerini üretir;
-  HTTP isteğinin deadline/cancel bilgisi veri tabanına kadar taşınmaz.
+- Repository çağrıları context'i çağırandan zorunlu olarak alır; HTTP isteklerinin
+  deadline/cancel bilgisi controller ve service üzerinden veri tabanına taşınır.
 - Mevcut Docker Compose MongoDB'yi standalone çalıştırır. Çok-document
   transaction kullanılacaksa replica set topolojisine geçilmelidir.
 
@@ -341,7 +341,10 @@ Concurrency temeli uygulanmıştır:
 - Rate limiter aynı process içindeki eşzamanlı istekleri tek sayaçta toplar ve
   downstream handler çalışırken kilit tutmaz.
 - Hane detayları tek snapshot içinde batch olarak okunur.
-- Uygulama transaction desteklemeyen MongoDB topolojisinde başlangıçta hata verir.
+- Repository API'si context-first hale getirilmiştir; context üretmeyen eski CRUD
+  metotları kaldırılmıştır.
+- Concurrency ve geçici altyapı hataları standart `409`, `429` ve `503` HTTP
+  cevaplarına dönüştürülür.
 
 Bu aşama command/query ayrımını, WebSocket'i, Redis'i veya RabbitMQ'yu eklemez.
 İstemci retry'larını aynı işlem olarak tanıyacak genel `commandId` sözleşmesi de

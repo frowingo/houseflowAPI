@@ -53,9 +53,11 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	createdChore, err := r.choreService.CreateChore(*chore, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	createdChore, err := r.choreService.CreateChore(ctx, *chore, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(createdChore)
@@ -87,9 +89,11 @@ func (r *ChoreController) UpdateChoreStatus(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	result, err := r.choreService.UpdateChoreStatusBulk(statusUpdates, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	result, err := r.choreService.UpdateChoreStatusBulk(ctx, statusUpdates, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -121,9 +125,11 @@ func (r *ChoreController) ReviewChore(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	result, err := r.choreService.ReviewChore(*review, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	result, err := r.choreService.ReviewChore(ctx, *review, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -158,9 +164,11 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	updatedChore, err := r.choreService.UpdateChore(id, *chore, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	updatedChore, err := r.choreService.UpdateChore(ctx, id, *chore, userId)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(updatedChore)

@@ -90,9 +90,9 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 				retryAfter = 0
 			}
 			c.Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": helpers.LocalizedMessage(c, cfg.Localizer, cfg.Message),
-			})
+			return c.Status(fiber.StatusTooManyRequests).JSON(
+				helpers.LocalizedCoreError(c, cfg.Localizer, cfg.Message),
+			)
 		}
 
 		return c.Next()

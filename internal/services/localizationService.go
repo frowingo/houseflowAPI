@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
@@ -34,8 +35,8 @@ func NewLocalizationService(
 	}
 }
 
-func (s *LocalizationService) LoadCache() error {
-	messageItems, err := s.dbRepository.FindManyByFilter(bson.M{
+func (s *LocalizationService) LoadCache(ctx context.Context) error {
+	messageItems, err := s.dbRepository.FindManyByFilter(ctx, bson.M{
 		"type":     entities.Message,
 		"language": entities.English,
 	})
@@ -43,7 +44,7 @@ func (s *LocalizationService) LoadCache() error {
 		return err
 	}
 
-	plaintextItems, err := s.dbRepository.FindManyByFilter(bson.M{
+	plaintextItems, err := s.dbRepository.FindManyByFilter(ctx, bson.M{
 		"type":     entities.Plaintext,
 		"language": entities.English,
 	})
@@ -70,7 +71,7 @@ func (s *LocalizationService) LoadCache() error {
 	return nil
 }
 
-func (s *LocalizationService) InsertLocalizations(models []dtos.LocalizationRequestModel) error {
+func (s *LocalizationService) InsertLocalizations(ctx context.Context, models []dtos.LocalizationRequestModel) error {
 	if len(models) == 0 {
 		return helpers.NewLocalizedError("common.error.request_body_required")
 	}
@@ -86,9 +87,9 @@ func (s *LocalizationService) InsertLocalizations(models []dtos.LocalizationRequ
 		entity := model.ToEntity()
 		entity.Language = entities.LocalizationLanguage(helpers.NormalizeLanguage(string(entity.Language)))
 		entity.Type = entities.LocalizationType(helpers.NormalizeLocalizationType(string(entity.Type)))
-		if _, err := s.dbRepository.Insert(entity); err != nil {
+		if _, err := s.dbRepository.Insert(ctx, entity); err != nil {
 			if mongo.IsDuplicateKeyError(err) {
-				return helpers.NewLocalizedError("localization.error.duplicate_key")
+				return helpers.NewConflictError("localization.error.duplicate_key")
 			}
 			return err
 		}
@@ -99,7 +100,7 @@ func (s *LocalizationService) InsertLocalizations(models []dtos.LocalizationRequ
 	return nil
 }
 
-func (s *LocalizationService) GetPlaintexts(language string) ([]dtos.LocalizationPlaintextResponseModel, error) {
+func (s *LocalizationService) GetPlaintexts(ctx context.Context, language string) ([]dtos.LocalizationPlaintextResponseModel, error) {
 	normalizedLanguage := helpers.NormalizeLanguage(language)
 	if !helpers.IsSupportedLanguage(normalizedLanguage) {
 		return nil, helpers.NewLocalizedError("localization.error.unsupported_language")
@@ -113,7 +114,7 @@ func (s *LocalizationService) GetPlaintexts(language string) ([]dtos.Localizatio
 	}
 	s.mu.RUnlock()
 
-	items, err := s.dbRepository.FindManyByFilter(bson.M{
+	items, err := s.dbRepository.FindManyByFilter(ctx, bson.M{
 		"type":     entities.Plaintext,
 		"language": normalizedLanguage,
 	})
@@ -133,8 +134,8 @@ func (s *LocalizationService) GetPlaintexts(language string) ([]dtos.Localizatio
 	return plaintextResponseModels(normalizedLanguage, plaintexts), nil
 }
 
-func (s *LocalizationService) GetLanguages() ([]dtos.LocalizationLanguageResponseModel, error) {
-	languages, err := s.languageRepository.FindAll()
+func (s *LocalizationService) GetLanguages(ctx context.Context) ([]dtos.LocalizationLanguageResponseModel, error) {
+	languages, err := s.languageRepository.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +144,9 @@ func (s *LocalizationService) GetLanguages() ([]dtos.LocalizationLanguageRespons
 	return languageResponseModels(languages), nil
 }
 
-func (s *LocalizationService) GetLanguage(prefix string) ([]dtos.LocalizationLanguageResponseModel, error) {
+func (s *LocalizationService) GetLanguage(ctx context.Context, prefix string) ([]dtos.LocalizationLanguageResponseModel, error) {
 	normalizedPrefix := normalizeLanguageOptionPrefix(prefix)
-	languages, err := s.languageRepository.FindManyByFilter(bson.M{
+	languages, err := s.languageRepository.FindManyByFilter(ctx, bson.M{
 		"code":     normalizedPrefix,
 		"isActive": true,
 	})
@@ -157,7 +158,7 @@ func (s *LocalizationService) GetLanguage(prefix string) ([]dtos.LocalizationLan
 	return languageResponseModels(languages), nil
 }
 
-func (s *LocalizationService) InsertLocalizationLanguage(model dtos.LocalizationLanguageRequestModel) error {
+func (s *LocalizationService) InsertLocalizationLanguage(ctx context.Context, model dtos.LocalizationLanguageRequestModel) error {
 	normalizedPrefix := normalizeLanguageOptionPrefix(model.Prefix)
 	if normalizedPrefix == "" {
 		return helpers.NewLocalizedError("localization.error.unsupported_language")
@@ -165,9 +166,9 @@ func (s *LocalizationService) InsertLocalizationLanguage(model dtos.Localization
 
 	entity := model.ToEntity()
 	entity.Code = normalizedPrefix
-	if _, err := s.languageRepository.Insert(entity); err != nil {
+	if _, err := s.languageRepository.Insert(ctx, entity); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return helpers.NewLocalizedError("localization.error.duplicate_key")
+			return helpers.NewConflictError("localization.error.duplicate_key")
 		}
 		return err
 	}
@@ -175,12 +176,12 @@ func (s *LocalizationService) InsertLocalizationLanguage(model dtos.Localization
 	return nil
 }
 
-func (s *LocalizationService) LocalizeMessage(language string, keyOrMessage string) string {
+func (s *LocalizationService) LocalizeMessage(ctx context.Context, language string, keyOrMessage string) string {
 	normalizedLanguage := helpers.NormalizeLanguage(language)
 	if strings.Contains(keyOrMessage, "; ") {
 		parts := strings.Split(keyOrMessage, "; ")
 		for i, part := range parts {
-			parts[i] = s.LocalizeMessage(normalizedLanguage, part)
+			parts[i] = s.LocalizeMessage(ctx, normalizedLanguage, part)
 		}
 		return strings.Join(parts, "; ")
 	}
@@ -188,7 +189,7 @@ func (s *LocalizationService) LocalizeMessage(language string, keyOrMessage stri
 	key, args := helpers.SplitLocalizationMessage(keyOrMessage)
 	value, ok := s.cachedMessage(normalizedLanguage, key)
 	if !ok && normalizedLanguage != helpers.DefaultLanguage {
-		value, ok = s.findMessage(normalizedLanguage, key)
+		value, ok = s.findMessage(ctx, normalizedLanguage, key)
 	}
 	if !ok {
 		value, ok = s.cachedMessage(helpers.DefaultLanguage, key)
@@ -203,8 +204,8 @@ func (s *LocalizationService) LocalizeMessage(language string, keyOrMessage stri
 	return formatLocalizedMessage(value, args)
 }
 
-func (s *LocalizationService) findMessage(language string, key string) (string, bool) {
-	items, err := s.dbRepository.FindManyByFilter(bson.M{
+func (s *LocalizationService) findMessage(ctx context.Context, language string, key string) (string, bool) {
+	items, err := s.dbRepository.FindManyByFilter(ctx, bson.M{
 		"type":     entities.Message,
 		"language": entities.LocalizationLanguage(language),
 		"key":      key,

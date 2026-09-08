@@ -51,7 +51,9 @@ func (r *AuthController) IsAuth(c *fiber.Ctx) error {
 	}
 
 	if time.Now().Before(jwtData.ExpiresAt.Time) {
-		user, err := r.authService.GetUserByID(jwtData.Subject)
+		ctx, cancel := requestContext(c)
+		defer cancel()
+		user, err := r.authService.GetUserByID(ctx, jwtData.Subject)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 		}
@@ -87,9 +89,11 @@ func (r *AuthController) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "auth.error.email_password_required"))
 	}
 
-	token, err := r.authService.Login(model.Email, model.Password)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	token, err := r.authService.Login(ctx, model.Email, model.Password)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	if token == "" {
@@ -121,9 +125,11 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
-	token, err := r.authService.SignUp(*model)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	token, err := r.authService.SignUp(ctx, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(201).JSON(fiber.Map{"token": token})
@@ -150,7 +156,9 @@ func (r *AuthController) ForgotPassword(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	err := r.authService.ForgotPassword(model.Email)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	err := r.authService.ForgotPassword(ctx, model.Email)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
@@ -179,8 +187,10 @@ func (r *AuthController) ResetPassword(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
-	if err := r.authService.ResetPassword(model.Email, model.Code, model.NewPassword); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.authService.ResetPassword(ctx, model.Email, model.Code, model.NewPassword); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(helpers.LocalizedMessageMap(c, r.localizer, "auth.message.password_reset_successful"))
@@ -202,7 +212,9 @@ func (r *AuthController) SendEmailVerificationCode(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	if err := r.authService.SendEmailVerificationCode(email); err != nil {
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.authService.SendEmailVerificationCode(ctx, email); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
@@ -234,7 +246,9 @@ func (r *AuthController) ValidateEmail(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	if err := r.authService.ValidateEmail(email, model.Code); err != nil {
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.authService.ValidateEmail(ctx, email, model.Code); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 

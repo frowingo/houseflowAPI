@@ -37,20 +37,20 @@ func NewAuthService(
 	}
 }
 
-func (r *AuthService) GetUserByID(userId string) (*entities.User, error) {
+func (r *AuthService) GetUserByID(ctx context.Context, userId string) (*entities.User, error) {
 	objectId, err := helpers.ToMongoId(userId)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.dbRepository.FindByID(objectId)
+	return r.dbRepository.FindByID(ctx, objectId)
 }
 
-func (r *AuthService) Login(email string, password string) (string, error) {
+func (r *AuthService) Login(ctx context.Context, email string, password string) (string, error) {
 	const MaxFailedAttempts = 10
 
-	user, err := r.dbRepository.FindByColumn("email", email)
-	if err != nil && err.Error() == "database.error.document_not_found" {
+	user, err := r.dbRepository.FindByColumn(ctx, "email", email)
+	if helpers.IsApplicationError(err, "database.error.document_not_found") {
 		return "", helpers.NewLocalizedError("auth.error.email_not_found")
 	} else if err != nil {
 		return "", err
@@ -63,8 +63,6 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 
 	isValid := helpers.CheckPasswordHash(password, user.HashPassword)
 	if isValid {
-		ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-		defer cancel()
 		result, err := r.dbRepository.Collection().UpdateOne(ctx, bson.M{
 			"_id": user.Id, "isActive": true,
 		}, bson.M{"$set": bson.M{
@@ -83,8 +81,6 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 		return token, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	var updated entities.User
 	err = r.dbRepository.Collection().FindOneAndUpdate(ctx,
 		bson.M{"_id": user.Id, "isActive": true},
@@ -110,15 +106,15 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 	return "", helpers.NewLocalizedError("auth.error.invalid_password")
 }
 
-func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
+func (r *AuthService) SignUp(ctx context.Context, model dtos.SignUpUserModel) (string, error) {
 
-	user, err := r.dbRepository.FindByColumn("email", model.Email)
+	user, err := r.dbRepository.FindByColumn(ctx, "email", model.Email)
 
 	// user email must unique
 	if user != nil {
-		return "", helpers.NewLocalizedError("auth.error.user_already_exists")
+		return "", helpers.NewConflictError("auth.error.user_already_exists")
 	} else {
-		if err != nil && err.Error() != "database.error.document_not_found" {
+		if err != nil && !helpers.IsApplicationError(err, "database.error.document_not_found") {
 			return "", err
 		}
 	}
@@ -131,15 +127,13 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 	model.Password = hashedPassword
 	entity := model.ToEntity()
 
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	var newUser *entities.User
 	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		newUser, err = r.dbRepository.InsertContext(txCtx, entity)
+		newUser, err = r.dbRepository.Insert(txCtx, entity)
 		if err != nil {
 			return err
 		}
-		return insertUserInfoHistoryContext(txCtx, r.userInfoHistoryRepository,
+		return insertUserInfoHistory(txCtx, r.userInfoHistoryRepository,
 			newUserInfoHistoryEntries(*newUser, newUser.CreatedOn))
 	})
 	if err != nil {
@@ -154,16 +148,16 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 	return token, nil
 }
 
-func (r *AuthService) ForgotPassword(email string) error {
+func (r *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		return err
 	}
 
-	user, err := r.dbRepository.FindByColumn("email", email)
+	user, err := r.dbRepository.FindByColumn(ctx, "email", email)
 	if err != nil {
 
-		if user == nil || err.Error() == "database.error.document_not_found" {
+		if user == nil || helpers.IsApplicationError(err, "database.error.document_not_found") {
 			return helpers.NewLocalizedError("user.error.not_found")
 		}
 
@@ -180,7 +174,7 @@ func (r *AuthService) ForgotPassword(email string) error {
 	return nil
 }
 
-func (r *AuthService) ResetPassword(email, code, newPassword string) error {
+func (r *AuthService) ResetPassword(ctx context.Context, email, code, newPassword string) error {
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		return err
@@ -190,7 +184,7 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 		return helpers.NewLocalizedError("auth.error.invalid_or_expired_reset_code")
 	}
 
-	user, err := r.dbRepository.FindByColumn("email", email)
+	user, err := r.dbRepository.FindByColumn(ctx, "email", email)
 	if err != nil {
 		return err
 	}
@@ -203,7 +197,7 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 		return err
 	}
 
-	return r.dbRepository.UpdateFields(user.Id, bson.M{
+	return r.dbRepository.UpdateFields(ctx, user.Id, bson.M{
 		"password":            hashedPassword,
 		"isActive":            true,
 		"failedLoginAttempts": 0,
@@ -211,13 +205,13 @@ func (r *AuthService) ResetPassword(email, code, newPassword string) error {
 	})
 }
 
-func (r *AuthService) SendEmailVerificationCode(email string) error {
+func (r *AuthService) SendEmailVerificationCode(ctx context.Context, email string) error {
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		return err
 	}
 
-	user, err := r.dbRepository.FindByColumn("email", email)
+	user, err := r.dbRepository.FindByColumn(ctx, "email", email)
 	if err != nil {
 		return err
 	}
@@ -234,7 +228,7 @@ func (r *AuthService) SendEmailVerificationCode(email string) error {
 	return r.notificationService.SendEmailVerificationCode(email, code, cfg.Internal.PasswordReset.ValidityMinutes)
 }
 
-func (r *AuthService) ValidateEmail(email, code string) error {
+func (r *AuthService) ValidateEmail(ctx context.Context, email, code string) error {
 
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
@@ -245,7 +239,7 @@ func (r *AuthService) ValidateEmail(email, code string) error {
 		return helpers.NewLocalizedError("auth.error.invalid_or_expired_email_verification_code")
 	}
 
-	user, err := r.dbRepository.FindByColumn("email", email)
+	user, err := r.dbRepository.FindByColumn(ctx, "email", email)
 	if err != nil {
 		return err
 	}
@@ -256,7 +250,7 @@ func (r *AuthService) ValidateEmail(email, code string) error {
 		return nil
 	}
 
-	return r.dbRepository.UpdateFields(user.Id, bson.M{
+	return r.dbRepository.UpdateFields(ctx, user.Id, bson.M{
 		"isVerifyEmail": true,
 		"updatedOn":     time.Now(),
 	})

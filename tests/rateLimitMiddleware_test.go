@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"encoding/json"
 	"houseflowApi/internal/middleware"
+	"houseflowApi/internal/models/core"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -9,6 +11,29 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 )
+
+func TestRateLimitUsesStandardErrorResponse(t *testing.T) {
+	app := fiber.New()
+	app.Use(middleware.RateLimit(middleware.RateLimitConfig{Max: 0, Window: time.Minute}))
+	app.Get("/", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+
+	response, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != fiber.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", response.StatusCode, fiber.StatusTooManyRequests)
+	}
+	var body core.ErrorResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Success || body.Error != "rate_limit.error.too_many_requests" {
+		t.Fatalf("unexpected response: %+v", body)
+	}
+}
 
 func TestRateLimitCountsConcurrentRequestsExactly(t *testing.T) {
 	app := fiber.New()

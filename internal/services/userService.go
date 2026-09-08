@@ -40,7 +40,7 @@ func NewUserService(
 	}
 }
 
-func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, error) {
+func (r *UserService) CreateUser(ctx context.Context, user dtos.NewUserModel) (*dtos.NewUserModel, error) {
 
 	entity := user.ToEntity()
 	entity.Language = helpers.NormalizeLanguage(entity.Language)
@@ -51,15 +51,13 @@ func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, er
 	}
 	entity.HashPassword = hashedPassword
 
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	var createdUser *entities.User
 	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		createdUser, err = r.dbRepository.InsertContext(txCtx, entity)
+		createdUser, err = r.dbRepository.Insert(txCtx, entity)
 		if err != nil {
 			return err
 		}
-		return insertUserInfoHistoryContext(txCtx, r.userInfoHistoryRepository,
+		return insertUserInfoHistory(txCtx, r.userInfoHistoryRepository,
 			newUserInfoHistoryEntries(*createdUser, createdUser.CreatedOn))
 	})
 	if err != nil {
@@ -69,9 +67,9 @@ func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, er
 	return &user, nil
 }
 
-func (r *UserService) GetUserByEmail(email string) (*dtos.UserResultModel, error) {
+func (r *UserService) GetUserByEmail(ctx context.Context, email string) (*dtos.UserResultModel, error) {
 
-	user, err := r.dbRepository.FindByColumn("email", email)
+	user, err := r.dbRepository.FindByColumn(ctx, "email", email)
 	if err != nil {
 		return nil, err
 	}
@@ -80,9 +78,9 @@ func (r *UserService) GetUserByEmail(email string) (*dtos.UserResultModel, error
 	return &result, nil
 }
 
-func (r *UserService) ListByUsers() ([]dtos.UserResultModel, error) {
+func (r *UserService) ListByUsers(ctx context.Context) ([]dtos.UserResultModel, error) {
 
-	users, err := r.dbRepository.FindAll()
+	users, err := r.dbRepository.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,14 +93,14 @@ func (r *UserService) ListByUsers() ([]dtos.UserResultModel, error) {
 	return results, nil
 }
 
-func (r *UserService) DeleteUser(userId string) error {
+func (r *UserService) DeleteUser(ctx context.Context, userId string) error {
 
 	objectId, err := helpers.ToMongoId(userId)
 	if err != nil {
 		return err
 	}
 
-	err = r.dbRepository.Delete(objectId)
+	err = r.dbRepository.Delete(ctx, objectId)
 	if err != nil {
 		return err
 	}
@@ -110,13 +108,13 @@ func (r *UserService) DeleteUser(userId string) error {
 	return nil
 }
 
-func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dtos.UserResultModel, error) {
+func (r *UserService) GetUsersByHouse(ctx context.Context, houseId string, requesterId string) ([]dtos.UserResultModel, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
 		return nil, err
 	}
 
-	house, err := r.houseRepository.FindByID(houseObjectId)
+	house, err := r.houseRepository.FindByID(ctx, houseObjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +128,7 @@ func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dto
 		if err != nil {
 			continue
 		}
-		user, err := r.dbRepository.FindByID(userObjectId)
+		user, err := r.dbRepository.FindByID(ctx, userObjectId)
 		if err != nil {
 			continue
 		}
@@ -140,7 +138,7 @@ func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dto
 	return users, nil
 }
 
-func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (*dtos.UserResultModel, error) {
+func (r *UserService) UpdateProfile(ctx context.Context, userId string, model dtos.UpdateUserModel) (*dtos.UserResultModel, error) {
 
 	objectId, err := helpers.ToMongoId(userId)
 	if err != nil {
@@ -172,21 +170,19 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		}
 		fields["language"] = helpers.NormalizeLanguage(*model.Language)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
-	defer cancel()
 	var updated *entities.User
 	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		if err := validateProfileUpdateIntervalsContext(txCtx, r.userInfoHistoryRepository, userId, historyChanges, now); err != nil {
+		if err := validateProfileUpdateIntervals(txCtx, r.userInfoHistoryRepository, userId, historyChanges, now); err != nil {
 			return err
 		}
-		if err := r.dbRepository.UpdateFieldsContext(txCtx, objectId, fields); err != nil {
+		if err := r.dbRepository.UpdateFields(txCtx, objectId, fields); err != nil {
 			return err
 		}
-		if err := insertUserInfoHistoryContext(txCtx, r.userInfoHistoryRepository,
+		if err := insertUserInfoHistory(txCtx, r.userInfoHistoryRepository,
 			userInfoHistoryEntries(userId, historyChanges, now)); err != nil {
 			return err
 		}
-		updated, err = r.dbRepository.FindByIDContext(txCtx, objectId)
+		updated, err = r.dbRepository.FindByID(txCtx, objectId)
 		return err
 	})
 	if err != nil {
@@ -198,13 +194,13 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 	return &result, nil
 }
 
-func (r *UserService) GetImagesByCategory(category string) ([]dtos.ImageAssetResultModel, error) {
+func (r *UserService) GetImagesByCategory(ctx context.Context, category string) ([]dtos.ImageAssetResultModel, error) {
 
 	if cached, ok := imageAssetCache.Get("images_" + category); ok {
 		return cached, nil
 	}
 
-	assets, err := r.imageAssetRepository.FindManyByFilter(bson.M{"category": category, "isActive": true})
+	assets, err := r.imageAssetRepository.FindManyByFilter(ctx, bson.M{"category": category, "isActive": true})
 	if err != nil {
 		return nil, err
 	}
@@ -221,9 +217,9 @@ func (r *UserService) GetImagesByCategory(category string) ([]dtos.ImageAssetRes
 	return results, nil
 }
 
-func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResultModel, error) {
+func (r *UserService) GetImageByPublicID(ctx context.Context, publicId string) (*dtos.ImageAssetResultModel, error) {
 
-	asset, err := r.imageAssetRepository.FindByColumn("publicId", publicId)
+	asset, err := r.imageAssetRepository.FindByColumn(ctx, "publicId", publicId)
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +232,9 @@ func (r *UserService) GetImageByPublicID(publicId string) (*dtos.ImageAssetResul
 	return &result, nil
 }
 
-func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
+func (r *UserService) UpdateImageAsset(ctx context.Context, model dtos.UpdateImageAssetModel) error {
 
-	asset, err := r.imageAssetRepository.FindByColumn("publicId", model.PublicID)
+	asset, err := r.imageAssetRepository.FindByColumn(ctx, "publicId", model.PublicID)
 	if err != nil {
 		return helpers.NewLocalizedError("image_asset.error.not_found")
 	}
@@ -252,7 +248,7 @@ func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
 		fields["isActive"] = *model.IsActive
 	}
 
-	if err := r.imageAssetRepository.UpdateFields(asset.Id, fields); err != nil {
+	if err := r.imageAssetRepository.UpdateFields(ctx, asset.Id, fields); err != nil {
 		return err
 	}
 
@@ -261,20 +257,20 @@ func (r *UserService) UpdateImageAsset(model dtos.UpdateImageAssetModel) error {
 	return nil
 }
 
-func (r *UserService) CreateImageAsset(model dtos.CreateImageAssetModel) error {
+func (r *UserService) CreateImageAsset(ctx context.Context, model dtos.CreateImageAssetModel) error {
 	entity := model.ToEntity()
 
-	exists, err := r.imageAssetRepository.ExistsByFilter(bson.M{"publicId": entity.PublicID})
+	exists, err := r.imageAssetRepository.ExistsByFilter(ctx, bson.M{"publicId": entity.PublicID})
 	if err != nil {
 		return err
 	}
 	if exists {
-		return helpers.NewLocalizedError("image_asset.error.duplicate")
+		return helpers.NewConflictError("image_asset.error.duplicate")
 	}
 
-	_, err = r.imageAssetRepository.Insert(entity)
+	_, err = r.imageAssetRepository.Insert(ctx, entity)
 	if mongo.IsDuplicateKeyError(err) {
-		return helpers.NewLocalizedError("image_asset.error.duplicate")
+		return helpers.NewConflictError("image_asset.error.duplicate")
 	}
 	return err
 }

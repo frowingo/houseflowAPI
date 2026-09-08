@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/entities"
@@ -12,13 +13,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func SetupRoutes(app *fiber.App, client *mongo.Client, dbName string) {
+func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string) {
 
 	localizationService := services.NewLocalizationService(
 		abstract.New[entities.Localization](client, dbName),
 		abstract.New[entities.LocalizationLanguageOption](client, dbName),
 	)
-	if err := localizationService.LoadCache(); err != nil {
+	if err := localizationService.LoadCache(ctx); err != nil {
 		log.Println("localization cache warmup failed:", err)
 	}
 	localizationController := controllers.NewLocalizationController(localizationService)

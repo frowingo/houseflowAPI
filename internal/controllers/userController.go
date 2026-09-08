@@ -53,9 +53,11 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
-	_, err := r.userService.CreateUser(*user)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	_, err := r.userService.CreateUser(ctx, *user)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(201).JSON(user)
@@ -74,9 +76,11 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 // @Router /user/usersList [get]
 func (r *UserController) ListUsers(c *fiber.Ctx) error {
 
-	users, err := r.userService.ListByUsers()
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	users, err := r.userService.ListByUsers(ctx)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(users)
@@ -101,9 +105,11 @@ func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "user.error.user_id_required"))
 	}
 
-	err := r.userService.DeleteUser(userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	err := r.userService.DeleteUser(ctx, userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.SendStatus(204)
@@ -132,9 +138,11 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(helpers.LocalizedCoreError(c, r.localizer, "auth.error.forbidden"))
 	}
 
-	user, err := r.userService.GetUserByEmail(email)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	user, err := r.userService.GetUserByEmail(ctx, email)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(user)
@@ -160,9 +168,11 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	users, err := r.userService.GetUsersByHouse(houseId, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	users, err := r.userService.GetUsersByHouse(ctx, houseId, userId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(users)
@@ -193,9 +203,11 @@ func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
-	updated, err := r.userService.UpdateProfile(userId, *model)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	updated, err := r.userService.UpdateProfile(ctx, userId, *model)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(core.Success(updated))
@@ -218,9 +230,11 @@ func (r *UserController) GetImages(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "image_asset.error.category_query_required"))
 	}
 
-	images, err := r.userService.GetImagesByCategory(category)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	images, err := r.userService.GetImagesByCategory(ctx, category)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(core.Success(images))
@@ -243,9 +257,11 @@ func (r *UserController) GetImage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "image_asset.error.public_id_query_required"))
 	}
 
-	image, err := r.userService.GetImageByPublicID(publicId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	image, err := r.userService.GetImageByPublicID(ctx, publicId)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(core.Success([]dtos.ImageAssetResultModel{*image}))
@@ -274,8 +290,10 @@ func (r *UserController) UpdateImageAsset(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
-	if err := r.userService.UpdateImageAsset(*model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.userService.UpdateImageAsset(ctx, *model); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(200).JSON(core.Success[any](nil))
@@ -304,8 +322,10 @@ func (r *UserController) CreateImageAsset(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
-	if err := r.userService.CreateImageAsset(*model); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if err := r.userService.CreateImageAsset(ctx, *model); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(201).JSON(core.Success[any](nil))
