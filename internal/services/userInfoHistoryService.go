@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -87,7 +88,8 @@ func userInfoHistoryEntries(userId string, changes []userInfoChange, updateOn ti
 	return entries
 }
 
-func validateProfileUpdateIntervals(
+func validateProfileUpdateIntervalsContext(
+	ctx context.Context,
 	repository *abstract.DbRepository[entities.UserInfoHistory],
 	userId string,
 	changes []userInfoChange,
@@ -104,7 +106,7 @@ func validateProfileUpdateIntervals(
 			continue
 		}
 
-		hasRecentUpdate, err := repository.ExistsByFilter(
+		hasRecentUpdate, err := repository.ExistsByFilterContext(ctx,
 			recentUserInfoHistoryFilter(userId, change.columnName, now),
 		)
 
@@ -130,12 +132,13 @@ func recentUserInfoHistoryFilter(userId string, columnName string, now time.Time
 	}
 }
 
-func insertUserInfoHistory(
+func insertUserInfoHistoryContext(
+	ctx context.Context,
 	repository *abstract.DbRepository[entities.UserInfoHistory],
 	entries []entities.UserInfoHistory,
 ) error {
 	if repository == nil || len(entries) == 0 {
 		return nil
 	}
-	return repository.InsertMany(entries)
+	return repository.InsertManyContext(ctx, entries)
 }

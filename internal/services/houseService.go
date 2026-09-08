@@ -1,17 +1,21 @@
 package services
 
 import (
+	"context"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
-	"sort"
 	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+const databaseOperationTimeout = 10 * time.Second
 
 func stringContains(values []string, target string) bool {
 	for _, value := range values {
@@ -53,12 +57,18 @@ func userDisplayName(user entities.User) string {
 }
 
 func (s *HouseService) validateHouseMember(houseId string, userId string) (*entities.House, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	return s.validateHouseMemberContext(ctx, houseId, userId)
+}
+
+func (s *HouseService) validateHouseMemberContext(ctx context.Context, houseId string, userId string) (*entities.House, error) {
 	houseObjectId, err := helpers.ToMongoId(houseId)
 	if err != nil {
 		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
 	}
 
-	house, err := s.houseRepository.FindById(houseObjectId)
+	house, err := s.houseRepository.FindByIDContext(ctx, houseObjectId)
 	if err != nil {
 		return nil, helpers.NewLocalizedError("house.error.not_found")
 	}
@@ -67,17 +77,6 @@ func (s *HouseService) validateHouseMember(houseId string, userId string) (*enti
 	}
 
 	return house, nil
-}
-
-func recentAnnouncementFilter(houseId string, userId string, now time.Time) bson.M {
-	return bson.M{
-		"houseId": houseId,
-		"userId":  userId,
-		"createdOn": bson.M{
-			"$gte": now.Add(-24 * time.Hour),
-			"$lte": now,
-		},
-	}
 }
 
 func activeAnnouncementFilter(houseId string, now time.Time) bson.M {
@@ -89,185 +88,211 @@ func activeAnnouncementFilter(houseId string, now time.Time) bson.M {
 }
 
 func (s *HouseService) CreateAnnouncement(model dtos.CreateAnnouncementModel, userId string) (*dtos.AnnouncementResponseModel, error) {
-	if _, err := s.validateHouseMember(model.HouseId, userId); err != nil {
-		return nil, err
-	}
-
 	userObjectId, err := helpers.ToMongoId(userId)
 	if err != nil {
 		return nil, helpers.NewLocalizedError("user.error.invalid_user_id")
 	}
-	user, err := s.userRepository.FindById(userObjectId)
-	if err != nil {
-		return nil, helpers.NewLocalizedError("user.error.not_found")
-	}
-
 	now := time.Now()
-	hasRecentAnnouncement, err := s.announcementRepository.ExistsByFilter(recentAnnouncementFilter(model.HouseId, userId, now))
-	if err != nil {
-		return nil, helpers.NewLocalizedError("announcement.error.failed_check_recent")
-	}
-	if hasRecentAnnouncement {
-		return nil, helpers.NewLocalizedError("announcement.error.only_one_per_24_hours")
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var user *entities.User
+	var createdAnnouncement *entities.Announcement
+	err = s.announcementRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		if _, err := s.validateHouseMemberContext(txCtx, model.HouseId, userId); err != nil {
+			return err
+		}
+		user, err = s.userRepository.FindByIDContext(txCtx, userObjectId)
+		if err != nil {
+			return helpers.NewLocalizedError("user.error.not_found")
+		}
 
-	createdAnnouncement, err := s.announcementRepository.Insert(model.ToEntity(userId, now))
+		guardID := model.HouseId + ":" + userId
+		guardCollection := s.announcementRepository.Collection().Database().Collection("AnnouncementRateLimit")
+		_, err = guardCollection.UpdateOne(txCtx, bson.M{
+			"_id": guardID,
+			"$or": bson.A{
+				bson.M{"nextAllowedAt": bson.M{"$lte": now}},
+				bson.M{"nextAllowedAt": bson.M{"$exists": false}},
+			},
+		}, bson.M{
+			"$set":         bson.M{"nextAllowedAt": now.Add(24 * time.Hour)},
+			"$setOnInsert": bson.M{"houseId": model.HouseId, "userId": userId},
+		}, options.Update().SetUpsert(true))
+		if mongo.IsDuplicateKeyError(err) {
+			return helpers.NewLocalizedError("announcement.error.only_one_per_24_hours")
+		}
+		if err != nil {
+			return helpers.NewLocalizedError("announcement.error.failed_check_recent")
+		}
+
+		createdAnnouncement, err = s.announcementRepository.InsertContext(txCtx, model.ToEntity(userId, now))
+		if err != nil {
+			return helpers.NewLocalizedError("announcement.error.failed_create")
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, helpers.NewLocalizedError("announcement.error.failed_create")
+		return nil, err
 	}
 
 	response := dtos.AnnouncementToResponseModel(*createdAnnouncement, userDisplayName(*user))
 	return &response, nil
 }
 
-func (s *HouseService) getReviewVotes(chores []entities.Chore) (map[string][]entities.ChoreReviewVote, error) {
-	votesByChoreId := make(map[string][]entities.ChoreReviewVote)
-	choreIds := make(bson.A, 0, len(chores))
-
-	for _, chore := range chores {
-		if chore.ReviewRound == 0 {
-			continue
-		}
-		choreIds = append(choreIds, chore.Id.Hex())
-	}
-
-	if len(choreIds) == 0 {
-		return votesByChoreId, nil
-	}
-
-	votes, err := s.choreReviewVoteRepository.FindManyByFilter(bson.M{"choreId": bson.M{"$in": choreIds}})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, vote := range votes {
-		votesByChoreId[vote.ChoreId] = append(votesByChoreId[vote.ChoreId], vote)
-	}
-
-	return votesByChoreId, nil
-}
-
 // CreateHouse creates a new house with generated invite code
 func (s *HouseService) CreateHouse(model dtos.CreateHouseModel) (*entities.House, error) {
-	// Validate owner exists
 	ownerObjectId, err := helpers.ToMongoId(model.OwnerId)
 	if err != nil {
 		return nil, helpers.NewLocalizedError("house.error.invalid_owner_id")
 	}
 
-	owner, err := s.userRepository.FindById(ownerObjectId)
-	if err != nil || owner == nil {
-		return nil, helpers.NewLocalizedError("house.error.owner_not_found")
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
 
-	// Generate unique invite code
-	inviteCode, err := helpers.GenerateInviteCode(8)
-	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.failed_generate_invite_code")
-	}
-
-	// Check if invite code already exists (very rare but possible)
-	existingHouse, _ := s.houseRepository.FindByColumn("inviteCode", inviteCode)
-	if existingHouse != nil {
-		// Try one more time with a new code
-		inviteCode, err = helpers.GenerateInviteCode(8)
+	for attempt := 0; attempt < 3; attempt++ {
+		inviteCode, err := helpers.GenerateInviteCode(8)
 		if err != nil {
 			return nil, helpers.NewLocalizedError("house.error.failed_generate_invite_code")
 		}
+		var house *entities.House
+		err = s.houseRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+			if _, err := s.userRepository.FindByIDContext(txCtx, ownerObjectId); err != nil {
+				return helpers.NewLocalizedError("house.error.owner_not_found")
+			}
+			house, err = s.houseRepository.InsertContext(txCtx, model.ToEntity(inviteCode))
+			if err != nil {
+				return err
+			}
+			result, err := s.userRepository.Collection().UpdateOne(txCtx, bson.M{"_id": ownerObjectId}, bson.M{
+				"$addToSet": bson.M{"houseIds": house.Id.Hex()},
+				"$set":      bson.M{"updatedOn": time.Now()},
+			})
+			if err != nil {
+				return err
+			}
+			if result.MatchedCount == 0 {
+				return helpers.NewLocalizedError("house.error.owner_not_found")
+			}
+			return nil
+		})
+		if err == nil {
+			return house, nil
+		}
+		if err.Error() == "house.error.owner_not_found" {
+			return nil, err
+		}
+		if !mongo.IsDuplicateKeyError(err) {
+			return nil, helpers.NewLocalizedError("house.error.failed_create_house", err.Error())
+		}
 	}
-
-	// Create house entity
-	entity := model.ToEntity(inviteCode)
-
-	// Insert into database
-	house, err := s.houseRepository.Insert(entity)
-	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.failed_create_house", err.Error())
-	}
-
-	// Update user's house list
-	owner.HouseIds = append(owner.HouseIds, house.Id.Hex())
-	owner.UpdatedOn = time.Now()
-	_, err = s.userRepository.Update(ownerObjectId, *owner)
-	if err != nil {
-		// House is created but user update failed, log this
-		// In production, you might want to handle this better
-		return house, nil
-	}
-
-	return house, nil
+	return nil, helpers.NewLocalizedError("house.error.failed_generate_invite_code")
 }
 
 // GetHouseDetails returns house details with member user objects
 func (s *HouseService) GetHouseDetails(houseId string, requesterId string) (*dtos.HouseDetailsModel, error) {
-	house, err := s.validateHouseMember(houseId, requesterId)
+	if _, err := helpers.ToMongoId(houseId); err != nil {
+		return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var details *dtos.HouseDetailsModel
+	err := s.houseRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		house, err := s.validateHouseMemberContext(txCtx, houseId, requesterId)
+		if err != nil {
+			return err
+		}
+		choreEntities, err := s.choreRepository.FindManyByFilterContext(txCtx, bson.M{"houseId": houseId})
+		if err != nil {
+			return err
+		}
+		choreIDs := make([]string, 0, len(choreEntities))
+		for _, chore := range choreEntities {
+			choreIDs = append(choreIDs, chore.Id.Hex())
+		}
+		historiesByChore := make(map[string][]entities.ChoreStatusHistory)
+		votesByChore := make(map[string][]entities.ChoreReviewVote)
+		if len(choreIDs) > 0 {
+			filter := bson.M{"choreId": bson.M{"$in": choreIDs}}
+			histories, err := s.choreStatusHistRepository.FindManyByFilterContext(txCtx, filter,
+				options.Find().SetSort(bson.D{{Key: "dateTime", Value: 1}, {Key: "_id", Value: 1}}))
+			if err != nil {
+				return err
+			}
+			for _, history := range histories {
+				historiesByChore[history.ChoreId] = append(historiesByChore[history.ChoreId], history)
+			}
+			votes, err := s.choreReviewVoteRepository.FindManyByFilterContext(txCtx, filter,
+				options.Find().SetSort(bson.D{{Key: "createdOn", Value: 1}, {Key: "_id", Value: 1}}))
+			if err != nil {
+				return err
+			}
+			for _, vote := range votes {
+				votesByChore[vote.ChoreId] = append(votesByChore[vote.ChoreId], vote)
+			}
+		}
+
+		announcements, err := s.announcementRepository.FindManyByFilterContext(txCtx,
+			activeAnnouncementFilter(houseId, time.Now()),
+			options.Find().SetSort(bson.D{{Key: "createdOn", Value: -1}, {Key: "_id", Value: -1}}))
+		if err != nil {
+			return err
+		}
+		userIDs := make([]primitive.ObjectID, 0, len(house.MemberIds)+len(announcements))
+		seen := make(map[primitive.ObjectID]bool)
+		addUserID := func(raw string) {
+			id, err := primitive.ObjectIDFromHex(raw)
+			if err == nil && !seen[id] {
+				seen[id] = true
+				userIDs = append(userIDs, id)
+			}
+		}
+		for _, id := range house.MemberIds {
+			addUserID(id)
+		}
+		for _, announcement := range announcements {
+			addUserID(announcement.UserId)
+		}
+		usersByID := make(map[string]entities.User)
+		if len(userIDs) > 0 {
+			users, err := s.userRepository.FindManyByFilterContext(txCtx,
+				bson.M{"_id": bson.M{"$in": userIDs}}, options.Find().SetProjection(bson.M{"password": 0}))
+			if err != nil {
+				return err
+			}
+			for _, user := range users {
+				usersByID[user.Id.Hex()] = user
+			}
+		}
+
+		details = &dtos.HouseDetailsModel{
+			Id: house.Id.Hex(), OwnerId: house.OwnerId, InviteCode: house.InviteCode,
+			Name: house.Name, Type: house.Type, MaxMemberCount: house.MaxMemberCount,
+			ProfileImage: house.ProfileImage, CreatedOn: dtos.NewUTCDateTime(house.CreatedOn),
+			UpdatedOn:     dtos.NewUTCDateTime(house.UpdatedOn),
+			Members:       make([]dtos.UserResultModel, 0, len(house.MemberIds)),
+			Chores:        make([]dtos.ChoreResponseModel, 0, len(choreEntities)),
+			Announcements: make([]dtos.AnnouncementResponseModel, 0, len(announcements)),
+		}
+		for _, id := range house.MemberIds {
+			if user, ok := usersByID[id]; ok {
+				details.Members = append(details.Members, dtos.UserToResultModel(user))
+			}
+		}
+		for _, chore := range choreEntities {
+			id := chore.Id.Hex()
+			details.Chores = append(details.Chores,
+				dtos.ChoreToResponseModelWithReview(chore, historiesByChore[id], votesByChore[id]))
+		}
+		for _, announcement := range announcements {
+			details.Announcements = append(details.Announcements,
+				dtos.AnnouncementToResponseModel(announcement, userDisplayName(usersByID[announcement.UserId])))
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	members := make([]dtos.UserResultModel, 0, len(house.MemberIds))
-	membersById := make(map[string]entities.User, len(house.MemberIds))
-	for _, memberId := range house.MemberIds {
-		userObjectId, err := helpers.ToMongoId(memberId)
-		if err != nil {
-			continue
-		}
-		user, err := s.userRepository.FindById(userObjectId)
-		if err != nil {
-			continue
-		}
-		membersById[memberId] = *user
-		members = append(members, dtos.UserToResultModel(*user))
-	}
-
-	choreEntities, _ := s.choreRepository.FindManyByColumn("houseId", houseId)
-	reviewVotesByChoreId, err := s.getReviewVotes(choreEntities)
-	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.failed_load_chore_review_votes")
-	}
-
-	chores := make([]dtos.ChoreResponseModel, 0, len(choreEntities))
-	for _, c := range choreEntities {
-		histories, _ := s.choreStatusHistRepository.FindManyByColumn("choreId", c.Id.Hex())
-		chores = append(chores, dtos.ChoreToResponseModelWithReview(c, histories, reviewVotesByChoreId[c.Id.Hex()]))
-	}
-
-	now := time.Now()
-	announcementEntities, err := s.announcementRepository.FindManyByFilter(activeAnnouncementFilter(houseId, now))
-	if err != nil {
-		return nil, helpers.NewLocalizedError("announcement.error.failed_load")
-	}
-	sort.Slice(announcementEntities, func(i, j int) bool {
-		return announcementEntities[i].CreatedOn.After(announcementEntities[j].CreatedOn)
-	})
-
-	announcements := make([]dtos.AnnouncementResponseModel, 0, len(announcementEntities))
-	for _, announcement := range announcementEntities {
-		announcedBy := ""
-		if user, ok := membersById[announcement.UserId]; ok {
-			announcedBy = userDisplayName(user)
-		} else if userObjectId, conversionErr := helpers.ToMongoId(announcement.UserId); conversionErr == nil {
-			if user, lookupErr := s.userRepository.FindById(userObjectId); lookupErr == nil {
-				announcedBy = userDisplayName(*user)
-			}
-		}
-		announcements = append(announcements, dtos.AnnouncementToResponseModel(announcement, announcedBy))
-	}
-
-	return &dtos.HouseDetailsModel{
-		Id:             house.Id.Hex(),
-		OwnerId:        house.OwnerId,
-		InviteCode:     house.InviteCode,
-		Name:           house.Name,
-		Type:           house.Type,
-		Members:        members,
-		MaxMemberCount: house.MaxMemberCount,
-		ProfileImage:   house.ProfileImage,
-		CreatedOn:      dtos.NewUTCDateTime(house.CreatedOn),
-		UpdatedOn:      dtos.NewUTCDateTime(house.UpdatedOn),
-		Chores:         chores,
-		Announcements:  announcements,
-	}, nil
+	return details, nil
 }
 
 // JoinHouseByCode allows a user to join a house using an invite code
@@ -278,48 +303,55 @@ func (s *HouseService) JoinHouseByCode(model dtos.JoinHouseByCodeModel) (*entiti
 		return nil, helpers.NewLocalizedError("user.error.invalid_user_id")
 	}
 
-	user, err := s.userRepository.FindById(userObjectId)
-	if err != nil || user == nil {
-		return nil, helpers.NewLocalizedError("user.error.not_found")
-	}
-
-	// Find house by invite code
-	house, err := s.houseRepository.FindByColumn("inviteCode", model.InviteCode)
-	if err != nil || house == nil {
-		return nil, helpers.NewLocalizedError("house.error.invalid_invite_code")
-	}
-
-	// Check if user is already a member
-	for _, memberId := range house.MemberIds {
-		if memberId == model.UserId {
-			return nil, helpers.NewLocalizedError("house.error.user_already_member")
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var updated entities.House
+	err = s.houseRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		if _, err := s.userRepository.FindByIDContext(txCtx, userObjectId); err != nil {
+			return helpers.NewLocalizedError("user.error.not_found")
 		}
-	}
+		house, err := s.houseRepository.FindByColumnContext(txCtx, "inviteCode", model.InviteCode)
+		if err != nil || house == nil {
+			return helpers.NewLocalizedError("house.error.invalid_invite_code")
+		}
+		if stringContains(house.MemberIds, model.UserId) {
+			return helpers.NewLocalizedError("house.error.user_already_member")
+		}
+		if len(house.MemberIds) >= house.MaxMemberCount {
+			return helpers.NewLocalizedError("house.error.full")
+		}
 
-	// Check if house is full
-	if len(house.MemberIds) >= house.MaxMemberCount {
-		return nil, helpers.NewLocalizedError("house.error.full")
-	}
-
-	// Add user to house members
-	house.MemberIds = append(house.MemberIds, model.UserId)
-	house.UpdatedOn = time.Now()
-
-	// Update house in database
-	updatedHouse, err := s.houseRepository.Update(house.Id, *house)
+		now := time.Now()
+		filter := bson.M{
+			"_id":       house.Id,
+			"memberIds": bson.M{"$ne": model.UserId},
+			"$expr": bson.M{"$lt": bson.A{
+				bson.M{"$size": bson.M{"$ifNull": bson.A{"$memberIds", bson.A{}}}},
+				"$maxMemberCount",
+			}},
+		}
+		update := bson.M{"$addToSet": bson.M{"memberIds": model.UserId}, "$set": bson.M{"updatedOn": now}}
+		if err := s.houseRepository.Collection().FindOneAndUpdate(txCtx, filter, update,
+			options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updated); err != nil {
+			if err == mongo.ErrNoDocuments {
+				return helpers.NewLocalizedError("house.error.failed_join")
+			}
+			return err
+		}
+		result, err := s.userRepository.Collection().UpdateOne(txCtx, bson.M{"_id": userObjectId}, bson.M{
+			"$addToSet": bson.M{"houseIds": house.Id.Hex()},
+			"$set":      bson.M{"updatedOn": now},
+		})
+		if err != nil {
+			return err
+		}
+		if result.MatchedCount == 0 {
+			return helpers.NewLocalizedError("user.error.not_found")
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.failed_join", err.Error())
+		return nil, err
 	}
-
-	// Update user's house list
-	user.HouseIds = append(user.HouseIds, house.Id.Hex())
-	user.UpdatedOn = time.Now()
-	_, err = s.userRepository.Update(userObjectId, *user)
-	if err != nil {
-		// User joined but their profile update failed
-		// In production, you might want to handle this better
-		return updatedHouse, nil
-	}
-
-	return updatedHouse, nil
+	return &updated, nil
 }

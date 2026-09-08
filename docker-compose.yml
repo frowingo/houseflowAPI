@@ -9,8 +9,10 @@ services:
       - "3162:3162"
     environment:
       - MONGO_DB=houseflowDb
+      - MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
     depends_on:
-      - mongodb
+      mongodb-init:
+        condition: service_completed_successfully
     networks:
       - houseflow-network
     volumes:
@@ -20,7 +22,7 @@ services:
   mongodb:
     image: mongo:latest
     container_name: houseflow-mongodb
-    command: ["mongod", "--logpath", "/dev/null"]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     environment:
       MONGO_INITDB_DATABASE: houseflowDb
     ports:
@@ -31,6 +33,36 @@ services:
       - houseflow-network
     logging:
       driver: "none"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ping: 1}).ok ? 0 : 1)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mongodb-init:
+    image: mongo:latest
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - houseflow-network
+    restart: "no"
+    entrypoint: ["mongosh", "--host", "mongodb:27017", "--quiet", "--eval"]
+    command:
+      - |
+        try {
+          rs.status();
+        } catch (e) {
+          if (e.code !== 94) throw e;
+          const result = rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongodb:27017"}]});
+          if (!result.ok) throw new Error(JSON.stringify(result));
+        }
+        let ready = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          if (db.hello().isWritablePrimary) { ready = true; break; }
+          sleep(1000);
+        }
+        if (!ready) throw new Error("MongoDB primary did not become ready");
 
   # Optional: Mongo Express (MongoDB yönetim paneli)
   mongo-express:
@@ -41,9 +73,10 @@ services:
     environment:
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: password
-      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/?replicaSet=rs0
     depends_on:
-      - mongodb
+      mongodb-init:
+        condition: service_completed_successfully
     networks:
       - houseflow-network
     logging:

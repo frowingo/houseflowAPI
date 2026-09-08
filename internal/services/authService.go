@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/data/entities"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type AuthService struct {
@@ -40,7 +43,7 @@ func (r *AuthService) GetUserByID(userId string) (*entities.User, error) {
 		return nil, err
 	}
 
-	return r.dbRepository.FindById(objectId)
+	return r.dbRepository.FindByID(objectId)
 }
 
 func (r *AuthService) Login(email string, password string) (string, error) {
@@ -60,32 +63,50 @@ func (r *AuthService) Login(email string, password string) (string, error) {
 
 	isValid := helpers.CheckPasswordHash(password, user.HashPassword)
 	if isValid {
-		// Password correct: reset failed attempts and update last login
+		ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+		defer cancel()
+		result, err := r.dbRepository.Collection().UpdateOne(ctx, bson.M{
+			"_id": user.Id, "isActive": true,
+		}, bson.M{"$set": bson.M{
+			"lastLogin": time.Now(), "failedLoginAttempts": 0,
+		}})
+		if err != nil {
+			return "", err
+		}
+		if result.MatchedCount == 0 {
+			return "", helpers.NewLocalizedError("auth.error.account_locked")
+		}
 		token, err := helpers.GenerateToken(user.Email, user.Id.Hex(), int(user.Role), user.Language)
 		if err != nil {
 			return "", err
 		}
-
-		_ = r.dbRepository.UpdateFields(user.Id, bson.M{
-			"lastLogin":           time.Now(),
-			"failedLoginAttempts": 0,
-		})
-
 		return token, nil
 	}
 
-	// Password incorrect: increment failed attempts
-	user.FailedLoginAttempts++
-	updateData := bson.M{"failedLoginAttempts": user.FailedLoginAttempts}
-
-	// Lock account if max attempts reached
-	if user.FailedLoginAttempts >= MaxFailedAttempts {
-		updateData["isActive"] = false
-		_ = r.dbRepository.UpdateFields(user.Id, updateData)
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var updated entities.User
+	err = r.dbRepository.Collection().FindOneAndUpdate(ctx,
+		bson.M{"_id": user.Id, "isActive": true},
+		mongo.Pipeline{
+			{{Key: "$set", Value: bson.M{
+				"failedLoginAttempts": bson.M{"$add": bson.A{bson.M{"$ifNull": bson.A{"$failedLoginAttempts", 0}}, 1}},
+			}}},
+			{{Key: "$set", Value: bson.M{
+				"isActive": bson.M{"$cond": bson.A{
+					bson.M{"$gte": bson.A{"$failedLoginAttempts", MaxFailedAttempts}}, false, "$isActive",
+				}},
+			}}},
+		}, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updated)
+	if err == mongo.ErrNoDocuments {
 		return "", helpers.NewLocalizedError("auth.error.account_locked")
 	}
-
-	_ = r.dbRepository.UpdateFields(user.Id, updateData)
+	if err != nil {
+		return "", err
+	}
+	if !updated.IsActive {
+		return "", helpers.NewLocalizedError("auth.error.account_locked")
+	}
 	return "", helpers.NewLocalizedError("auth.error.invalid_password")
 }
 
@@ -110,14 +131,18 @@ func (r *AuthService) SignUp(model dtos.SignUpUserModel) (string, error) {
 	model.Password = hashedPassword
 	entity := model.ToEntity()
 
-	newUser, err := r.dbRepository.Insert(entity)
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var newUser *entities.User
+	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		newUser, err = r.dbRepository.InsertContext(txCtx, entity)
+		if err != nil {
+			return err
+		}
+		return insertUserInfoHistoryContext(txCtx, r.userInfoHistoryRepository,
+			newUserInfoHistoryEntries(*newUser, newUser.CreatedOn))
+	})
 	if err != nil {
-		return "", err
-	}
-	if err := insertUserInfoHistory(
-		r.userInfoHistoryRepository,
-		newUserInfoHistoryEntries(*newUser, newUser.CreatedOn),
-	); err != nil {
 		return "", err
 	}
 

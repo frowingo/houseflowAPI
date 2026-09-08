@@ -9,6 +9,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
 type DbRepository[T any] struct {
@@ -37,78 +41,97 @@ func (r *DbRepository[T]) getCollection() *mongo.Collection {
 	return r.client.Database(r.dbName).Collection(entityType.Name())
 }
 
-func (r *DbRepository[T]) Insert(entity T) (*T, error) {
+// Collection exposes the repository's MongoDB collection for use-case-specific
+// atomic and conditional operations that are not part of the generic API.
+func (r *DbRepository[T]) Collection() *mongo.Collection {
+	return r.getCollection()
+}
 
+// WithinTransaction executes fn with MongoDB's retryable transaction callback.
+// The callback must not perform non-database side effects because it may run
+// more than once.
+func (r *DbRepository[T]) WithinTransaction(ctx context.Context, fn func(mongo.SessionContext) error) error {
+	session, err := r.client.StartSession()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		session.EndSession(cleanupCtx)
+	}()
+
+	_, err = session.WithTransaction(ctx, func(txCtx mongo.SessionContext) (interface{}, error) {
+		return nil, fn(txCtx)
+	}, options.Transaction().
+		SetReadConcern(readconcern.Snapshot()).
+		SetWriteConcern(writeconcern.Majority()).
+		SetReadPreference(readpref.Primary()))
+	return err
+}
+
+func (r *DbRepository[T]) Insert(entity T) (*T, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return r.InsertContext(ctx, entity)
+}
 
-	collection := r.getCollection()
-
-	// Assign a new ObjectID before insert so the returned entity already has it.
+func (r *DbRepository[T]) InsertContext(ctx context.Context, entity T) (*T, error) {
 	entityVal := reflect.ValueOf(&entity).Elem()
 	idField := entityVal.FieldByName("Id")
 	if idField.IsValid() && idField.CanSet() && idField.Interface() == (primitive.ObjectID{}) {
 		idField.Set(reflect.ValueOf(primitive.NewObjectID()))
 	}
-
-	_, err := collection.InsertOne(ctx, entity)
-	if err != nil {
-		var zero *T
-		return zero, err
+	if _, err := r.getCollection().InsertOne(ctx, entity); err != nil {
+		return nil, err
 	}
-
 	return &entity, nil
 }
 
-func (r *DbRepository[T]) InsertMany(entities []T) error {
+func (r *DbRepository[T]) InsertManyContext(ctx context.Context, entities []T) error {
 	if len(entities) == 0 {
 		return nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	documents := make([]any, 0, len(entities))
 	for _, entity := range entities {
 		documents = append(documents, entity)
 	}
-
 	_, err := r.getCollection().InsertMany(ctx, documents)
 	return err
 }
 
-func (r *DbRepository[T]) FindById(id primitive.ObjectID) (*T, error) {
-
+func (r *DbRepository[T]) FindByID(id primitive.ObjectID) (*T, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return r.FindByIDContext(ctx, id)
+}
 
-	collection := r.getCollection()
-
+func (r *DbRepository[T]) FindByIDContext(ctx context.Context, id primitive.ObjectID) (*T, error) {
 	var result T
-	err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&result)
-	if err != nil {
-		return nil, helpers.NewLocalizedError("database.error.document_not_found")
+	if err := r.getCollection().FindOne(ctx, bson.M{"_id": id}).Decode(&result); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, helpers.NewLocalizedError("database.error.document_not_found")
+		}
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 // this method only for string columns
 func (r *DbRepository[T]) FindByColumn(columnName string, columnValue string) (*T, error) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return r.FindByColumnContext(ctx, columnName, columnValue)
+}
 
-	collection := r.getCollection()
-
+func (r *DbRepository[T]) FindByColumnContext(ctx context.Context, columnName string, columnValue string) (*T, error) {
 	var result T
-	err := collection.FindOne(ctx, bson.M{columnName: columnValue}).Decode(&result)
-	if err == mongo.ErrNoDocuments {
-		return nil, helpers.NewLocalizedError("database.error.document_not_found")
-	} else if err != nil {
+	if err := r.getCollection().FindOne(ctx, bson.M{columnName: columnValue}).Decode(&result); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, helpers.NewLocalizedError("database.error.document_not_found")
+		}
 		return nil, err
 	}
-
 	return &result, nil
 }
 
@@ -136,38 +159,6 @@ func (r *DbRepository[T]) FindAll() ([]T, error) {
 	return results, nil
 }
 
-func (r *DbRepository[T]) Update(id primitive.ObjectID, updatedEntity T) (*T, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	collection := r.getCollection()
-
-	updateFields := bson.M{}
-	payload, err := bson.Marshal(updatedEntity)
-	if err != nil {
-		var zero *T
-		return zero, err
-	}
-	if err := bson.Unmarshal(payload, &updateFields); err != nil {
-		var zero *T
-		return zero, err
-	}
-	delete(updateFields, "_id")
-
-	result, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updateFields})
-	if err != nil {
-		var zero *T
-		return zero, err
-	}
-
-	if result.MatchedCount == 0 {
-		return nil, helpers.NewLocalizedError("database.error.update_not_found")
-	}
-
-	return &updatedEntity, nil
-}
-
 func (r *DbRepository[T]) FindManyByColumn(columnName string, columnValue string) ([]T, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -190,13 +181,13 @@ func (r *DbRepository[T]) FindManyByColumn(columnName string, columnValue string
 }
 
 func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) error {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return r.UpdateFieldsContext(ctx, id, fields)
+}
 
-	collection := r.getCollection()
-
-	result, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": fields})
+func (r *DbRepository[T]) UpdateFieldsContext(ctx context.Context, id primitive.ObjectID, fields bson.M) error {
+	result, err := r.getCollection().UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": fields})
 	if err != nil {
 		return err
 	}
@@ -209,13 +200,13 @@ func (r *DbRepository[T]) UpdateFields(id primitive.ObjectID, fields bson.M) err
 }
 
 func (r *DbRepository[T]) FindManyByFilter(filter bson.M) ([]T, error) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return r.FindManyByFilterContext(ctx, filter)
+}
 
-	collection := r.getCollection()
-
-	cursor, err := collection.Find(ctx, filter)
+func (r *DbRepository[T]) FindManyByFilterContext(ctx context.Context, filter bson.M, opts ...*options.FindOptions) ([]T, error) {
+	cursor, err := r.getCollection().Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -230,18 +221,14 @@ func (r *DbRepository[T]) FindManyByFilter(filter bson.M) ([]T, error) {
 }
 
 func (r *DbRepository[T]) ExistsByFilter(filter bson.M) (bool, error) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return r.ExistsByFilterContext(ctx, filter)
+}
 
-	collection := r.getCollection()
-
-	count, err := collection.CountDocuments(ctx, filter)
-	if err != nil {
-		return false, err
-	}
-
-	return count > 0, nil
+func (r *DbRepository[T]) ExistsByFilterContext(ctx context.Context, filter bson.M) (bool, error) {
+	count, err := r.getCollection().CountDocuments(ctx, filter, options.Count().SetLimit(1))
+	return count > 0, err
 }
 
 func (r *DbRepository[T]) Delete(id primitive.ObjectID) error {

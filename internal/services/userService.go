@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var imageAssetCache = helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
@@ -49,14 +51,18 @@ func (r *UserService) CreateUser(user dtos.NewUserModel) (*dtos.NewUserModel, er
 	}
 	entity.HashPassword = hashedPassword
 
-	createdUser, err := r.dbRepository.Insert(entity)
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var createdUser *entities.User
+	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		createdUser, err = r.dbRepository.InsertContext(txCtx, entity)
+		if err != nil {
+			return err
+		}
+		return insertUserInfoHistoryContext(txCtx, r.userInfoHistoryRepository,
+			newUserInfoHistoryEntries(*createdUser, createdUser.CreatedOn))
+	})
 	if err != nil {
-		return nil, err
-	}
-	if err := insertUserInfoHistory(
-		r.userInfoHistoryRepository,
-		newUserInfoHistoryEntries(*createdUser, createdUser.CreatedOn),
-	); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +116,7 @@ func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dto
 		return nil, err
 	}
 
-	house, err := r.houseRepository.FindById(houseObjectId)
+	house, err := r.houseRepository.FindByID(houseObjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +130,7 @@ func (r *UserService) GetUsersByHouse(houseId string, requesterId string) ([]dto
 		if err != nil {
 			continue
 		}
-		user, err := r.dbRepository.FindById(userObjectId)
+		user, err := r.dbRepository.FindByID(userObjectId)
 		if err != nil {
 			continue
 		}
@@ -143,10 +149,6 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 
 	now := time.Now()
 	historyChanges := profileUserInfoChanges(model)
-	if err := validateProfileUpdateIntervals(r.userInfoHistoryRepository, userId, historyChanges, now); err != nil {
-		return nil, err
-	}
-
 	fields := bson.M{"updatedOn": now}
 
 	if model.Firstname != nil {
@@ -170,17 +172,23 @@ func (r *UserService) UpdateProfile(userId string, model dtos.UpdateUserModel) (
 		}
 		fields["language"] = helpers.NormalizeLanguage(*model.Language)
 	}
-	if err := r.dbRepository.UpdateFields(objectId, fields); err != nil {
-		return nil, err
-	}
-	if err := insertUserInfoHistory(
-		r.userInfoHistoryRepository,
-		userInfoHistoryEntries(userId, historyChanges, now),
-	); err != nil {
-		return nil, err
-	}
-
-	updated, err := r.dbRepository.FindById(objectId)
+	ctx, cancel := context.WithTimeout(context.Background(), databaseOperationTimeout)
+	defer cancel()
+	var updated *entities.User
+	err = r.dbRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		if err := validateProfileUpdateIntervalsContext(txCtx, r.userInfoHistoryRepository, userId, historyChanges, now); err != nil {
+			return err
+		}
+		if err := r.dbRepository.UpdateFieldsContext(txCtx, objectId, fields); err != nil {
+			return err
+		}
+		if err := insertUserInfoHistoryContext(txCtx, r.userInfoHistoryRepository,
+			userInfoHistoryEntries(userId, historyChanges, now)); err != nil {
+			return err
+		}
+		updated, err = r.dbRepository.FindByIDContext(txCtx, objectId)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -265,6 +273,8 @@ func (r *UserService) CreateImageAsset(model dtos.CreateImageAssetModel) error {
 	}
 
 	_, err = r.imageAssetRepository.Insert(entity)
-
+	if mongo.IsDuplicateKeyError(err) {
+		return helpers.NewLocalizedError("image_asset.error.duplicate")
+	}
 	return err
 }
