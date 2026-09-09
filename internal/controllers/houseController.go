@@ -2,29 +2,31 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	housecommands "houseflowApi/internal/application/house/commands"
+	housequeries "houseflowApi/internal/application/house/queries"
+	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
-	"houseflowApi/internal/services"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type HouseController struct {
-	houseService *services.HouseService
-	localizer    helpers.MessageLocalizer
-	validator    *validator.CustomValidator
+	sender    cqrs.Sender
+	localizer helpers.MessageLocalizer
+	validator *validator.CustomValidator
 }
 
-func NewHouseController(houseService *services.HouseService, localizers ...helpers.MessageLocalizer) *HouseController {
-	var localizer helpers.MessageLocalizer
-	if len(localizers) > 0 {
-		localizer = localizers[0]
-	}
+func NewHouseController(
+	sender cqrs.Sender,
+	localizer helpers.MessageLocalizer,
+) *HouseController {
 	return &HouseController{
-		houseService: houseService,
-		localizer:    localizer,
-		validator:    validator.NewValidator(),
+		sender:    sender,
+		localizer: localizer,
+		validator: validator.NewValidator(),
 	}
 }
 
@@ -53,7 +55,12 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	house, err := r.houseService.CreateHouse(ctx, *model)
+	house, err := cqrs.Send[*entities.House](ctx, r.sender, housecommands.CreateHouseCommand{
+		OwnerID:        model.OwnerId,
+		Name:           model.Name,
+		Type:           model.Type,
+		MaxMemberCount: model.MaxMemberCount,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -82,7 +89,10 @@ func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	details, err := r.houseService.GetHouseDetails(ctx, houseId, userId)
+	details, err := cqrs.Send[*dtos.HouseDetailsModel](ctx, r.sender, housequeries.GetHouseDetailsQuery{
+		HouseID:     houseId,
+		RequesterID: userId,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -113,7 +123,12 @@ func (r *HouseController) CreateAnnouncement(c *fiber.Ctx) error {
 	userId := c.Locals("userID").(string)
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	announcement, err := r.houseService.CreateAnnouncement(ctx, *model, userId)
+	announcement, err := cqrs.Send[*dtos.AnnouncementResponseModel](ctx, r.sender, housecommands.CreateAnnouncementCommand{
+		HouseID:     model.HouseId,
+		UserID:      userId,
+		Title:       model.Title,
+		Description: model.Description,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -146,7 +161,10 @@ func (r *HouseController) JoinHouseByCode(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	house, err := r.houseService.JoinHouseByCode(ctx, *model)
+	house, err := cqrs.Send[*entities.House](ctx, r.sender, housecommands.JoinHouseCommand{
+		UserID:     model.UserId,
+		InviteCode: model.InviteCode,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}

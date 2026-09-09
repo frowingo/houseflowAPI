@@ -52,7 +52,7 @@ noktası ve ayrı yaşam döngüsü olarak tasarlanabilir.
 
 ## ADR-002 — Kademeli, uygulama içi command/query ayrımı
 
-**Durum:** Öneri
+**Durum:** Kabul — CQRS Faz 0 ve House pilotu uygulandı
 
 İlk aşamada ayrı servisler, ayrı read database veya event sourcing içeren tam
 ölçekli CQRS kurulmayacaktır. Aynı process içinde use-case bazlı ayrım yapılacaktır:
@@ -79,8 +79,29 @@ HTTP Controller
 
 Controller yalnızca taşıma katmanı sorumluluklarını üstlenir: request parse,
 kimlik bilgisi, validation çağrısı ve HTTP response eşlemesi. İş kuralları ve
-transaction sınırı handler'da bulunur. İlk aşamada mediator/command bus paketi
-eklenmez; handler'lar doğrudan çağrılır.
+transaction sınırı handler'da bulunur. Handler'lar uygulamaya ait context-first,
+process-içi mediator üzerinden çağrılır. Bu mediator harici message broker,
+dayanıklı queue veya event bus değildir.
+
+Handler sözleşmeleri ve process-içi mediator `internal/infrastructure/cqrs`
+altında tanımlanır. Her handler
+`Handle(context.Context, Request) (Result, error)` imzasını kullanır. Command ve
+query modelleri Fiber gibi HTTP taşıma tiplerine bağımlı olmaz. Application
+katmanının controller, Fiber veya eski service katmanına bağımlı hale gelmesi
+mimari testlerle engellenir.
+
+CQRS geçişi modül bazında şu sırayla yürütülür:
+
+1. House pilotu.
+2. Chore.
+3. User ve Image Asset.
+4. Auth.
+5. Localization endpoint'leri.
+6. Eski business service katmanının kaldırılması ve tam sözleşme testi.
+
+Health endpoint'i, middleware, migration, notification adaptörü ve localization
+cache yaşam döngüsü application use-case'i olmadıkları için CQRS handler'ına
+dönüştürülmez.
 
 **Sonuç:** Oyun modülü için temiz bir uygulama sınırı oluşur fakat operasyonel
 karmaşıklık artmaz.
@@ -318,14 +339,15 @@ dayanıklılık ihtiyacıyla gerekçelendirilmiş olur.
 
 ## Karar özeti
 
-1. Uygulama içi command/query ayrımı: sıradaki karar ve çalışma paketi.
+1. Uygulama içi command/query ayrımı: kabul edildi; CQRS Faz 0 ve House pilotu
+   uygulandı, sıradaki çalışma paketi Chore modülüdür.
 2. Atomik koşullu update, transaction ve version: kabul edildi ve uygulandı.
 3. MongoDB replica set zorunluluğu: kabul edildi ve uygulandı.
 4. Redis ve RabbitMQ'yu ihtiyaç tetiklenene kadar erteleme: karar bekliyor.
 5. Kafka'yı mevcut yol haritasına almama: karar bekliyor.
 6. WebSocket'ten önce temsilci oyun protokolü: karar bekliyor.
 
-## Uygulama durumu — 8 Eylül 2026
+## Uygulama durumu — 9 Eylül 2026
 
 Concurrency temeli uygulanmıştır:
 
@@ -346,6 +368,12 @@ Concurrency temeli uygulanmıştır:
 - Concurrency ve geçici altyapı hataları standart `409`, `429` ve `503` HTTP
   cevaplarına dönüştürülür.
 
-Bu aşama command/query ayrımını, WebSocket'i, Redis'i veya RabbitMQ'yu eklemez.
-İstemci retry'larını aynı işlem olarak tanıyacak genel `commandId` sözleşmesi de
-henüz yoktur; bu sözleşme ilk oyun command'ları tasarlanırken ele alınacaktır.
+CQRS Faz 0 kapsamında ortak command/query handler sözleşmeleri ve application
+katmanı bağımlılık testleri eklenmiştir. House pilotunda `CreateHouse`,
+`JoinHouse` ve `CreateAnnouncement` command handler'lara; `GetHouseDetails` ise
+query handler'a taşınmıştır. Process-içi mediator oluşturulmuş, House handler'ları
+başlangıçta fail-fast kaydedilmiş ve House controller tek `Sender` sözleşmesine
+indirilmiştir. Eski `HouseService` kaldırılmıştır. Sıradaki CQRS çalışma paketi
+Chore modülüdür. WebSocket, Redis ve RabbitMQ eklenmemiştir. İstemci retry'larını
+aynı işlem olarak tanıyacak genel `commandId` sözleşmesi de henüz yoktur; bu
+sözleşme ilk oyun command'ları tasarlanırken ele alınacaktır.

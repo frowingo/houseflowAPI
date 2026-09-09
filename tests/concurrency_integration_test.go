@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"houseflowApi/external/migration"
 	"houseflowApi/internal/abstract"
+	housecommands "houseflowApi/internal/application/house/commands"
+	housePolicies "houseflowApi/internal/application/house/policies"
+	housequeries "houseflowApi/internal/application/house/queries"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/data/migrations"
 	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 	"os"
@@ -23,12 +27,12 @@ import (
 )
 
 type concurrencyFixture struct {
-	ctx   context.Context
-	db    *mongo.Database
-	house *services.HouseService
-	chore *services.ChoreService
-	auth  *services.AuthService
-	user  *services.UserService
+	ctx    context.Context
+	db     *mongo.Database
+	sender cqrs.Sender
+	chore  *services.ChoreService
+	auth   *services.AuthService
+	user   *services.UserService
 }
 
 func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
@@ -66,12 +70,68 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	chores := abstract.New[entities.Chore](client, db.Name())
 	histories := abstract.New[entities.UserInfoHistory](client, db.Name())
 	images := abstract.New[entities.ImageAsset](client, db.Name())
+	announcements := abstract.New[entities.Announcement](client, db.Name())
+	choreStatusHistories := abstract.New[entities.ChoreStatusHistory](client, db.Name())
+	choreReviewVotes := abstract.New[entities.ChoreReviewVote](client, db.Name())
+	membershipPolicy := housePolicies.NewMembershipPolicy(houses)
+	createHouseHandler := housecommands.NewCreateHouseHandler(houses, users)
+	joinHouseHandler := housecommands.NewJoinHouseHandler(houses, users)
+	createAnnouncementHandler := housecommands.NewCreateAnnouncementHandler(membershipPolicy, users, announcements)
+	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
+		membershipPolicy, houses, users, chores, choreStatusHistories, choreReviewVotes, announcements,
+	)
+	sender := cqrs.New()
+	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](sender, createHouseHandler)
+	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](sender, joinHouseHandler)
+	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](sender, createAnnouncementHandler)
+	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](sender, getHouseDetailsHandler)
 	return &concurrencyFixture{
 		ctx: ctx, db: db,
-		house: services.NewHouseService(houses, users, chores, client, db.Name()),
-		chore: services.NewChoreService(chores, houses, users, client, db.Name()),
-		auth:  services.NewAuthService(users, nil, histories),
-		user:  services.NewUserService(users, houses, images, histories),
+		sender: sender,
+		chore:  services.NewChoreService(chores, houses, users, client, db.Name()),
+		auth:   services.NewAuthService(users, nil, histories),
+		user:   services.NewUserService(users, houses, images, histories),
+	}
+}
+
+func TestGetHouseDetailsQueryReturnsCompleteSnapshot(t *testing.T) {
+	f := newConcurrencyFixture(t)
+	owner := f.seedUser(t, "correct-password")
+	house := f.createHouse(t, owner, 2)
+	member := f.seedUser(t, "correct-password")
+	if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{
+		UserID: member.Id.Hex(), InviteCode: house.InviteCode,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cqrs.Send[*dtos.AnnouncementResponseModel](f.ctx, f.sender, housecommands.CreateAnnouncementCommand{
+		HouseID: house.Id.Hex(), UserID: owner.Id.Hex(), Title: "Snapshot notice", Description: "Snapshot test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
+		Title:       "Snapshot chore",
+		Description: "Snapshot test chore",
+		AssignedTo:  owner.Id.Hex(),
+		DueDate:     dtos.NewUTCDateTime(time.Now().Add(time.Hour)),
+		HouseId:     house.Id.Hex(),
+		Level:       entities.Easy,
+	}, owner.Id.Hex()); err != nil {
+		t.Fatal(err)
+	}
+
+	details, err := cqrs.Send[*dtos.HouseDetailsModel](f.ctx, f.sender, housequeries.GetHouseDetailsQuery{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(details.Members) != 2 || len(details.Chores) != 1 || len(details.Announcements) != 1 {
+		t.Fatalf("members=%d chores=%d announcements=%d, want 2, 1, 1",
+			len(details.Members), len(details.Chores), len(details.Announcements))
+	}
+	if details.Announcements[0].AnnouncedBy != "Test User" {
+		t.Fatalf("announcedBy = %q, want %q", details.Announcements[0].AnnouncedBy, "Test User")
 	}
 }
 
@@ -96,8 +156,8 @@ func (f *concurrencyFixture) seedUser(t *testing.T, password string) entities.Us
 
 func (f *concurrencyFixture) createHouse(t *testing.T, owner entities.User, capacity int) *entities.House {
 	t.Helper()
-	house, err := f.house.CreateHouse(f.ctx, dtos.CreateHouseModel{
-		OwnerId: owner.Id.Hex(), Name: "Concurrent house", Type: entities.SharedHouse, MaxMemberCount: capacity,
+	house, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.CreateHouseCommand{
+		OwnerID: owner.Id.Hex(), Name: "Concurrent house", Type: entities.SharedHouse, MaxMemberCount: capacity,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,8 +182,8 @@ func TestConcurrentHouseJoinsRespectCapacityAndKeepMembershipConsistent(t *testi
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{
-				UserId: users[i].Id.Hex(), InviteCode: house.InviteCode,
+			_, errs[i] = cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{
+				UserID: users[i].Id.Hex(), InviteCode: house.InviteCode,
 			})
 		}(i)
 	}
@@ -174,8 +234,8 @@ func TestConcurrentHouseCreatesDoNotLoseUserMemberships(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.house.CreateHouse(f.ctx, dtos.CreateHouseModel{
-				OwnerId: owner.Id.Hex(), Name: fmt.Sprintf("House %d", i),
+			_, errs[i] = cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.CreateHouseCommand{
+				OwnerID: owner.Id.Hex(), Name: fmt.Sprintf("House %d", i),
 				Type: entities.SharedHouse, MaxMemberCount: 4,
 			})
 		}(i)
@@ -205,7 +265,7 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 	owner := f.seedUser(t, "correct-password")
 	house := f.createHouse(t, owner, 2)
 	member := f.seedUser(t, "correct-password")
-	if _, err := f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{UserId: member.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
+	if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{UserID: member.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
 		t.Fatal(err)
 	}
 	create := func(title string) *dtos.ChoreResponseModel {
@@ -280,7 +340,7 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 	house := f.createHouse(t, owner, 3)
 	reviewers := []entities.User{f.seedUser(t, "correct-password"), f.seedUser(t, "correct-password")}
 	for _, reviewer := range reviewers {
-		if _, err := f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{UserId: reviewer.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
+		if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{UserID: reviewer.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -369,9 +429,9 @@ func TestConcurrentAnnouncementAndProfileLimits(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, announcementErrors[i] = f.house.CreateAnnouncement(f.ctx, dtos.CreateAnnouncementModel{
-				HouseId: house.Id.Hex(), Title: fmt.Sprintf("Notice %d", i), Description: "Concurrent announcement",
-			}, owner.Id.Hex())
+			_, announcementErrors[i] = cqrs.Send[*dtos.AnnouncementResponseModel](f.ctx, f.sender, housecommands.CreateAnnouncementCommand{
+				HouseID: house.Id.Hex(), UserID: owner.Id.Hex(), Title: fmt.Sprintf("Notice %d", i), Description: "Concurrent announcement",
+			})
 		}(i)
 	}
 	close(start)
@@ -431,8 +491,8 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		}).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.house.CreateHouse(f.ctx, dtos.CreateHouseModel{
-			OwnerId: owner.Id.Hex(), Name: "Must roll back", Type: entities.SharedHouse, MaxMemberCount: 2,
+		if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.CreateHouseCommand{
+			OwnerID: owner.Id.Hex(), Name: "Must roll back", Type: entities.SharedHouse, MaxMemberCount: 2,
 		}); err == nil {
 			t.Fatal("expected user validation failure")
 		}
@@ -458,8 +518,8 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		}).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.house.JoinHouseByCode(f.ctx, dtos.JoinHouseByCodeModel{
-			UserId: member.Id.Hex(), InviteCode: house.InviteCode,
+		if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{
+			UserID: member.Id.Hex(), InviteCode: house.InviteCode,
 		}); err == nil {
 			t.Fatal("expected user validation failure")
 		}

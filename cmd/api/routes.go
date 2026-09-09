@@ -3,9 +3,14 @@ package main
 import (
 	"context"
 	"houseflowApi/internal/abstract"
+	housecommands "houseflowApi/internal/application/house/commands"
+	housePolicies "houseflowApi/internal/application/house/policies"
+	housequeries "houseflowApi/internal/application/house/queries"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/entities"
+	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/middleware"
+	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 	"log"
 
@@ -14,6 +19,7 @@ import (
 )
 
 func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string) {
+	applicationMediator := cqrs.New()
 
 	localizationService := services.NewLocalizationService(
 		abstract.New[entities.Localization](client, dbName),
@@ -83,14 +89,38 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - HOUSE -
-	houseService := services.NewHouseService(
-		abstract.New[entities.House](client, dbName),
-		abstract.New[entities.User](client, dbName),
-		abstract.New[entities.Chore](client, dbName),
-		client,
-		dbName,
+	houseRepository := abstract.New[entities.House](client, dbName)
+	houseUserRepository := abstract.New[entities.User](client, dbName)
+	houseChoreRepository := abstract.New[entities.Chore](client, dbName)
+	houseChoreStatusHistoryRepository := abstract.New[entities.ChoreStatusHistory](client, dbName)
+	houseChoreReviewVoteRepository := abstract.New[entities.ChoreReviewVote](client, dbName)
+	houseAnnouncementRepository := abstract.New[entities.Announcement](client, dbName)
+	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
+
+	createHouseHandler := housecommands.NewCreateHouseHandler(houseRepository, houseUserRepository)
+	joinHouseHandler := housecommands.NewJoinHouseHandler(houseRepository, houseUserRepository)
+	createAnnouncementHandler := housecommands.NewCreateAnnouncementHandler(
+		houseMembershipPolicy,
+		houseUserRepository,
+		houseAnnouncementRepository,
 	)
-	houseController := controllers.NewHouseController(houseService, localizationService)
+	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
+		houseMembershipPolicy,
+		houseRepository,
+		houseUserRepository,
+		houseChoreRepository,
+		houseChoreStatusHistoryRepository,
+		houseChoreReviewVoteRepository,
+		houseAnnouncementRepository,
+	)
+	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](applicationMediator, createHouseHandler)
+	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](applicationMediator, joinHouseHandler)
+	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](applicationMediator, createAnnouncementHandler)
+	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](applicationMediator, getHouseDetailsHandler)
+	houseController := controllers.NewHouseController(
+		applicationMediator,
+		localizationService,
+	)
 
 	houseRoutes := api.Group("/house", middleware.AuthRequired(localizationService), middleware.UserRateLimit(localizationService))
 	houseRoutes.Get("/details", houseController.GetHouseDetails)

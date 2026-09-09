@@ -6,6 +6,7 @@ import (
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
+	"slices"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -118,7 +119,7 @@ func (r *UserService) GetUsersByHouse(ctx context.Context, houseId string, reque
 	if err != nil {
 		return nil, err
 	}
-	if !stringContains(house.MemberIds, requesterId) {
+	if !slices.Contains(house.MemberIds, requesterId) {
 		return nil, helpers.NewLocalizedError("house.error.user_not_member")
 	}
 

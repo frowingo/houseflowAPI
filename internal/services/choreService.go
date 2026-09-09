@@ -6,6 +6,7 @@ import (
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
+	"slices"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -51,7 +52,7 @@ func (r *ChoreService) validateHouseMember(ctx context.Context, houseId string, 
 	if err != nil {
 		return nil, helpers.NewLocalizedError("house.error.not_found")
 	}
-	if !stringContains(house.MemberIds, userId) {
+	if !slices.Contains(house.MemberIds, userId) {
 		return nil, helpers.NewLocalizedError("house.error.user_not_member")
 	}
 	return house, nil
@@ -62,7 +63,7 @@ func (r *ChoreService) validateAssignee(ctx context.Context, house *entities.Hou
 	if err != nil {
 		return helpers.NewLocalizedError("chore.error.invalid_assignee_id")
 	}
-	if !stringContains(house.MemberIds, assigneeId) {
+	if !slices.Contains(house.MemberIds, assigneeId) {
 		return helpers.NewLocalizedError("chore.error.assignee_not_member")
 	}
 	if _, err := r.userRepository.FindByID(ctx, assigneeObjectId); err != nil {
