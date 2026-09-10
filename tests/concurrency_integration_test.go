@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"houseflowApi/external/migration"
 	"houseflowApi/internal/abstract"
+	authCommands "houseflowApi/internal/application/auth/commands"
+	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	housecommands "houseflowApi/internal/application/house/commands"
@@ -12,14 +14,16 @@ import (
 	housequeries "houseflowApi/internal/application/house/queries"
 	imageAssetCommands "houseflowApi/internal/application/imageAsset/commands"
 	imageAssetQueries "houseflowApi/internal/application/imageAsset/queries"
+	localizationCommands "houseflowApi/internal/application/localization/commands"
+	localizationQueries "houseflowApi/internal/application/localization/queries"
 	userCommands "houseflowApi/internal/application/user/commands"
 	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/data/migrations"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
+	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
 	"houseflowApi/internal/models/dtos"
-	"houseflowApi/internal/services"
 	"os"
 	"sync"
 	"testing"
@@ -33,10 +37,25 @@ import (
 )
 
 type concurrencyFixture struct {
-	ctx    context.Context
-	db     *mongo.Database
-	sender cqrs.Sender
-	auth   *services.AuthService
+	ctx         context.Context
+	db          *mongo.Database
+	sender      cqrs.Sender
+	emailSender *recordingEmailSender
+}
+
+type recordingEmailSender struct {
+	resetCode        string
+	verificationCode string
+}
+
+func (s *recordingEmailSender) SendResetCodeEmail(_ string, code string, _ int) error {
+	s.resetCode = code
+	return nil
+}
+
+func (s *recordingEmailSender) SendEmailVerificationCode(_ string, code string, _ int) error {
+	s.verificationCode = code
+	return nil
 }
 
 func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
@@ -72,6 +91,8 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	users := abstract.New[entities.User](client, db.Name())
 	houses := abstract.New[entities.House](client, db.Name())
 	imageAssets := abstract.New[entities.ImageAsset](client, db.Name())
+	localizations := abstract.New[entities.Localization](client, db.Name())
+	languages := abstract.New[entities.LocalizationLanguageOption](client, db.Name())
 	chores := abstract.New[entities.Chore](client, db.Name())
 	histories := abstract.New[entities.UserInfoHistory](client, db.Name())
 	announcements := abstract.New[entities.Announcement](client, db.Name())
@@ -109,7 +130,33 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	updateImageAssetHandler := imageAssetCommands.NewUpdateImageAssetHandler(imageAssets, imageCache)
 	getImagesByCategoryHandler := imageAssetQueries.NewGetImagesByCategoryHandler(imageAssets, imageCache)
 	getImageByPublicIDHandler := imageAssetQueries.NewGetImageByPublicIDHandler(imageAssets)
+	localizationCache := infrastructureLocalization.NewCache(localizations)
+	getPlaintextsHandler := localizationQueries.NewGetPlaintextsHandler(localizations, localizationCache)
+	getLanguagesHandler := localizationQueries.NewGetLanguagesHandler(languages)
+	getLanguageHandler := localizationQueries.NewGetLanguageHandler(languages)
+	insertLocalizationsHandler := localizationCommands.NewInsertLocalizationsHandler(localizations, localizationCache)
+	insertLocalizationLanguageHandler := localizationCommands.NewInsertLocalizationLanguageHandler(languages)
+	emailSender := &recordingEmailSender{}
+	loginHandler := authCommands.NewLoginHandler(users)
+	signUpHandler := authCommands.NewSignUpHandler(users, histories)
+	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(users, emailSender)
+	resetPasswordHandler := authCommands.NewResetPasswordHandler(users)
+	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(users, emailSender)
+	validateEmailHandler := authCommands.NewValidateEmailHandler(users)
+	validateAuthHandler := authQueries.NewValidateAuthHandler(users)
 	sender := cqrs.New()
+	cqrs.MustRegister[string, authCommands.LoginCommand](sender, loginHandler)
+	cqrs.MustRegister[string, authCommands.SignUpCommand](sender, signUpHandler)
+	cqrs.MustRegister[cqrs.NoResult, authCommands.ForgotPasswordCommand](sender, forgotPasswordHandler)
+	cqrs.MustRegister[cqrs.NoResult, authCommands.ResetPasswordCommand](sender, resetPasswordHandler)
+	cqrs.MustRegister[cqrs.NoResult, authCommands.SendEmailVerificationCodeCommand](sender, sendEmailVerificationCodeHandler)
+	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](sender, validateEmailHandler)
+	cqrs.MustRegister[*dtos.UserResultModel, authQueries.ValidateAuthQuery](sender, validateAuthHandler)
+	cqrs.MustRegister[[]dtos.LocalizationPlaintextResponseModel, localizationQueries.GetPlaintextsQuery](sender, getPlaintextsHandler)
+	cqrs.MustRegister[[]dtos.LocalizationLanguageResponseModel, localizationQueries.GetLanguagesQuery](sender, getLanguagesHandler)
+	cqrs.MustRegister[[]dtos.LocalizationLanguageResponseModel, localizationQueries.GetLanguageQuery](sender, getLanguageHandler)
+	cqrs.MustRegister[cqrs.NoResult, localizationCommands.InsertLocalizationsCommand](sender, insertLocalizationsHandler)
+	cqrs.MustRegister[cqrs.NoResult, localizationCommands.InsertLocalizationLanguageCommand](sender, insertLocalizationLanguageHandler)
 	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](sender, createHouseHandler)
 	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](sender, joinHouseHandler)
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](sender, createAnnouncementHandler)
@@ -129,9 +176,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](sender, getImagesByCategoryHandler)
 	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](sender, getImageByPublicIDHandler)
 	return &concurrencyFixture{
-		ctx: ctx, db: db,
-		sender: sender,
-		auth:   services.NewAuthService(users, nil, histories),
+		ctx: ctx, db: db, sender: sender, emailSender: emailSender,
 	}
 }
 
@@ -468,7 +513,9 @@ func TestConcurrentFailedLoginsDoNotLoseIncrements(t *testing.T) {
 		go func() {
 			defer workers.Done()
 			<-start
-			_, _ = f.auth.Login(f.ctx, user.Email, "wrong-password")
+			_, _ = cqrs.Send[string](f.ctx, f.sender, authCommands.LoginCommand{
+				Email: user.Email, Password: "wrong-password",
+			})
 		}()
 	}
 	close(start)

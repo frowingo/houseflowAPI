@@ -105,7 +105,7 @@ func TestApplicationHandlersFollowContextFirstSignature(t *testing.T) {
 
 func TestMigratedControllersUseCQRSWithoutLegacyServices(t *testing.T) {
 	internalDirectory := filepath.Join(applicationDirectory(t), "..")
-	controllerFiles := []string{"houseController.go", "choreController.go", "userController.go"}
+	controllerFiles := []string{"houseController.go", "choreController.go", "userController.go", "authController.go", "localizationController.go"}
 	for _, fileName := range controllerFiles {
 		path := filepath.Join(internalDirectory, "controllers", fileName)
 		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)

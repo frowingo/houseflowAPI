@@ -52,7 +52,7 @@ noktası ve ayrı yaşam döngüsü olarak tasarlanabilir.
 
 ## ADR-002 — Kademeli, uygulama içi command/query ayrımı
 
-**Durum:** Kabul — CQRS Faz 0, House, Chore ve User/Image Asset fazları uygulandı
+**Durum:** Kabul — CQRS Faz 0 ile House, Chore, User/Image Asset, Auth ve Localization fazları uygulandı
 
 İlk aşamada ayrı servisler, ayrı read database veya event sourcing içeren tam
 ölçekli CQRS kurulmayacaktır. Aynı process içinde use-case bazlı ayrım yapılacaktır:
