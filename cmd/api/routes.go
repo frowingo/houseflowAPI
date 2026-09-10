@@ -3,11 +3,18 @@ package main
 import (
 	"context"
 	"houseflowApi/internal/abstract"
+	choreCommands "houseflowApi/internal/application/chore/commands"
+	chorePolicies "houseflowApi/internal/application/chore/policies"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
 	housequeries "houseflowApi/internal/application/house/queries"
+	imageAssetCommands "houseflowApi/internal/application/imageAsset/commands"
+	imageAssetQueries "houseflowApi/internal/application/imageAsset/queries"
+	userCommands "houseflowApi/internal/application/user/commands"
+	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/entities"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/middleware"
 	"houseflowApi/internal/models/dtos"
@@ -67,13 +74,35 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - USER -
-	userService := services.NewUserService(
-		abstract.New[entities.User](client, dbName),
-		abstract.New[entities.House](client, dbName),
-		abstract.New[entities.ImageAsset](client, dbName),
-		abstract.New[entities.UserInfoHistory](client, dbName),
-	)
-	userController := controllers.NewUserController(userService, localizationService)
+	userRepository := abstract.New[entities.User](client, dbName)
+	houseRepository := abstract.New[entities.House](client, dbName)
+	imageAssetRepository := abstract.New[entities.ImageAsset](client, dbName)
+	userInfoHistoryRepository := abstract.New[entities.UserInfoHistory](client, dbName)
+	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
+	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
+
+	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository)
+	updateProfileHandler := userCommands.NewUpdateProfileHandler(userRepository, userInfoHistoryRepository)
+	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(userRepository)
+	listUsersHandler := userQueries.NewListUsersHandler(userRepository)
+	getUsersByHouseHandler := userQueries.NewGetUsersByHouseHandler(userRepository, houseMembershipPolicy)
+	createImageAssetHandler := imageAssetCommands.NewCreateImageAssetHandler(imageAssetRepository, imageCache)
+	updateImageAssetHandler := imageAssetCommands.NewUpdateImageAssetHandler(imageAssetRepository, imageCache)
+	getImagesByCategoryHandler := imageAssetQueries.NewGetImagesByCategoryHandler(imageAssetRepository, imageCache)
+	getImageByPublicIDHandler := imageAssetQueries.NewGetImageByPublicIDHandler(imageAssetRepository)
+
+	cqrs.MustRegister[*dtos.NewUserModel, userCommands.CreateUserCommand](applicationMediator, createUserHandler)
+	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](applicationMediator, deleteUserHandler)
+	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](applicationMediator, updateProfileHandler)
+	cqrs.MustRegister[*dtos.UserResultModel, userQueries.GetUserByEmailQuery](applicationMediator, getUserByEmailHandler)
+	cqrs.MustRegister[[]dtos.UserResultModel, userQueries.ListUsersQuery](applicationMediator, listUsersHandler)
+	cqrs.MustRegister[[]dtos.UserResultModel, userQueries.GetUsersByHouseQuery](applicationMediator, getUsersByHouseHandler)
+	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.CreateImageAssetCommand](applicationMediator, createImageAssetHandler)
+	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.UpdateImageAssetCommand](applicationMediator, updateImageAssetHandler)
+	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](applicationMediator, getImagesByCategoryHandler)
+	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](applicationMediator, getImageByPublicIDHandler)
+	userController := controllers.NewUserController(applicationMediator, localizationService)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired(localizationService), middleware.UserRateLimit(localizationService))
 	userRoutes.Post("", middleware.RequireRoleWithLocalizer(localizationService, int(entities.SuperAdmin)), userController.NewUser)
@@ -89,25 +118,22 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - HOUSE -
-	houseRepository := abstract.New[entities.House](client, dbName)
-	houseUserRepository := abstract.New[entities.User](client, dbName)
 	houseChoreRepository := abstract.New[entities.Chore](client, dbName)
 	houseChoreStatusHistoryRepository := abstract.New[entities.ChoreStatusHistory](client, dbName)
 	houseChoreReviewVoteRepository := abstract.New[entities.ChoreReviewVote](client, dbName)
 	houseAnnouncementRepository := abstract.New[entities.Announcement](client, dbName)
-	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 
-	createHouseHandler := housecommands.NewCreateHouseHandler(houseRepository, houseUserRepository)
-	joinHouseHandler := housecommands.NewJoinHouseHandler(houseRepository, houseUserRepository)
+	createHouseHandler := housecommands.NewCreateHouseHandler(houseRepository, userRepository)
+	joinHouseHandler := housecommands.NewJoinHouseHandler(houseRepository, userRepository)
 	createAnnouncementHandler := housecommands.NewCreateAnnouncementHandler(
 		houseMembershipPolicy,
-		houseUserRepository,
+		userRepository,
 		houseAnnouncementRepository,
 	)
 	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
 		houseMembershipPolicy,
 		houseRepository,
-		houseUserRepository,
+		userRepository,
 		houseChoreRepository,
 		houseChoreStatusHistoryRepository,
 		houseChoreReviewVoteRepository,
@@ -130,14 +156,41 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - CHORE -
-	choreService := services.NewChoreService(
-		abstract.New[entities.Chore](client, dbName),
-		abstract.New[entities.House](client, dbName),
-		abstract.New[entities.User](client, dbName),
-		client,
-		dbName,
+	choreAssignmentPolicy := chorePolicies.NewAssignmentPolicy(userRepository)
+	choreWorkflowPolicy := chorePolicies.NewWorkflowPolicy()
+	createChoreHandler := choreCommands.NewCreateChoreHandler(
+		houseChoreRepository,
+		houseChoreStatusHistoryRepository,
+		houseChoreReviewVoteRepository,
+		houseMembershipPolicy,
+		choreAssignmentPolicy,
 	)
-	choreController := controllers.NewChoreController(choreService, localizationService)
+	updateChoreHandler := choreCommands.NewUpdateChoreHandler(
+		houseChoreRepository,
+		houseChoreStatusHistoryRepository,
+		houseChoreReviewVoteRepository,
+		houseMembershipPolicy,
+		choreAssignmentPolicy,
+	)
+	updateChoreStatusHandler := choreCommands.NewUpdateChoreStatusHandler(
+		houseChoreRepository,
+		houseChoreStatusHistoryRepository,
+		houseChoreReviewVoteRepository,
+		houseMembershipPolicy,
+		choreWorkflowPolicy,
+	)
+	reviewChoreHandler := choreCommands.NewReviewChoreHandler(
+		houseChoreRepository,
+		houseChoreStatusHistoryRepository,
+		houseChoreReviewVoteRepository,
+		houseMembershipPolicy,
+		choreWorkflowPolicy,
+	)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](applicationMediator, createChoreHandler)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](applicationMediator, updateChoreHandler)
+	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](applicationMediator, updateChoreStatusHandler)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](applicationMediator, reviewChoreHandler)
+	choreController := controllers.NewChoreController(applicationMediator, localizationService)
 
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(localizationService), middleware.UserRateLimit(localizationService))
 	choreRoutes.Post("", choreController.CreateChore)

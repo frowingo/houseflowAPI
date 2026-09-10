@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"houseflowApi/external/migration"
 	"houseflowApi/internal/abstract"
+	choreCommands "houseflowApi/internal/application/chore/commands"
+	chorePolicies "houseflowApi/internal/application/chore/policies"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
 	housequeries "houseflowApi/internal/application/house/queries"
+	imageAssetCommands "houseflowApi/internal/application/imageAsset/commands"
+	imageAssetQueries "houseflowApi/internal/application/imageAsset/queries"
+	userCommands "houseflowApi/internal/application/user/commands"
+	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/data/migrations"
 	"houseflowApi/internal/helpers"
@@ -30,9 +36,7 @@ type concurrencyFixture struct {
 	ctx    context.Context
 	db     *mongo.Database
 	sender cqrs.Sender
-	chore  *services.ChoreService
 	auth   *services.AuthService
-	user   *services.UserService
 }
 
 func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
@@ -67,9 +71,9 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 
 	users := abstract.New[entities.User](client, db.Name())
 	houses := abstract.New[entities.House](client, db.Name())
+	imageAssets := abstract.New[entities.ImageAsset](client, db.Name())
 	chores := abstract.New[entities.Chore](client, db.Name())
 	histories := abstract.New[entities.UserInfoHistory](client, db.Name())
-	images := abstract.New[entities.ImageAsset](client, db.Name())
 	announcements := abstract.New[entities.Announcement](client, db.Name())
 	choreStatusHistories := abstract.New[entities.ChoreStatusHistory](client, db.Name())
 	choreReviewVotes := abstract.New[entities.ChoreReviewVote](client, db.Name())
@@ -80,18 +84,77 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
 		membershipPolicy, houses, users, chores, choreStatusHistories, choreReviewVotes, announcements,
 	)
+	assignmentPolicy := chorePolicies.NewAssignmentPolicy(users)
+	workflowPolicy := chorePolicies.NewWorkflowPolicy()
+	createChoreHandler := choreCommands.NewCreateChoreHandler(
+		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy,
+	)
+	updateChoreHandler := choreCommands.NewUpdateChoreHandler(
+		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy,
+	)
+	updateChoreStatusHandler := choreCommands.NewUpdateChoreStatusHandler(
+		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy,
+	)
+	reviewChoreHandler := choreCommands.NewReviewChoreHandler(
+		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy,
+	)
+	updateProfileHandler := userCommands.NewUpdateProfileHandler(users, histories)
+	createUserHandler := userCommands.NewCreateUserHandler(users, histories)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(users)
+	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(users)
+	listUsersHandler := userQueries.NewListUsersHandler(users)
+	getUsersByHouseHandler := userQueries.NewGetUsersByHouseHandler(users, membershipPolicy)
+	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
+	createImageAssetHandler := imageAssetCommands.NewCreateImageAssetHandler(imageAssets, imageCache)
+	updateImageAssetHandler := imageAssetCommands.NewUpdateImageAssetHandler(imageAssets, imageCache)
+	getImagesByCategoryHandler := imageAssetQueries.NewGetImagesByCategoryHandler(imageAssets, imageCache)
+	getImageByPublicIDHandler := imageAssetQueries.NewGetImageByPublicIDHandler(imageAssets)
 	sender := cqrs.New()
 	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](sender, createHouseHandler)
 	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](sender, joinHouseHandler)
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](sender, createAnnouncementHandler)
 	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](sender, getHouseDetailsHandler)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](sender, createChoreHandler)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](sender, updateChoreHandler)
+	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](sender, updateChoreStatusHandler)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](sender, reviewChoreHandler)
+	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](sender, updateProfileHandler)
+	cqrs.MustRegister[*dtos.NewUserModel, userCommands.CreateUserCommand](sender, createUserHandler)
+	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](sender, deleteUserHandler)
+	cqrs.MustRegister[*dtos.UserResultModel, userQueries.GetUserByEmailQuery](sender, getUserByEmailHandler)
+	cqrs.MustRegister[[]dtos.UserResultModel, userQueries.ListUsersQuery](sender, listUsersHandler)
+	cqrs.MustRegister[[]dtos.UserResultModel, userQueries.GetUsersByHouseQuery](sender, getUsersByHouseHandler)
+	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.CreateImageAssetCommand](sender, createImageAssetHandler)
+	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.UpdateImageAssetCommand](sender, updateImageAssetHandler)
+	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](sender, getImagesByCategoryHandler)
+	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](sender, getImageByPublicIDHandler)
 	return &concurrencyFixture{
 		ctx: ctx, db: db,
 		sender: sender,
-		chore:  services.NewChoreService(chores, houses, users, client, db.Name()),
 		auth:   services.NewAuthService(users, nil, histories),
-		user:   services.NewUserService(users, houses, images, histories),
 	}
+}
+
+func createChoreCommand(model dtos.CreateChoreModel, requesterID string) choreCommands.CreateChoreCommand {
+	return choreCommands.CreateChoreCommand{
+		Title:             model.Title,
+		Description:       model.Description,
+		AssignedTo:        model.AssignedTo,
+		DueDate:           model.DueDate.Time,
+		HouseID:           model.HouseId,
+		Level:             model.Level,
+		IsRecurring:       model.IsRecurring,
+		RecurringInterval: model.RecurringInterval,
+		RequesterID:       requesterID,
+	}
+}
+
+func updateChoreStatusCommand(model dtos.BulkUpdateChoreStatusModel, userID string) choreCommands.UpdateChoreStatusCommand {
+	updates := make([]choreCommands.ChoreStatusUpdate, 0, len(model.Chores))
+	for _, update := range model.Chores {
+		updates = append(updates, choreCommands.ChoreStatusUpdate{ChoreID: update.ChoreId, Status: update.Status})
+	}
+	return choreCommands.UpdateChoreStatusCommand{HouseID: model.HouseId, Chores: updates, UserID: userID}
 }
 
 func TestGetHouseDetailsQueryReturnsCompleteSnapshot(t *testing.T) {
@@ -109,14 +172,14 @@ func TestGetHouseDetailsQueryReturnsCompleteSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
+	if _, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
 		Title:       "Snapshot chore",
 		Description: "Snapshot test chore",
 		AssignedTo:  owner.Id.Hex(),
 		DueDate:     dtos.NewUTCDateTime(time.Now().Add(time.Hour)),
 		HouseId:     house.Id.Hex(),
 		Level:       entities.Easy,
-	}, owner.Id.Hex()); err != nil {
+	}, owner.Id.Hex())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -269,10 +332,10 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 	create := func(title string) *dtos.ChoreResponseModel {
-		result, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
+		result, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
 			Title: title, Description: "Concurrency test chore", AssignedTo: owner.Id.Hex(),
 			DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Easy,
-		}, owner.Id.Hex())
+		}, owner.Id.Hex()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -280,13 +343,13 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 	}
 	first := create("First chore")
 	second := create("Second chore")
-	_, err := f.chore.UpdateChoreStatusBulk(f.ctx, dtos.BulkUpdateChoreStatusModel{
+	_, err := cqrs.Send[[]dtos.ChoreResponseModel](f.ctx, f.sender, updateChoreStatusCommand(dtos.BulkUpdateChoreStatusModel{
 		HouseId: house.Id.Hex(),
 		Chores: []dtos.UpdateChoreStatusModel{
 			{ChoreId: first.Id, Status: entities.Progress},
 			{ChoreId: second.Id, Status: entities.Completed},
 		},
-	}, owner.Id.Hex())
+	}, owner.Id.Hex()))
 	if err == nil {
 		t.Fatal("expected invalid bulk transition")
 	}
@@ -309,9 +372,9 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.chore.UpdateChoreStatusBulk(f.ctx, dtos.BulkUpdateChoreStatusModel{
+			_, errs[i] = cqrs.Send[[]dtos.ChoreResponseModel](f.ctx, f.sender, updateChoreStatusCommand(dtos.BulkUpdateChoreStatusModel{
 				HouseId: house.Id.Hex(), Chores: []dtos.UpdateChoreStatusModel{{ChoreId: first.Id, Status: entities.Progress}},
-			}, owner.Id.Hex())
+			}, owner.Id.Hex()))
 		}(i)
 	}
 	close(start)
@@ -344,17 +407,17 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	chore, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
+	chore, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
 		Title: "Review chore", Description: "Concurrent review test", AssignedTo: owner.Id.Hex(),
 		DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Medium,
-	}, owner.Id.Hex())
+	}, owner.Id.Hex()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, status := range []entities.ChoreStatus{entities.Progress, entities.InTest} {
-		if _, err := f.chore.UpdateChoreStatusBulk(f.ctx, dtos.BulkUpdateChoreStatusModel{
+		if _, err := cqrs.Send[[]dtos.ChoreResponseModel](f.ctx, f.sender, updateChoreStatusCommand(dtos.BulkUpdateChoreStatusModel{
 			HouseId: house.Id.Hex(), Chores: []dtos.UpdateChoreStatusModel{{ChoreId: chore.Id, Status: status}},
-		}, owner.Id.Hex()); err != nil {
+		}, owner.Id.Hex())); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -368,7 +431,9 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 		go func(i int) {
 			defer workers.Done()
 			<-start
-			_, errs[i] = f.chore.ReviewChore(f.ctx, dtos.ReviewChoreModel{ChoreId: chore.Id, IsApproved: &approved}, reviewers[i].Id.Hex())
+			_, errs[i] = cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, choreCommands.ReviewChoreCommand{
+				ChoreID: chore.Id, ReviewerID: reviewers[i].Id.Hex(), IsApproved: approved,
+			})
 		}(i)
 	}
 	close(start)
@@ -454,7 +519,9 @@ func TestConcurrentAnnouncementAndProfileLimits(t *testing.T) {
 		go func(i int, name *string) {
 			defer workers.Done()
 			<-start
-			_, profileErrors[i] = f.user.UpdateProfile(f.ctx, owner.Id.Hex(), dtos.UpdateUserModel{Firstname: name})
+			_, profileErrors[i] = cqrs.Send[*dtos.UserResultModel](f.ctx, f.sender, userCommands.UpdateProfileCommand{
+				UserID: owner.Id.Hex(), Firstname: name,
+			})
 		}(i, name)
 	}
 	close(start)
@@ -544,10 +611,10 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		}).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.chore.CreateChore(f.ctx, dtos.CreateChoreModel{
+		if _, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
 			Title: "Must roll back", Description: "History insert must fail", AssignedTo: owner.Id.Hex(),
 			DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Easy,
-		}, owner.Id.Hex()); err == nil {
+		}, owner.Id.Hex())); err == nil {
 			t.Fatal("expected history validation failure")
 		}
 		choreCount, err := f.db.Collection("Chore").CountDocuments(f.ctx, bson.M{})

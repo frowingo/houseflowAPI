@@ -103,6 +103,35 @@ func TestApplicationHandlersFollowContextFirstSignature(t *testing.T) {
 	}
 }
 
+func TestMigratedControllersUseCQRSWithoutLegacyServices(t *testing.T) {
+	internalDirectory := filepath.Join(applicationDirectory(t), "..")
+	controllerFiles := []string{"houseController.go", "choreController.go", "userController.go"}
+	for _, fileName := range controllerFiles {
+		path := filepath.Join(internalDirectory, "controllers", fileName)
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		hasCQRSDependency := false
+		for _, imported := range parsed.Imports {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if importPath == "houseflowApi/internal/services" {
+				t.Errorf("migrated controller %s imports legacy services", path)
+			}
+			if importPath == "houseflowApi/internal/infrastructure/cqrs" {
+				hasCQRSDependency = true
+			}
+		}
+		if !hasCQRSDependency {
+			t.Errorf("migrated controller %s does not import CQRS sender", path)
+		}
+	}
+}
+
 func applicationDirectory(t *testing.T) string {
 	t.Helper()
 	_, currentFile, _, ok := runtime.Caller(0)

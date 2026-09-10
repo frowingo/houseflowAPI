@@ -1,32 +1,34 @@
 package controllers
 
 import (
+	"time"
+
 	"houseflowApi/external/validator"
+	imageAssetCommands "houseflowApi/internal/application/imageAsset/commands"
+	imageAssetQueries "houseflowApi/internal/application/imageAsset/queries"
+	userCommands "houseflowApi/internal/application/user/commands"
+	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
-	"houseflowApi/internal/services"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type UserController struct {
-	userService *services.UserService
-	localizer   helpers.MessageLocalizer
-	validator   *validator.CustomValidator
+	sender    cqrs.Sender
+	localizer helpers.MessageLocalizer
+	validator *validator.CustomValidator
 }
 
 // NewUserController constructor for UserController
-func NewUserController(userService *services.UserService, localizers ...helpers.MessageLocalizer) *UserController {
-	var localizer helpers.MessageLocalizer
-	if len(localizers) > 0 {
-		localizer = localizers[0]
-	}
+func NewUserController(sender cqrs.Sender, localizer helpers.MessageLocalizer) *UserController {
 	return &UserController{
-		userService: userService,
-		localizer:   localizer,
-		validator:   validator.NewValidator(),
+		sender:    sender,
+		localizer: localizer,
+		validator: validator.NewValidator(),
 	}
 }
 
@@ -55,12 +57,15 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	_, err := r.userService.CreateUser(ctx, *user)
+	createdUser, err := cqrs.Send[*dtos.NewUserModel](ctx, r.sender, userCommands.CreateUserCommand{
+		Firstname: user.Firstname, Lastname: user.Lastname, PhoneNumber: user.PhoneNumber,
+		Email: user.Email, Password: user.Password, BirthDay: user.BirthDay.Time, Language: user.Language,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
-	return c.Status(201).JSON(user)
+	return c.Status(201).JSON(createdUser)
 
 }
 
@@ -70,7 +75,7 @@ func (r *UserController) NewUser(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {array} dtos.NewUserModel
+// @Success 200 {array} dtos.UserResultModel
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{} "Unauthorized"
 // @Router /user/usersList [get]
@@ -78,7 +83,7 @@ func (r *UserController) ListUsers(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	users, err := r.userService.ListByUsers(ctx)
+	users, err := cqrs.Send[[]dtos.UserResultModel](ctx, r.sender, userQueries.ListUsersQuery{})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -107,7 +112,7 @@ func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	err := r.userService.DeleteUser(ctx, userId)
+	_, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, userCommands.DeleteUserCommand{UserID: userId})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -140,7 +145,7 @@ func (r *UserController) GetUserByEmail(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	user, err := r.userService.GetUserByEmail(ctx, email)
+	user, err := cqrs.Send[*dtos.UserResultModel](ctx, r.sender, userQueries.GetUserByEmailQuery{Email: email})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -170,7 +175,9 @@ func (r *UserController) GetUsersByHouse(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	users, err := r.userService.GetUsersByHouse(ctx, houseId, userId)
+	users, err := cqrs.Send[[]dtos.UserResultModel](ctx, r.sender, userQueries.GetUsersByHouseQuery{
+		HouseID: houseId, RequesterID: userId,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -205,7 +212,15 @@ func (r *UserController) UpdateProfile(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	updated, err := r.userService.UpdateProfile(ctx, userId, *model)
+	var birthDay *time.Time
+	if model.BirthDay != nil {
+		value := model.BirthDay.Time
+		birthDay = &value
+	}
+	updated, err := cqrs.Send[*dtos.UserResultModel](ctx, r.sender, userCommands.UpdateProfileCommand{
+		UserID: userId, Firstname: model.Firstname, Lastname: model.Lastname,
+		PhoneNumber: model.PhoneNumber, BirthDay: birthDay, ImageURL: model.ImageURL, Language: model.Language,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -232,7 +247,9 @@ func (r *UserController) GetImages(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	images, err := r.userService.GetImagesByCategory(ctx, category)
+	images, err := cqrs.Send[[]dtos.ImageAssetResultModel](ctx, r.sender, imageAssetQueries.GetImagesByCategoryQuery{
+		Category: category,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -259,7 +276,9 @@ func (r *UserController) GetImage(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	image, err := r.userService.GetImageByPublicID(ctx, publicId)
+	image, err := cqrs.Send[*dtos.ImageAssetResultModel](ctx, r.sender, imageAssetQueries.GetImageByPublicIDQuery{
+		PublicID: publicId,
+	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
@@ -292,7 +311,9 @@ func (r *UserController) UpdateImageAsset(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	if err := r.userService.UpdateImageAsset(ctx, *model); err != nil {
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, imageAssetCommands.UpdateImageAssetCommand{
+		PublicID: model.PublicID, FileURL: model.FileURL, IsActive: model.IsActive,
+	}); err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
@@ -324,7 +345,9 @@ func (r *UserController) CreateImageAsset(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	if err := r.userService.CreateImageAsset(ctx, *model); err != nil {
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, imageAssetCommands.CreateImageAssetCommand{
+		Category: model.Category, FileName: model.FileName, FileURL: model.FileURL, IsActive: model.IsActive,
+	}); err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
