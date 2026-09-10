@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -22,13 +22,13 @@ type JoinHouseCommand struct {
 }
 
 type JoinHouseHandler struct {
-	houseRepository *abstract.DbRepository[entities.House]
-	userRepository  *abstract.DbRepository[entities.User]
+	houseRepository databaseAbstract.DbRepository[entities.House]
+	userRepository  databaseAbstract.DbRepository[entities.User]
 }
 
 func NewJoinHouseHandler(
-	houseRepository *abstract.DbRepository[entities.House],
-	userRepository *abstract.DbRepository[entities.User],
+	houseRepository databaseAbstract.DbRepository[entities.House],
+	userRepository databaseAbstract.DbRepository[entities.User],
 ) *JoinHouseHandler {
 	return &JoinHouseHandler{
 		houseRepository: houseRepository,

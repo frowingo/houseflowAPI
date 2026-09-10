@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -18,10 +18,10 @@ type ValidateAuthQuery struct {
 }
 
 type ValidateAuthHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewValidateAuthHandler(userRepository *abstract.DbRepository[entities.User]) *ValidateAuthHandler {
+func NewValidateAuthHandler(userRepository databaseAbstract.DbRepository[entities.User]) *ValidateAuthHandler {
 	return &ValidateAuthHandler{userRepository: userRepository}
 }
 

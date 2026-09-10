@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -21,13 +21,13 @@ type SignUpCommand struct {
 }
 
 type SignUpHandler struct {
-	userRepository        *abstract.DbRepository[entities.User]
-	userHistoryRepository *abstract.DbRepository[entities.UserInfoHistory]
+	userRepository        databaseAbstract.DbRepository[entities.User]
+	userHistoryRepository databaseAbstract.DbRepository[entities.UserInfoHistory]
 }
 
 func NewSignUpHandler(
-	userRepository *abstract.DbRepository[entities.User],
-	userHistoryRepository *abstract.DbRepository[entities.UserInfoHistory],
+	userRepository databaseAbstract.DbRepository[entities.User],
+	userHistoryRepository databaseAbstract.DbRepository[entities.UserInfoHistory],
 ) *SignUpHandler {
 	return &SignUpHandler{
 		userRepository:        userRepository,

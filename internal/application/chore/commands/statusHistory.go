@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 )
 
 func addStatusHistory(
 	ctx context.Context,
-	repository *abstract.DbRepository[entities.ChoreStatusHistory],
+	repository databaseAbstract.DbRepository[entities.ChoreStatusHistory],
 	choreID string,
 	status entities.ChoreStatus,
 	updaterID string,

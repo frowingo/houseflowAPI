@@ -3,7 +3,7 @@ package queries
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
@@ -14,10 +14,10 @@ type ListUsersQuery struct {
 }
 
 type ListUsersHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewListUsersHandler(userRepository *abstract.DbRepository[entities.User]) *ListUsersHandler {
+func NewListUsersHandler(userRepository databaseAbstract.DbRepository[entities.User]) *ListUsersHandler {
 	return &ListUsersHandler{userRepository: userRepository}
 }
 

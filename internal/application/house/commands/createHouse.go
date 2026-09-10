@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -22,13 +22,13 @@ type CreateHouseCommand struct {
 }
 
 type CreateHouseHandler struct {
-	houseRepository *abstract.DbRepository[entities.House]
-	userRepository  *abstract.DbRepository[entities.User]
+	houseRepository databaseAbstract.DbRepository[entities.House]
+	userRepository  databaseAbstract.DbRepository[entities.User]
 }
 
 func NewCreateHouseHandler(
-	houseRepository *abstract.DbRepository[entities.House],
-	userRepository *abstract.DbRepository[entities.User],
+	houseRepository databaseAbstract.DbRepository[entities.House],
+	userRepository databaseAbstract.DbRepository[entities.User],
 ) *CreateHouseHandler {
 	return &CreateHouseHandler{
 		houseRepository: houseRepository,

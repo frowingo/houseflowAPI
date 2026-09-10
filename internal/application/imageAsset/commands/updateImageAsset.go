@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -21,12 +21,12 @@ type UpdateImageAssetCommand struct {
 }
 
 type UpdateImageAssetHandler struct {
-	imageRepository *abstract.DbRepository[entities.ImageAsset]
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset]
 	cache           *helpers.InMemoryCache[[]dtos.ImageAssetResultModel]
 }
 
 func NewUpdateImageAssetHandler(
-	imageRepository *abstract.DbRepository[entities.ImageAsset],
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset],
 	cache *helpers.InMemoryCache[[]dtos.ImageAssetResultModel],
 ) *UpdateImageAssetHandler {
 	return &UpdateImageAssetHandler{imageRepository: imageRepository, cache: cache}

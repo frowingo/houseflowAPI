@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -26,14 +26,14 @@ type CreateAnnouncementCommand struct {
 
 type CreateAnnouncementHandler struct {
 	membershipPolicy       *housePolicies.MembershipPolicy
-	userRepository         *abstract.DbRepository[entities.User]
-	announcementRepository *abstract.DbRepository[entities.Announcement]
+	userRepository         databaseAbstract.DbRepository[entities.User]
+	announcementRepository databaseAbstract.DbRepository[entities.Announcement]
 }
 
 func NewCreateAnnouncementHandler(
 	membershipPolicy *housePolicies.MembershipPolicy,
-	userRepository *abstract.DbRepository[entities.User],
-	announcementRepository *abstract.DbRepository[entities.Announcement],
+	userRepository databaseAbstract.DbRepository[entities.User],
+	announcementRepository databaseAbstract.DbRepository[entities.Announcement],
 ) *CreateAnnouncementHandler {
 	return &CreateAnnouncementHandler{
 		membershipPolicy:       membershipPolicy,

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -30,17 +30,17 @@ type UpdateChoreStatusCommand struct {
 }
 
 type UpdateChoreStatusHandler struct {
-	choreRepository         *abstract.DbRepository[entities.Chore]
-	statusHistoryRepository *abstract.DbRepository[entities.ChoreStatusHistory]
-	reviewVoteRepository    *abstract.DbRepository[entities.ChoreReviewVote]
+	choreRepository         databaseAbstract.DbRepository[entities.Chore]
+	statusHistoryRepository databaseAbstract.DbRepository[entities.ChoreStatusHistory]
+	reviewVoteRepository    databaseAbstract.DbRepository[entities.ChoreReviewVote]
 	membershipPolicy        *housePolicies.MembershipPolicy
 	workflowPolicy          *chorePolicies.WorkflowPolicy
 }
 
 func NewUpdateChoreStatusHandler(
-	choreRepository *abstract.DbRepository[entities.Chore],
-	statusHistoryRepository *abstract.DbRepository[entities.ChoreStatusHistory],
-	reviewVoteRepository *abstract.DbRepository[entities.ChoreReviewVote],
+	choreRepository databaseAbstract.DbRepository[entities.Chore],
+	statusHistoryRepository databaseAbstract.DbRepository[entities.ChoreStatusHistory],
+	reviewVoteRepository databaseAbstract.DbRepository[entities.ChoreReviewVote],
 	membershipPolicy *housePolicies.MembershipPolicy,
 	workflowPolicy *chorePolicies.WorkflowPolicy,
 ) *UpdateChoreStatusHandler {

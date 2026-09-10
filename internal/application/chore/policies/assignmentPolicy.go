@@ -3,18 +3,18 @@ package policies
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 )
 
 // AssignmentPolicy owns the rules for assigning a chore to a house member.
 type AssignmentPolicy struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewAssignmentPolicy(userRepository *abstract.DbRepository[entities.User]) *AssignmentPolicy {
+func NewAssignmentPolicy(userRepository databaseAbstract.DbRepository[entities.User]) *AssignmentPolicy {
 	return &AssignmentPolicy{userRepository: userRepository}
 }
 

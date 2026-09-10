@@ -2,7 +2,7 @@ package tests
 
 import (
 	"encoding/json"
-	"houseflowApi/internal/middleware"
+	"houseflowApi/internal/infrastructure/middleware"
 	"houseflowApi/internal/models/core"
 	"net/http/httptest"
 	"sync"

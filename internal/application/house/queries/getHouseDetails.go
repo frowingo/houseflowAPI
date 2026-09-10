@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -25,22 +25,22 @@ type GetHouseDetailsQuery struct {
 
 type GetHouseDetailsHandler struct {
 	membershipPolicy          *housePolicies.MembershipPolicy
-	houseRepository           *abstract.DbRepository[entities.House]
-	userRepository            *abstract.DbRepository[entities.User]
-	choreRepository           *abstract.DbRepository[entities.Chore]
-	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory]
-	choreReviewVoteRepository *abstract.DbRepository[entities.ChoreReviewVote]
-	announcementRepository    *abstract.DbRepository[entities.Announcement]
+	houseRepository           databaseAbstract.DbRepository[entities.House]
+	userRepository            databaseAbstract.DbRepository[entities.User]
+	choreRepository           databaseAbstract.DbRepository[entities.Chore]
+	choreStatusHistRepository databaseAbstract.DbRepository[entities.ChoreStatusHistory]
+	choreReviewVoteRepository databaseAbstract.DbRepository[entities.ChoreReviewVote]
+	announcementRepository    databaseAbstract.DbRepository[entities.Announcement]
 }
 
 func NewGetHouseDetailsHandler(
 	membershipPolicy *housePolicies.MembershipPolicy,
-	houseRepository *abstract.DbRepository[entities.House],
-	userRepository *abstract.DbRepository[entities.User],
-	choreRepository *abstract.DbRepository[entities.Chore],
-	choreStatusHistRepository *abstract.DbRepository[entities.ChoreStatusHistory],
-	choreReviewVoteRepository *abstract.DbRepository[entities.ChoreReviewVote],
-	announcementRepository *abstract.DbRepository[entities.Announcement],
+	houseRepository databaseAbstract.DbRepository[entities.House],
+	userRepository databaseAbstract.DbRepository[entities.User],
+	choreRepository databaseAbstract.DbRepository[entities.Chore],
+	choreStatusHistRepository databaseAbstract.DbRepository[entities.ChoreStatusHistory],
+	choreReviewVoteRepository databaseAbstract.DbRepository[entities.ChoreReviewVote],
+	announcementRepository databaseAbstract.DbRepository[entities.Announcement],
 ) *GetHouseDetailsHandler {
 	return &GetHouseDetailsHandler{
 		membershipPolicy:          membershipPolicy,

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"houseflowApi/internal/abstract"
 	localizationAbstract "houseflowApi/internal/application/localization/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 
@@ -15,13 +15,13 @@ import (
 )
 
 type Cache struct {
-	localizationRepository *abstract.DbRepository[entities.Localization]
+	localizationRepository databaseAbstract.DbRepository[entities.Localization]
 	mu                     sync.RWMutex
 	messages               map[string]map[string]string
 	plaintexts             map[string]map[string]string
 }
 
-func NewCache(localizationRepository *abstract.DbRepository[entities.Localization]) *Cache {
+func NewCache(localizationRepository databaseAbstract.DbRepository[entities.Localization]) *Cache {
 	return &Cache{
 		localizationRepository: localizationRepository,
 		messages:               make(map[string]map[string]string),

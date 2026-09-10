@@ -3,8 +3,8 @@ package queries
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
@@ -20,12 +20,12 @@ type GetUsersByHouseQuery struct {
 }
 
 type GetUsersByHouseHandler struct {
-	userRepository   *abstract.DbRepository[entities.User]
+	userRepository   databaseAbstract.DbRepository[entities.User]
 	membershipPolicy *housePolicies.MembershipPolicy
 }
 
 func NewGetUsersByHouseHandler(
-	userRepository *abstract.DbRepository[entities.User],
+	userRepository databaseAbstract.DbRepository[entities.User],
 	membershipPolicy *housePolicies.MembershipPolicy,
 ) *GetUsersByHouseHandler {
 	return &GetUsersByHouseHandler{

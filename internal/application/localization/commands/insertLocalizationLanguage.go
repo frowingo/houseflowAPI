@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -24,11 +24,11 @@ type InsertLocalizationLanguageCommand struct {
 }
 
 type InsertLocalizationLanguageHandler struct {
-	languageRepository *abstract.DbRepository[entities.LocalizationLanguageOption]
+	languageRepository databaseAbstract.DbRepository[entities.LocalizationLanguageOption]
 }
 
 func NewInsertLocalizationLanguageHandler(
-	languageRepository *abstract.DbRepository[entities.LocalizationLanguageOption],
+	languageRepository databaseAbstract.DbRepository[entities.LocalizationLanguageOption],
 ) *InsertLocalizationLanguageHandler {
 	return &InsertLocalizationLanguageHandler{languageRepository: languageRepository}
 }

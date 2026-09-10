@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -23,10 +23,10 @@ type LoginCommand struct {
 }
 
 type LoginHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewLoginHandler(userRepository *abstract.DbRepository[entities.User]) *LoginHandler {
+func NewLoginHandler(userRepository databaseAbstract.DbRepository[entities.User]) *LoginHandler {
 	return &LoginHandler{userRepository: userRepository}
 }
 

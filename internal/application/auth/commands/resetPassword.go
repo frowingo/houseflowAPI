@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/config"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -21,10 +21,10 @@ type ResetPasswordCommand struct {
 }
 
 type ResetPasswordHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewResetPasswordHandler(userRepository *abstract.DbRepository[entities.User]) *ResetPasswordHandler {
+func NewResetPasswordHandler(userRepository databaseAbstract.DbRepository[entities.User]) *ResetPasswordHandler {
 	return &ResetPasswordHandler{userRepository: userRepository}
 }
 

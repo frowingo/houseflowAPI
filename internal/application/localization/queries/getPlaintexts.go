@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
-	"houseflowApi/internal/abstract"
 	localizationAbstract "houseflowApi/internal/application/localization/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -20,12 +20,12 @@ type GetPlaintextsQuery struct {
 }
 
 type GetPlaintextsHandler struct {
-	localizationRepository *abstract.DbRepository[entities.Localization]
+	localizationRepository databaseAbstract.DbRepository[entities.Localization]
 	cache                  localizationAbstract.Cache
 }
 
 func NewGetPlaintextsHandler(
-	localizationRepository *abstract.DbRepository[entities.Localization],
+	localizationRepository databaseAbstract.DbRepository[entities.Localization],
 	cache localizationAbstract.Cache,
 ) *GetPlaintextsHandler {
 	return &GetPlaintextsHandler{localizationRepository: localizationRepository, cache: cache}

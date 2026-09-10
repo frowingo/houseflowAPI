@@ -3,7 +3,7 @@ package commands
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -15,10 +15,10 @@ type DeleteUserCommand struct {
 }
 
 type DeleteUserHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewDeleteUserHandler(userRepository *abstract.DbRepository[entities.User]) *DeleteUserHandler {
+func NewDeleteUserHandler(userRepository databaseAbstract.DbRepository[entities.User]) *DeleteUserHandler {
 	return &DeleteUserHandler{userRepository: userRepository}
 }
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	"houseflowApi/internal/config"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -20,10 +20,10 @@ type ValidateEmailCommand struct {
 }
 
 type ValidateEmailHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewValidateEmailHandler(userRepository *abstract.DbRepository[entities.User]) *ValidateEmailHandler {
+func NewValidateEmailHandler(userRepository databaseAbstract.DbRepository[entities.User]) *ValidateEmailHandler {
 	return &ValidateEmailHandler{userRepository: userRepository}
 }
 

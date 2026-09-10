@@ -52,7 +52,7 @@ noktası ve ayrı yaşam döngüsü olarak tasarlanabilir.
 
 ## ADR-002 — Kademeli, uygulama içi command/query ayrımı
 
-**Durum:** Kabul — CQRS Faz 0 ile House, Chore, User/Image Asset, Auth ve Localization fazları uygulandı
+**Durum:** Kabul — CQRS Faz 0-6 tamamlandı
 
 İlk aşamada ayrı servisler, ayrı read database veya event sourcing içeren tam
 ölçekli CQRS kurulmayacaktır. Aynı process içinde use-case bazlı ayrım yapılacaktır:
@@ -89,6 +89,12 @@ altında tanımlanır. Her handler
 query modelleri Fiber gibi HTTP taşıma tiplerine bağımlı olmaz. Application
 katmanının controller, Fiber veya eski service katmanına bağımlı hale gelmesi
 mimari testlerle engellenir.
+
+Repository sözleşmesi `internal/data/database/abstract/dbRepository.go` altında,
+MongoDB implementasyonu ise `internal/data/database/dbContext.go` altında tutulur.
+Application handler ve policy'leri yalnız repository interface'ine bağımlıdır;
+concrete `DbContext` yalnız composition root ve entegrasyon test fixture'larında
+oluşturulur.
 
 CQRS geçişi modül bazında şu sırayla yürütülür:
 

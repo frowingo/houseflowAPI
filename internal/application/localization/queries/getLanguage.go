@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
@@ -19,11 +19,11 @@ type GetLanguageQuery struct {
 }
 
 type GetLanguageHandler struct {
-	languageRepository *abstract.DbRepository[entities.LocalizationLanguageOption]
+	languageRepository databaseAbstract.DbRepository[entities.LocalizationLanguageOption]
 }
 
 func NewGetLanguageHandler(
-	languageRepository *abstract.DbRepository[entities.LocalizationLanguageOption],
+	languageRepository databaseAbstract.DbRepository[entities.LocalizationLanguageOption],
 ) *GetLanguageHandler {
 	return &GetLanguageHandler{languageRepository: languageRepository}
 }

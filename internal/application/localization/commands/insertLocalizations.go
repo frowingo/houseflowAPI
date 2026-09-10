@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
 	localizationAbstract "houseflowApi/internal/application/localization/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -26,12 +26,12 @@ type InsertLocalizationsCommand struct {
 }
 
 type InsertLocalizationsHandler struct {
-	localizationRepository *abstract.DbRepository[entities.Localization]
+	localizationRepository databaseAbstract.DbRepository[entities.Localization]
 	cache                  localizationAbstract.Cache
 }
 
 func NewInsertLocalizationsHandler(
-	localizationRepository *abstract.DbRepository[entities.Localization],
+	localizationRepository databaseAbstract.DbRepository[entities.Localization],
 	cache localizationAbstract.Cache,
 ) *InsertLocalizationsHandler {
 	return &InsertLocalizationsHandler{

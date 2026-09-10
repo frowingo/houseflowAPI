@@ -3,7 +3,7 @@ package queries
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
@@ -15,10 +15,10 @@ type GetUserByEmailQuery struct {
 }
 
 type GetUserByEmailHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 }
 
-func NewGetUserByEmailHandler(userRepository *abstract.DbRepository[entities.User]) *GetUserByEmailHandler {
+func NewGetUserByEmailHandler(userRepository databaseAbstract.DbRepository[entities.User]) *GetUserByEmailHandler {
 	return &GetUserByEmailHandler{userRepository: userRepository}
 }
 

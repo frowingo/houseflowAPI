@@ -59,6 +59,12 @@ func TestApplicationLayerHasNoTransportOrLegacyServiceDependencies(t *testing.T)
 			if err != nil {
 				return err
 			}
+			if importPath == "houseflowApi/internal/abstract" {
+				t.Errorf("application layer file %s imports removed repository implementation %q", path, importPath)
+			}
+			if importPath == "houseflowApi/internal/data/database" {
+				t.Errorf("application layer file %s imports concrete database context %q", path, importPath)
+			}
 			for _, forbidden := range forbiddenImports {
 				if strings.HasPrefix(importPath, forbidden) {
 					t.Errorf("application layer file %s imports forbidden dependency %q", path, importPath)
@@ -105,9 +111,17 @@ func TestApplicationHandlersFollowContextFirstSignature(t *testing.T) {
 
 func TestMigratedControllersUseCQRSWithoutLegacyServices(t *testing.T) {
 	internalDirectory := filepath.Join(applicationDirectory(t), "..")
-	controllerFiles := []string{"houseController.go", "choreController.go", "userController.go", "authController.go", "localizationController.go"}
-	for _, fileName := range controllerFiles {
-		path := filepath.Join(internalDirectory, "controllers", fileName)
+	controllerDirectory := filepath.Join(internalDirectory, "controllers")
+	controllerFiles, err := os.ReadDir(controllerDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range controllerFiles {
+		fileName := entry.Name()
+		if entry.IsDir() || filepath.Ext(fileName) != ".go" || fileName == "baseController.go" {
+			continue
+		}
+		path := filepath.Join(controllerDirectory, fileName)
 		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
 		if err != nil {
 			t.Fatal(err)
@@ -129,6 +143,196 @@ func TestMigratedControllersUseCQRSWithoutLegacyServices(t *testing.T) {
 		if !hasCQRSDependency {
 			t.Errorf("migrated controller %s does not import CQRS sender", path)
 		}
+	}
+}
+
+func TestEveryApplicationRequestIsRegisteredInCompositionRoot(t *testing.T) {
+	requests := applicationRequests(t)
+	registrations := registeredRequests(t)
+
+	for requestID, path := range requests {
+		if _, ok := registrations[requestID]; !ok {
+			t.Errorf("application request %s declared in %s is not registered in cmd/api/routes.go", requestID, path)
+		}
+	}
+	for requestID := range registrations {
+		if _, ok := requests[requestID]; !ok {
+			t.Errorf("cmd/api/routes.go registers unknown application request %s", requestID)
+		}
+	}
+}
+
+func TestServiceLayerContainsOnlyNotificationService(t *testing.T) {
+	servicesDirectory := filepath.Join(applicationDirectory(t), "..", "services")
+	entries, err := os.ReadDir(servicesDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundNotificationService := false
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" {
+			continue
+		}
+		if entry.Name() == "notificationService.go" {
+			foundNotificationService = true
+			continue
+		}
+		t.Errorf("legacy business service file remains: %s", filepath.Join(servicesDirectory, entry.Name()))
+	}
+	if !foundNotificationService {
+		t.Error("notificationService.go must remain as the notification adapter")
+	}
+}
+
+func applicationRequests(t *testing.T) map[string]string {
+	t.Helper()
+	requests := make(map[string]string)
+	err := filepath.WalkDir(applicationDirectory(t), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range parsed.Decls {
+			generic, ok := declaration.(*ast.GenDecl)
+			if !ok || generic.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range generic.Specs {
+				typeSpecification, ok := specification.(*ast.TypeSpec)
+				if !ok || !embedsCQRSRequest(typeSpecification.Type) {
+					continue
+				}
+
+				requestName := typeSpecification.Name.Name
+				requestDirectory := filepath.Base(filepath.Dir(path))
+				expectedSuffix := ""
+				switch requestDirectory {
+				case "commands":
+					expectedSuffix = "Command"
+				case "queries":
+					expectedSuffix = "Query"
+				default:
+					t.Errorf("application request %s must be declared under commands or queries: %s", requestName, path)
+				}
+				if expectedSuffix != "" && !strings.HasSuffix(requestName, expectedSuffix) {
+					t.Errorf("application request %s in %s must end with %s", requestName, path, expectedSuffix)
+				}
+				relativeDirectory, err := filepath.Rel(applicationDirectory(t), filepath.Dir(path))
+				if err != nil {
+					return err
+				}
+				requestID := filepath.ToSlash(relativeDirectory) + "." + requestName
+				requests[requestID] = path
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return requests
+}
+
+func registeredRequests(t *testing.T) map[string]struct{} {
+	t.Helper()
+	routesPath := filepath.Join(applicationDirectory(t), "..", "..", "cmd", "api", "routes.go")
+	parsed, err := parser.ParseFile(token.NewFileSet(), routesPath, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	applicationImports := make(map[string]string)
+	const applicationImportPrefix = "houseflowApi/internal/application/"
+	for _, imported := range parsed.Imports {
+		importPath, err := strconv.Unquote(imported.Path.Value)
+		if err != nil || !strings.HasPrefix(importPath, applicationImportPrefix) {
+			continue
+		}
+		alias := filepath.Base(importPath)
+		if imported.Name != nil {
+			alias = imported.Name.Name
+		}
+		applicationImports[alias] = strings.TrimPrefix(importPath, applicationImportPrefix)
+	}
+
+	registrations := make(map[string]struct{})
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		indexed, ok := call.Fun.(*ast.IndexListExpr)
+		if !ok || len(indexed.Indices) != 2 {
+			return true
+		}
+		selector, ok := indexed.X.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "MustRegister" {
+			return true
+		}
+		packageName, ok := selector.X.(*ast.Ident)
+		if !ok || packageName.Name != "cqrs" {
+			return true
+		}
+
+		requestID := registeredRequestID(indexed.Indices[1], applicationImports)
+		if requestID == "" {
+			t.Errorf("cannot resolve registered request type at %s", routesPath)
+			return true
+		}
+		if _, exists := registrations[requestID]; exists {
+			t.Errorf("request %s is registered more than once in %s", requestID, routesPath)
+		}
+		registrations[requestID] = struct{}{}
+		return true
+	})
+	return registrations
+}
+
+func embedsCQRSRequest(expression ast.Expr) bool {
+	structure, ok := expression.(*ast.StructType)
+	if !ok {
+		return false
+	}
+	for _, field := range structure.Fields.List {
+		indexed, ok := field.Type.(*ast.IndexExpr)
+		if !ok {
+			continue
+		}
+		selector, ok := indexed.X.(*ast.SelectorExpr)
+		if ok && selector.Sel.Name == "Request" {
+			if packageName, ok := selector.X.(*ast.Ident); ok && packageName.Name == "cqrs" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func registeredRequestID(expression ast.Expr, applicationImports map[string]string) string {
+	switch value := expression.(type) {
+	case *ast.SelectorExpr:
+		packageName, ok := value.X.(*ast.Ident)
+		if !ok {
+			return ""
+		}
+		importPath, ok := applicationImports[packageName.Name]
+		if !ok {
+			return ""
+		}
+		return importPath + "." + value.Sel.Name
+	case *ast.Ident:
+		return value.Name
+	case *ast.StarExpr:
+		return registeredRequestID(value.X, applicationImports)
+	default:
+		return ""
 	}
 }
 

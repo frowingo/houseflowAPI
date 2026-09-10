@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -24,12 +24,12 @@ type CreateImageAssetCommand struct {
 }
 
 type CreateImageAssetHandler struct {
-	imageRepository *abstract.DbRepository[entities.ImageAsset]
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset]
 	cache           *helpers.InMemoryCache[[]dtos.ImageAssetResultModel]
 }
 
 func NewCreateImageAssetHandler(
-	imageRepository *abstract.DbRepository[entities.ImageAsset],
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset],
 	cache *helpers.InMemoryCache[[]dtos.ImageAssetResultModel],
 ) *CreateImageAssetHandler {
 	return &CreateImageAssetHandler{imageRepository: imageRepository, cache: cache}

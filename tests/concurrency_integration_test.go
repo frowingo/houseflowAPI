@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"houseflowApi/external/migration"
-	"houseflowApi/internal/abstract"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
@@ -18,6 +17,7 @@ import (
 	localizationQueries "houseflowApi/internal/application/localization/queries"
 	userCommands "houseflowApi/internal/application/user/commands"
 	userQueries "houseflowApi/internal/application/user/queries"
+	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/data/migrations"
 	"houseflowApi/internal/helpers"
@@ -88,16 +88,16 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 		t.Fatal(err)
 	}
 
-	users := abstract.New[entities.User](client, db.Name())
-	houses := abstract.New[entities.House](client, db.Name())
-	imageAssets := abstract.New[entities.ImageAsset](client, db.Name())
-	localizations := abstract.New[entities.Localization](client, db.Name())
-	languages := abstract.New[entities.LocalizationLanguageOption](client, db.Name())
-	chores := abstract.New[entities.Chore](client, db.Name())
-	histories := abstract.New[entities.UserInfoHistory](client, db.Name())
-	announcements := abstract.New[entities.Announcement](client, db.Name())
-	choreStatusHistories := abstract.New[entities.ChoreStatusHistory](client, db.Name())
-	choreReviewVotes := abstract.New[entities.ChoreReviewVote](client, db.Name())
+	users := database.NewDbContext[entities.User](client, db.Name())
+	houses := database.NewDbContext[entities.House](client, db.Name())
+	imageAssets := database.NewDbContext[entities.ImageAsset](client, db.Name())
+	localizations := database.NewDbContext[entities.Localization](client, db.Name())
+	languages := database.NewDbContext[entities.LocalizationLanguageOption](client, db.Name())
+	chores := database.NewDbContext[entities.Chore](client, db.Name())
+	histories := database.NewDbContext[entities.UserInfoHistory](client, db.Name())
+	announcements := database.NewDbContext[entities.Announcement](client, db.Name())
+	choreStatusHistories := database.NewDbContext[entities.ChoreStatusHistory](client, db.Name())
+	choreReviewVotes := database.NewDbContext[entities.ChoreReviewVote](client, db.Name())
 	membershipPolicy := housePolicies.NewMembershipPolicy(houses)
 	createHouseHandler := housecommands.NewCreateHouseHandler(houses, users)
 	joinHouseHandler := housecommands.NewJoinHouseHandler(houses, users)

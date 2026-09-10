@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"houseflowApi/internal/abstract"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
@@ -17,11 +16,12 @@ import (
 	userCommands "houseflowApi/internal/application/user/commands"
 	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/controllers"
+	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
-	"houseflowApi/internal/middleware"
+	"houseflowApi/internal/infrastructure/middleware"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 	"log"
@@ -33,8 +33,8 @@ import (
 func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string) {
 	applicationMediator := cqrs.New()
 
-	localizationRepository := abstract.New[entities.Localization](client, dbName)
-	languageRepository := abstract.New[entities.LocalizationLanguageOption](client, dbName)
+	localizationRepository := database.NewDbContext[entities.Localization](client, dbName)
+	languageRepository := database.NewDbContext[entities.LocalizationLanguageOption](client, dbName)
 	localizationCache := infrastructureLocalization.NewCache(localizationRepository)
 	if err := localizationCache.Load(ctx); err != nil {
 		log.Println("localization cache warmup failed:", err)
@@ -69,8 +69,8 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - AUTH -
-	userRepository := abstract.New[entities.User](client, dbName)
-	userInfoHistoryRepository := abstract.New[entities.UserInfoHistory](client, dbName)
+	userRepository := database.NewDbContext[entities.User](client, dbName)
+	userInfoHistoryRepository := database.NewDbContext[entities.UserInfoHistory](client, dbName)
 	notificationService := services.NewNotificationService()
 	loginHandler := authCommands.NewLoginHandler(userRepository)
 	signUpHandler := authCommands.NewSignUpHandler(userRepository, userInfoHistoryRepository)
@@ -99,8 +99,8 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - USER -
-	houseRepository := abstract.New[entities.House](client, dbName)
-	imageAssetRepository := abstract.New[entities.ImageAsset](client, dbName)
+	houseRepository := database.NewDbContext[entities.House](client, dbName)
+	imageAssetRepository := database.NewDbContext[entities.ImageAsset](client, dbName)
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 
@@ -141,10 +141,10 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// ----------
 
 	// - HOUSE -
-	houseChoreRepository := abstract.New[entities.Chore](client, dbName)
-	houseChoreStatusHistoryRepository := abstract.New[entities.ChoreStatusHistory](client, dbName)
-	houseChoreReviewVoteRepository := abstract.New[entities.ChoreReviewVote](client, dbName)
-	houseAnnouncementRepository := abstract.New[entities.Announcement](client, dbName)
+	houseChoreRepository := database.NewDbContext[entities.Chore](client, dbName)
+	houseChoreStatusHistoryRepository := database.NewDbContext[entities.ChoreStatusHistory](client, dbName)
+	houseChoreReviewVoteRepository := database.NewDbContext[entities.ChoreReviewVote](client, dbName)
+	houseAnnouncementRepository := database.NewDbContext[entities.Announcement](client, dbName)
 
 	createHouseHandler := housecommands.NewCreateHouseHandler(houseRepository, userRepository)
 	joinHouseHandler := housecommands.NewJoinHouseHandler(houseRepository, userRepository)

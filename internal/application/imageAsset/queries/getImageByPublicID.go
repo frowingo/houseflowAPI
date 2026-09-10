@@ -3,7 +3,7 @@ package queries
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -16,10 +16,10 @@ type GetImageByPublicIDQuery struct {
 }
 
 type GetImageByPublicIDHandler struct {
-	imageRepository *abstract.DbRepository[entities.ImageAsset]
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset]
 }
 
-func NewGetImageByPublicIDHandler(imageRepository *abstract.DbRepository[entities.ImageAsset]) *GetImageByPublicIDHandler {
+func NewGetImageByPublicIDHandler(imageRepository databaseAbstract.DbRepository[entities.ImageAsset]) *GetImageByPublicIDHandler {
 	return &GetImageByPublicIDHandler{imageRepository: imageRepository}
 }
 

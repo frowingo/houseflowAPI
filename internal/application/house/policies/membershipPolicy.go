@@ -3,17 +3,17 @@ package policies
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 )
 
 // MembershipPolicy owns the shared house membership authorization rule.
 type MembershipPolicy struct {
-	houseRepository *abstract.DbRepository[entities.House]
+	houseRepository databaseAbstract.DbRepository[entities.House]
 }
 
-func NewMembershipPolicy(houseRepository *abstract.DbRepository[entities.House]) *MembershipPolicy {
+func NewMembershipPolicy(houseRepository databaseAbstract.DbRepository[entities.House]) *MembershipPolicy {
 	return &MembershipPolicy{houseRepository: houseRepository}
 }
 

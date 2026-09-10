@@ -3,9 +3,9 @@ package commands
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
 	authAbstract "houseflowApi/internal/application/auth/abstract"
 	"houseflowApi/internal/config"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -17,12 +17,12 @@ type ForgotPasswordCommand struct {
 }
 
 type ForgotPasswordHandler struct {
-	userRepository *abstract.DbRepository[entities.User]
+	userRepository databaseAbstract.DbRepository[entities.User]
 	emailSender    authAbstract.EmailSender
 }
 
 func NewForgotPasswordHandler(
-	userRepository *abstract.DbRepository[entities.User],
+	userRepository databaseAbstract.DbRepository[entities.User],
 	emailSender authAbstract.EmailSender,
 ) *ForgotPasswordHandler {
 	return &ForgotPasswordHandler{userRepository: userRepository, emailSender: emailSender}

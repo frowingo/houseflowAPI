@@ -3,7 +3,7 @@ package queries
 import (
 	"context"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -18,12 +18,12 @@ type GetImagesByCategoryQuery struct {
 }
 
 type GetImagesByCategoryHandler struct {
-	imageRepository *abstract.DbRepository[entities.ImageAsset]
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset]
 	cache           *helpers.InMemoryCache[[]dtos.ImageAssetResultModel]
 }
 
 func NewGetImagesByCategoryHandler(
-	imageRepository *abstract.DbRepository[entities.ImageAsset],
+	imageRepository databaseAbstract.DbRepository[entities.ImageAsset],
 	cache *helpers.InMemoryCache[[]dtos.ImageAssetResultModel],
 ) *GetImagesByCategoryHandler {
 	return &GetImagesByCategoryHandler{imageRepository: imageRepository, cache: cache}

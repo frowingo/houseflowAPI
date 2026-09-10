@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/abstract"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -34,13 +34,13 @@ type profileChange struct {
 }
 
 type UpdateProfileHandler struct {
-	userRepository        *abstract.DbRepository[entities.User]
-	userHistoryRepository *abstract.DbRepository[entities.UserInfoHistory]
+	userRepository        databaseAbstract.DbRepository[entities.User]
+	userHistoryRepository databaseAbstract.DbRepository[entities.UserInfoHistory]
 }
 
 func NewUpdateProfileHandler(
-	userRepository *abstract.DbRepository[entities.User],
-	userHistoryRepository *abstract.DbRepository[entities.UserInfoHistory],
+	userRepository databaseAbstract.DbRepository[entities.User],
+	userHistoryRepository databaseAbstract.DbRepository[entities.UserInfoHistory],
 ) *UpdateProfileHandler {
 	return &UpdateProfileHandler{
 		userRepository:        userRepository,
