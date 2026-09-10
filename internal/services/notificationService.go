@@ -3,10 +3,12 @@ package services
 import (
 	"bytes"
 	"fmt"
-	"houseflowApi/internal/config"
 	"html/template"
 	"net/smtp"
 	"strings"
+
+	authAbstract "houseflowApi/internal/application/auth/abstract"
+	"houseflowApi/internal/config"
 )
 
 const MailSMTPHost = "smtp.gmail.com"
@@ -106,3 +108,5 @@ func renderCodeEmailTemplate(data codeEmailTemplateData) (string, error) {
 
 	return body.String(), nil
 }
+
+var _ authAbstract.EmailSender = (*NotificationService)(nil)

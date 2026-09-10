@@ -2,29 +2,26 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	choreCommands "houseflowApi/internal/application/chore/commands"
 	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
-	"houseflowApi/internal/services"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type ChoreController struct {
-	choreService *services.ChoreService
-	localizer    helpers.MessageLocalizer
-	validator    *validator.CustomValidator
+	sender    cqrs.Sender
+	localizer helpers.MessageLocalizer
+	validator *validator.CustomValidator
 }
 
 // NewChoreController constructor for ChoreController
-func NewChoreController(choreService *services.ChoreService, localizers ...helpers.MessageLocalizer) *ChoreController {
-	var localizer helpers.MessageLocalizer
-	if len(localizers) > 0 {
-		localizer = localizers[0]
-	}
+func NewChoreController(sender cqrs.Sender, localizer helpers.MessageLocalizer) *ChoreController {
 	return &ChoreController{
-		choreService: choreService,
-		localizer:    localizer,
-		validator:    validator.NewValidator(),
+		sender:    sender,
+		localizer: localizer,
+		validator: validator.NewValidator(),
 	}
 }
 
@@ -53,9 +50,21 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	createdChore, err := r.choreService.CreateChore(*chore, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	createdChore, err := cqrs.Send[*dtos.ChoreResponseModel](ctx, r.sender, choreCommands.CreateChoreCommand{
+		Title:             chore.Title,
+		Description:       chore.Description,
+		AssignedTo:        chore.AssignedTo,
+		DueDate:           chore.DueDate.Time,
+		HouseID:           chore.HouseId,
+		Level:             chore.Level,
+		IsRecurring:       chore.IsRecurring,
+		RecurringInterval: chore.RecurringInterval,
+		RequesterID:       userId,
+	})
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(createdChore)
@@ -87,9 +96,22 @@ func (r *ChoreController) UpdateChoreStatus(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	result, err := r.choreService.UpdateChoreStatusBulk(statusUpdates, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	updates := make([]choreCommands.ChoreStatusUpdate, 0, len(statusUpdates.Chores))
+	for _, update := range statusUpdates.Chores {
+		updates = append(updates, choreCommands.ChoreStatusUpdate{
+			ChoreID: update.ChoreId,
+			Status:  update.Status,
+		})
+	}
+	result, err := cqrs.Send[[]dtos.ChoreResponseModel](ctx, r.sender, choreCommands.UpdateChoreStatusCommand{
+		HouseID: statusUpdates.HouseId,
+		Chores:  updates,
+		UserID:  userId,
+	})
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -121,9 +143,15 @@ func (r *ChoreController) ReviewChore(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	result, err := r.choreService.ReviewChore(*review, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	result, err := cqrs.Send[*dtos.ChoreResponseModel](ctx, r.sender, choreCommands.ReviewChoreCommand{
+		ChoreID:    review.ChoreId,
+		ReviewerID: userId,
+		IsApproved: *review.IsApproved,
+	})
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -158,9 +186,22 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 
 	userId := c.Locals("userID").(string)
 
-	updatedChore, err := r.choreService.UpdateChore(id, *chore, userId)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	updatedChore, err := cqrs.Send[*dtos.ChoreResponseModel](ctx, r.sender, choreCommands.UpdateChoreCommand{
+		ChoreID:           id,
+		Title:             chore.Title,
+		Description:       chore.Description,
+		AssignedTo:        chore.AssignedTo,
+		DueDate:           chore.DueDate.Time,
+		HouseID:           chore.HouseId,
+		Level:             chore.Level,
+		IsRecurring:       chore.IsRecurring,
+		RecurringInterval: chore.RecurringInterval,
+		RequesterID:       userId,
+	})
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(updatedChore)

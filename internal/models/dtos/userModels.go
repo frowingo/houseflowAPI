@@ -2,6 +2,7 @@ package dtos
 
 import (
 	"houseflowApi/internal/data/entities"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,10 @@ type UpdateUserModel struct {
 	BirthDay    *UTCDateTime `json:"birthDay,omitempty"`
 	ImageURL    *string      `json:"imageUrl,omitempty"`
 	Language    *string      `json:"language,omitempty" validate:"omitempty,oneof=en tr"`
+}
+
+func UserDisplayName(user entities.User) string {
+	return strings.TrimSpace(user.Firstname + " " + user.Lastname)
 }
 
 func (m *NewUserModel) ToEntity() entities.User {

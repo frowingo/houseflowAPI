@@ -2,30 +2,31 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	authCommands "houseflowApi/internal/application/auth/commands"
+	authQueries "houseflowApi/internal/application/auth/queries"
 	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
-	"houseflowApi/internal/services"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type AuthController struct {
-	authService *services.AuthService
-	localizer   helpers.MessageLocalizer
-	validator   *validator.CustomValidator
+	sender    cqrs.Sender
+	localizer helpers.MessageLocalizer
+	validator *validator.CustomValidator
 }
 
-func NewAuthController(authService *services.AuthService, localizers ...helpers.MessageLocalizer) *AuthController {
+func NewAuthController(sender cqrs.Sender, localizers ...helpers.MessageLocalizer) *AuthController {
 	var localizer helpers.MessageLocalizer
 	if len(localizers) > 0 {
 		localizer = localizers[0]
 	}
 	return &AuthController{
-		authService: authService,
-		localizer:   localizer,
-		validator:   validator.NewValidator(),
+		sender:    sender,
+		localizer: localizer,
+		validator: validator.NewValidator(),
 	}
 }
 
@@ -45,24 +46,14 @@ func (r *AuthController) IsAuth(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 	}
 
-	jwtData, err := helpers.ValidateToken(parts[1])
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	user, err := cqrs.Send[*dtos.UserResultModel](ctx, r.sender, authQueries.ValidateAuthQuery{Token: parts[1]})
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 	}
 
-	if time.Now().Before(jwtData.ExpiresAt.Time) {
-		user, err := r.authService.GetUserByID(jwtData.Subject)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
-		}
-
-		userResult := dtos.UserToResultModel(*user)
-		return c.Status(fiber.StatusOK).JSON(dtos.IsAuthResponseModel{
-			Success: true,
-			Data:    &userResult,
-		})
-	}
-	return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
+	return c.Status(fiber.StatusOK).JSON(dtos.IsAuthResponseModel{Success: true, Data: user})
 }
 
 // @Summary User Login
@@ -87,9 +78,13 @@ func (r *AuthController) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "auth.error.email_password_required"))
 	}
 
-	token, err := r.authService.Login(model.Email, model.Password)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	token, err := cqrs.Send[string](ctx, r.sender, authCommands.LoginCommand{
+		Email: model.Email, Password: model.Password,
+	})
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	if token == "" {
@@ -121,9 +116,14 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
-	token, err := r.authService.SignUp(*model)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	token, err := cqrs.Send[string](ctx, r.sender, authCommands.SignUpCommand{
+		Email: model.Email, Password: model.Password,
+		Firstname: model.Firstname, Lastname: model.Lastname,
+	})
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(201).JSON(fiber.Map{"token": token})
@@ -150,7 +150,9 @@ func (r *AuthController) ForgotPassword(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	err := r.authService.ForgotPassword(model.Email)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	_, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, authCommands.ForgotPasswordCommand{Email: model.Email})
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
@@ -179,8 +181,12 @@ func (r *AuthController) ResetPassword(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
 	}
 
-	if err := r.authService.ResetPassword(model.Email, model.Code, model.NewPassword); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, authCommands.ResetPasswordCommand{
+		Email: model.Email, Code: model.Code, NewPassword: model.NewPassword,
+	}); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(helpers.LocalizedMessageMap(c, r.localizer, "auth.message.password_reset_successful"))
@@ -202,7 +208,9 @@ func (r *AuthController) SendEmailVerificationCode(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	if err := r.authService.SendEmailVerificationCode(email); err != nil {
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, authCommands.SendEmailVerificationCodeCommand{Email: email}); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
@@ -234,7 +242,11 @@ func (r *AuthController) ValidateEmail(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 
-	if err := r.authService.ValidateEmail(email, model.Code); err != nil {
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, authCommands.ValidateEmailCommand{
+		Email: email, Code: model.Code,
+	}); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.SuccessResponseModel{Success: false})
 	}
 

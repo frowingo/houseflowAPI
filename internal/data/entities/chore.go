@@ -23,6 +23,7 @@ type Chore struct {
 	ReviewRound       int                `bson:"reviewRound" json:"reviewRound"`
 	IsRecurring       bool               `bson:"isRecurring" json:"isRecurring"`
 	RecurringInterval int                `bson:"recurringInterval" json:"recurringInterval"`
+	Version           int64              `bson:"version" json:"-"`
 }
 
 type ChoreLevel int

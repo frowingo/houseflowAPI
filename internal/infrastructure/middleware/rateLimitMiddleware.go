@@ -24,7 +24,6 @@ type RateLimitConfig struct {
 type windowEntry struct {
 	count   int
 	resetAt time.Time
-	mu      sync.Mutex
 }
 
 func RateLimit(cfg RateLimitConfig) fiber.Handler {
@@ -37,23 +36,21 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		cfg.Message = "rate_limit.error.too_many_requests"
 	}
 
-	var store sync.Map
+	var storeMu sync.Mutex
+	store := make(map[string]*windowEntry)
 
 	go func() {
 		ticker := time.NewTicker(cfg.Window * 2)
 		defer ticker.Stop()
 		for range ticker.C {
 			now := time.Now()
-			store.Range(func(k, v any) bool {
-				e := v.(*windowEntry)
-				e.mu.Lock()
-				expired := now.After(e.resetAt)
-				e.mu.Unlock()
-				if expired {
-					store.Delete(k)
+			storeMu.Lock()
+			for key, entry := range store {
+				if now.After(entry.resetAt) {
+					delete(store, key)
 				}
-				return true
-			})
+			}
+			storeMu.Unlock()
 		}
 	}()
 
@@ -61,13 +58,12 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		key := cfg.KeyFunc(c)
 		now := time.Now()
 
-		actual, _ := store.LoadOrStore(key, &windowEntry{
-			resetAt: now.Add(cfg.Window),
-		})
-		entry := actual.(*windowEntry)
-
-		entry.mu.Lock()
-		defer entry.mu.Unlock()
+		storeMu.Lock()
+		entry, ok := store[key]
+		if !ok {
+			entry = &windowEntry{resetAt: now.Add(cfg.Window)}
+			store[key] = entry
+		}
 
 		if now.After(entry.resetAt) {
 			entry.count = 0
@@ -75,7 +71,8 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		}
 
 		entry.count++
-
+		count := entry.count
+		resetAt := entry.resetAt
 		remaining := cfg.Max - entry.count
 		if remaining < 0 {
 			remaining = 0
@@ -83,17 +80,19 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 
 		c.Set("X-RateLimit-Limit", fmt.Sprintf("%d", cfg.Max))
 		c.Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
-		c.Set("X-RateLimit-Reset", fmt.Sprintf("%d", entry.resetAt.Unix()))
+		storeMu.Unlock()
 
-		if entry.count > cfg.Max {
-			retryAfter := int(time.Until(entry.resetAt).Seconds())
+		c.Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt.Unix()))
+
+		if count > cfg.Max {
+			retryAfter := int(time.Until(resetAt).Seconds())
 			if retryAfter < 0 {
 				retryAfter = 0
 			}
 			c.Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": helpers.LocalizedMessage(c, cfg.Localizer, cfg.Message),
-			})
+			return c.Status(fiber.StatusTooManyRequests).JSON(
+				helpers.LocalizedCoreError(c, cfg.Localizer, cfg.Message),
+			)
 		}
 
 		return c.Next()
