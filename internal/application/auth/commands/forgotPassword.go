@@ -4,7 +4,6 @@ import (
 	"context"
 
 	authAbstract "houseflowApi/internal/application/auth/abstract"
-	"houseflowApi/internal/config"
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -17,23 +16,27 @@ type ForgotPasswordCommand struct {
 }
 
 type ForgotPasswordHandler struct {
-	userRepository databaseAbstract.DbRepository[entities.User]
-	emailSender    authAbstract.EmailSender
+	userRepository  databaseAbstract.DbRepository[entities.User]
+	emailSender     authAbstract.EmailSender
+	resetSecret     string
+	validityMinutes int
 }
 
 func NewForgotPasswordHandler(
 	userRepository databaseAbstract.DbRepository[entities.User],
 	emailSender authAbstract.EmailSender,
+	resetSecret string,
+	validityMinutes int,
 ) *ForgotPasswordHandler {
-	return &ForgotPasswordHandler{userRepository: userRepository, emailSender: emailSender}
+	return &ForgotPasswordHandler{
+		userRepository:  userRepository,
+		emailSender:     emailSender,
+		resetSecret:     resetSecret,
+		validityMinutes: validityMinutes,
+	}
 }
 
 func (h *ForgotPasswordHandler) Handle(ctx context.Context, command ForgotPasswordCommand) (cqrs.NoResult, error) {
-	settings, err := config.MustLoadConfig()
-	if err != nil {
-		return cqrs.NoResult{}, err
-	}
-
 	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
 	if err != nil {
 		if user == nil || helpers.IsApplicationError(err, "database.error.document_not_found") {
@@ -42,10 +45,9 @@ func (h *ForgotPasswordHandler) Handle(ctx context.Context, command ForgotPasswo
 		return cqrs.NoResult{}, err
 	}
 
-	validityMinutes := settings.Internal.PasswordReset.ValidityMinutes
-	window := helpers.ResetCodeWindow(validityMinutes)
-	code := helpers.GenerateResetCode(command.Email, settings.Internal.PasswordReset.Secret, window)
-	if err := h.emailSender.SendResetCodeEmail(command.Email, code, validityMinutes); err != nil {
+	window := helpers.ResetCodeWindow(h.validityMinutes)
+	code := helpers.GenerateResetCode(command.Email, h.resetSecret, window)
+	if err := h.emailSender.SendResetCodeEmail(command.Email, code, h.validityMinutes); err != nil {
 		return cqrs.NoResult{}, err
 	}
 	return cqrs.NoResult{}, nil

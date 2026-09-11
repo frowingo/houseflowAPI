@@ -48,7 +48,7 @@ func (r *AuthController) IsAuth(c *fiber.Ctx) error {
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	user, err := cqrs.Send[*dtos.UserResultModel](ctx, r.sender, authQueries.ValidateAuthQuery{Token: parts[1]})
+	user, err := cqrs.Send[*dtos.AuthUserResultModel](ctx, r.sender, authQueries.ValidateAuthQuery{Token: parts[1]})
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dtos.IsAuthResponseModel{Success: false, Data: nil})
 	}

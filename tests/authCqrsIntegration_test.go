@@ -5,6 +5,7 @@ import (
 
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authQueries "houseflowApi/internal/application/auth/queries"
+	housecommands "houseflowApi/internal/application/house/commands"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
@@ -33,12 +34,40 @@ func TestAuthCommandsAndQueryCompleteAuthenticationFlow(t *testing.T) {
 		t.Fatal("signup returned an empty token")
 	}
 
-	authenticatedUser, err := cqrs.Send[*dtos.UserResultModel](fixture.ctx, fixture.sender, authQueries.ValidateAuthQuery{Token: token})
+	authenticatedUser, err := cqrs.Send[*dtos.AuthUserResultModel](fixture.ctx, fixture.sender, authQueries.ValidateAuthQuery{Token: token})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if authenticatedUser.Email != email {
 		t.Fatalf("authenticated email=%q, want %q", authenticatedUser.Email, email)
+	}
+	if len(authenticatedUser.HouseList) != 0 {
+		t.Fatalf("new user house list=%+v, want empty", authenticatedUser.HouseList)
+	}
+
+	house, err := cqrs.Send[*entities.House](fixture.ctx, fixture.sender, housecommands.CreateHouseCommand{
+		OwnerID: authenticatedUser.Id, Name: "Auth House", Type: entities.SharedHouse, MaxMemberCount: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	house.ProfileImage = "https://example.test/house.png"
+	if _, err := fixture.db.Collection("House").UpdateOne(
+		fixture.ctx, bson.M{"_id": house.Id}, bson.M{"$set": bson.M{"profileImage": house.ProfileImage}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	authenticatedUser, err = cqrs.Send[*dtos.AuthUserResultModel](fixture.ctx, fixture.sender, authQueries.ValidateAuthQuery{Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(authenticatedUser.HouseList) != 1 {
+		t.Fatalf("authenticated house list=%+v, want one house", authenticatedUser.HouseList)
+	}
+	authHouse := authenticatedUser.HouseList[0]
+	if authHouse.HouseID != house.Id.Hex() || authHouse.HouseName != house.Name || authHouse.HouseProfile != house.ProfileImage {
+		t.Fatalf("authenticated house=%+v, want id/name/profile from house", authHouse)
 	}
 
 	historyCount, err := fixture.db.Collection("UserInfoHistory").CountDocuments(fixture.ctx, bson.M{"userId": authenticatedUser.Id})

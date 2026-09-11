@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"houseflowApi/internal/config"
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -21,19 +20,25 @@ type ResetPasswordCommand struct {
 }
 
 type ResetPasswordHandler struct {
-	userRepository databaseAbstract.DbRepository[entities.User]
+	userRepository  databaseAbstract.DbRepository[entities.User]
+	resetSecret     string
+	validityMinutes int
 }
 
-func NewResetPasswordHandler(userRepository databaseAbstract.DbRepository[entities.User]) *ResetPasswordHandler {
-	return &ResetPasswordHandler{userRepository: userRepository}
+func NewResetPasswordHandler(
+	userRepository databaseAbstract.DbRepository[entities.User],
+	resetSecret string,
+	validityMinutes int,
+) *ResetPasswordHandler {
+	return &ResetPasswordHandler{
+		userRepository:  userRepository,
+		resetSecret:     resetSecret,
+		validityMinutes: validityMinutes,
+	}
 }
 
 func (h *ResetPasswordHandler) Handle(ctx context.Context, command ResetPasswordCommand) (cqrs.NoResult, error) {
-	settings, err := config.MustLoadConfig()
-	if err != nil {
-		return cqrs.NoResult{}, err
-	}
-	if !helpers.IsResetCodeValid(command.Email, command.Code, settings.Internal.PasswordReset.Secret, settings.Internal.PasswordReset.ValidityMinutes) {
+	if !helpers.IsResetCodeValid(command.Email, command.Code, h.resetSecret, h.validityMinutes) {
 		return cqrs.NoResult{}, helpers.NewLocalizedError("auth.error.invalid_or_expired_reset_code")
 	}
 

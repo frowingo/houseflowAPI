@@ -16,13 +16,7 @@ type CloudinaryContext struct {
 	folder string
 }
 
-func NewCloudinaryContext() (*CloudinaryContext, error) {
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	cloudCfg := cfg.External.Cloudinary
+func NewCloudinaryContext(cloudCfg config.ConfigCloudinary) (*CloudinaryContext, error) {
 	if cloudCfg.CloudName == "" || cloudCfg.APIKey == "" || cloudCfg.APISecret == "" {
 		return nil, errors.New("cloudinary config is missing required fields")
 	}

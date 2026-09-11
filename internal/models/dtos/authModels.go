@@ -11,8 +11,32 @@ type LoginResponseModel struct {
 }
 
 type IsAuthResponseModel struct {
-	Success bool             `json:"success"`
-	Data    *UserResultModel `json:"data,omitempty"`
+	Success bool                 `json:"success"`
+	Data    *AuthUserResultModel `json:"data,omitempty"`
+}
+
+type AuthHouseModel struct {
+	HouseID      string `json:"houseId"`
+	HouseName    string `json:"houseName"`
+	HouseProfile string `json:"houseProfile"`
+}
+
+type AuthUserResultModel struct {
+	Id            string           `json:"id"`
+	Firstname     string           `json:"firstName"`
+	Lastname      string           `json:"lastName"`
+	PhoneNumber   string           `json:"phoneNumber"`
+	Email         string           `json:"email"`
+	BirthDay      UTCDateTime      `json:"birthDay"`
+	ImageURL      string           `json:"imageUrl"`
+	Language      string           `json:"language"`
+	HouseList     []AuthHouseModel `json:"houseList"`
+	IsActive      bool             `json:"isActive"`
+	IsVerifyPhone bool             `json:"isVerifyPhone"`
+	IsVerifyEmail bool             `json:"isVerifyEmail"`
+	CreatedOn     UTCDateTime      `json:"createdOn"`
+	UpdatedOn     UTCDateTime      `json:"updatedOn"`
+	LastLogin     UTCDateTime      `json:"lastLogin"`
 }
 
 type SuccessResponseModel struct {

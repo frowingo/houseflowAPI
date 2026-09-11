@@ -11,18 +11,13 @@ import (
 
 // NewDatabase returns a *mongo.Database using the configured connection string and db name.
 // Caller is responsible for disconnecting the returned client.
-func NewDatabase(ctx context.Context) (*mongo.Client, *mongo.Database, error) {
-	cfg, err := config.MustLoadConfig()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	clientOpts := options.Client().ApplyURI(cfg.External.Mongo.ConnectionString)
+func NewDatabase(ctx context.Context, cfg config.ConfigMongo) (*mongo.Client, *mongo.Database, error) {
+	clientOpts := options.Client().ApplyURI(cfg.ConnectionString)
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
 		return nil, nil, errors.New("failed to connect to mongo: " + err.Error())
 	}
 
-	db := client.Database(cfg.External.Mongo.DbName)
+	db := client.Database(cfg.DbName)
 	return client, db, nil
 }

@@ -13,6 +13,7 @@ import (
 
 	"houseflowApi/external/migration"
 	docs "houseflowApi/external/swagger/docs" // Swagger docs
+	"houseflowApi/internal/config"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/migrations"
 )
@@ -39,7 +40,12 @@ import (
 func main() {
 	ctx := context.Background()
 
-	mongoClient, db, err := database.NewDatabase(ctx)
+	cfg, err := config.MustLoadConfig()
+	if err != nil {
+		log.Fatal("failed to load config:", err)
+	}
+
+	mongoClient, db, err := database.NewDatabase(ctx, cfg.External.Mongo)
 	if err != nil {
 		log.Fatal("failed to connect to database:", err)
 	}
@@ -69,7 +75,7 @@ func main() {
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	SetupRoutes(ctx, app, mongoClient, db.Name())
+	SetupRoutes(ctx, app, mongoClient, db.Name(), cfg.Internal)
 
 	log.Fatal(app.Listen(":3162"))
 }

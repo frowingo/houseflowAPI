@@ -47,7 +47,7 @@ func TestUserInfoHistoryMigrationsAreRegistered(t *testing.T) {
 		registered[migration.Version()] = true
 	}
 
-	for _, version := range []string{"0029", "0030", "0031", "0032"} {
+	for _, version := range []string{"0029", "0030", "0031", "0032", "0033", "0034"} {
 		if !registered[version] {
 			t.Fatalf("migration %s is not registered", version)
 		}
