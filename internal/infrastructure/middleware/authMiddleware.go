@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func AuthRequired(localizers ...helpers.MessageLocalizer) fiber.Handler {
+func AuthRequired(jwtService *helpers.JWTService, localizers ...helpers.MessageLocalizer) fiber.Handler {
 	var localizer helpers.MessageLocalizer
 	if len(localizers) > 0 {
 		localizer = localizers[0]
@@ -32,7 +32,7 @@ func AuthRequired(localizers ...helpers.MessageLocalizer) fiber.Handler {
 
 		token := parts[1]
 
-		jwtData, err := helpers.ValidateToken(token)
+		jwtData, err := jwtService.ValidateToken(token)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": helpers.LocalizedMessage(c, localizer, "auth.error.invalid_or_expired_token"),

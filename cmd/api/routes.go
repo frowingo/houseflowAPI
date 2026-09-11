@@ -15,6 +15,7 @@ import (
 	localizationQueries "houseflowApi/internal/application/localization/queries"
 	userCommands "houseflowApi/internal/application/user/commands"
 	userQueries "houseflowApi/internal/application/user/queries"
+	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
@@ -30,8 +31,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string) {
+func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string, cfg config.ConfigInternal) {
 	applicationMediator := cqrs.New()
+	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
 	localizationRepository := database.NewDbContext[entities.Localization](client, dbName)
 	languageRepository := database.NewDbContext[entities.LocalizationLanguageOption](client, dbName)
@@ -59,33 +61,42 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	// - LOCALIZATION -
 	localizationRoutes := api.Group("/localization", middleware.IPRateLimit(localizationCache))
 	localizationRoutes.Get("/languages", localizationController.GetLanguages)
-	localizationRoutes.Get("/language/:prefix", middleware.AuthRequired(localizationCache), localizationController.GetLanguage)
-	localizationRoutes.Post("/language", middleware.AuthRequired(localizationCache), middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), localizationController.InsertLocalizationLanguage)
+	localizationRoutes.Get("/language/:prefix", middleware.AuthRequired(jwtService, localizationCache), localizationController.GetLanguage)
+	localizationRoutes.Post("/language", middleware.AuthRequired(jwtService, localizationCache), middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), localizationController.InsertLocalizationLanguage)
 	localizationRoutes.Get("/plaintext/:language", localizationController.GetPlaintexts)
 
-	languageRoutes := api.Group("/language", middleware.AuthRequired(localizationCache), middleware.UserRateLimit(localizationCache))
+	languageRoutes := api.Group("/language", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	languageRoutes.Post("", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), localizationController.InsertLocalizations)
 	languageRoutes.Post("/", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), localizationController.InsertLocalizations)
 	// ----------
 
 	// - AUTH -
 	userRepository := database.NewDbContext[entities.User](client, dbName)
+	houseRepository := database.NewDbContext[entities.House](client, dbName)
 	userInfoHistoryRepository := database.NewDbContext[entities.UserInfoHistory](client, dbName)
-	notificationService := services.NewNotificationService()
-	loginHandler := authCommands.NewLoginHandler(userRepository)
-	signUpHandler := authCommands.NewSignUpHandler(userRepository, userInfoHistoryRepository)
-	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(userRepository, notificationService)
-	resetPasswordHandler := authCommands.NewResetPasswordHandler(userRepository)
-	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(userRepository, notificationService)
-	validateEmailHandler := authCommands.NewValidateEmailHandler(userRepository)
-	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository)
+	notificationService := services.NewNotificationService(cfg.SMTP.Password)
+	loginHandler := authCommands.NewLoginHandler(userRepository, jwtService)
+	signUpHandler := authCommands.NewSignUpHandler(userRepository, userInfoHistoryRepository, jwtService)
+	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(
+		userRepository, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+	)
+	resetPasswordHandler := authCommands.NewResetPasswordHandler(
+		userRepository, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+	)
+	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(
+		userRepository, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+	)
+	validateEmailHandler := authCommands.NewValidateEmailHandler(
+		userRepository, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+	)
+	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository, houseRepository, jwtService)
 	cqrs.MustRegister[string, authCommands.LoginCommand](applicationMediator, loginHandler)
 	cqrs.MustRegister[string, authCommands.SignUpCommand](applicationMediator, signUpHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ForgotPasswordCommand](applicationMediator, forgotPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ResetPasswordCommand](applicationMediator, resetPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.SendEmailVerificationCodeCommand](applicationMediator, sendEmailVerificationCodeHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](applicationMediator, validateEmailHandler)
-	cqrs.MustRegister[*dtos.UserResultModel, authQueries.ValidateAuthQuery](applicationMediator, validateAuthHandler)
+	cqrs.MustRegister[*dtos.AuthUserResultModel, authQueries.ValidateAuthQuery](applicationMediator, validateAuthHandler)
 	authController := controllers.NewAuthController(applicationMediator, localizationCache)
 
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit(localizationCache))
@@ -94,18 +105,17 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	authRoutes.Post("/signup", authController.Signup)
 	authRoutes.Post("/forget", authController.ForgotPassword)
 	authRoutes.Post("/reset", authController.ResetPassword)
-	authRoutes.Get("/validate-email", middleware.AuthRequired(localizationCache), authController.SendEmailVerificationCode)
-	authRoutes.Post("/validate-email", middleware.AuthRequired(localizationCache), authController.ValidateEmail)
+	authRoutes.Get("/validate-email", middleware.AuthRequired(jwtService, localizationCache), authController.SendEmailVerificationCode)
+	authRoutes.Post("/validate-email", middleware.AuthRequired(jwtService, localizationCache), authController.ValidateEmail)
 	// ----------
 
 	// - USER -
-	houseRepository := database.NewDbContext[entities.House](client, dbName)
 	imageAssetRepository := database.NewDbContext[entities.ImageAsset](client, dbName)
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
-	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(userRepository, userInfoHistoryRepository)
 	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(userRepository)
 	listUsersHandler := userQueries.NewListUsersHandler(userRepository)
@@ -127,7 +137,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](applicationMediator, getImageByPublicIDHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)
 
-	userRoutes := api.Group("/user", middleware.AuthRequired(localizationCache), middleware.UserRateLimit(localizationCache))
+	userRoutes := api.Group("/user", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	userRoutes.Post("", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.NewUser)
 	userRoutes.Get("/usersList", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.ListUsers)
 	userRoutes.Get("/getByEmail", userController.GetUserByEmail)
@@ -171,7 +181,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 		localizationCache,
 	)
 
-	houseRoutes := api.Group("/house", middleware.AuthRequired(localizationCache), middleware.UserRateLimit(localizationCache))
+	houseRoutes := api.Group("/house", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	houseRoutes.Get("/details", houseController.GetHouseDetails)
 	houseRoutes.Post("/announcement", houseController.CreateAnnouncement)
 	houseRoutes.Post("/create", houseController.CreateHouse)
@@ -184,7 +194,6 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	createChoreHandler := choreCommands.NewCreateChoreHandler(
 		houseChoreRepository,
 		houseChoreStatusHistoryRepository,
-		houseChoreReviewVoteRepository,
 		houseMembershipPolicy,
 		choreAssignmentPolicy,
 	)
@@ -215,7 +224,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](applicationMediator, reviewChoreHandler)
 	choreController := controllers.NewChoreController(applicationMediator, localizationCache)
 
-	choreRoutes := api.Group("/chore", middleware.AuthRequired(localizationCache), middleware.UserRateLimit(localizationCache))
+	choreRoutes := api.Group("/chore", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	choreRoutes.Post("", choreController.CreateChore)
 	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
 	choreRoutes.Put("/review", choreController.ReviewChore)

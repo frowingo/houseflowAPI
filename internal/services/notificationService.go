@@ -16,7 +16,9 @@ const MailSMTPPort = 587
 const MailSMTPUsername = "houseflow37@gmail.com"
 const MailFromAddress = "no-reply@houseflow.com"
 
-type NotificationService struct{}
+type NotificationService struct {
+	smtpPassword string
+}
 
 type codeEmailTemplateData struct {
 	Heading         string
@@ -26,8 +28,8 @@ type codeEmailTemplateData struct {
 	IgnoreMessage   string
 }
 
-func NewNotificationService() *NotificationService {
-	return &NotificationService{}
+func NewNotificationService(smtpPassword string) *NotificationService {
+	return &NotificationService{smtpPassword: smtpPassword}
 }
 
 func (r *NotificationService) SendResetCodeEmail(toEmail, code string, validityMinutes int) error {
@@ -53,18 +55,12 @@ func (r *NotificationService) SendEmailVerificationCode(toEmail, code string, va
 }
 
 func (r *NotificationService) sendCodeEmail(toEmail, code string, validityMinutes int, subject, intro, ignoreMessage string) error {
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return err
-	}
-
-	smtpPassword := cfg.Internal.SMTP.Password
-	if smtpPassword == "" {
+	if r.smtpPassword == "" {
 		return fmt.Errorf("smtp password is missing")
 	}
 
 	smtpAddress := fmt.Sprintf("%s:%d", MailSMTPHost, MailSMTPPort)
-	auth := smtp.PlainAuth("", MailSMTPUsername, smtpPassword, MailSMTPHost)
+	auth := smtp.PlainAuth("", MailSMTPUsername, r.smtpPassword, MailSMTPHost)
 
 	htmlBody, err := renderCodeEmailTemplate(codeEmailTemplateData{
 		Heading:         subject,

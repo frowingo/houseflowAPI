@@ -24,10 +24,11 @@ type LoginCommand struct {
 
 type LoginHandler struct {
 	userRepository databaseAbstract.DbRepository[entities.User]
+	jwtService     *helpers.JWTService
 }
 
-func NewLoginHandler(userRepository databaseAbstract.DbRepository[entities.User]) *LoginHandler {
-	return &LoginHandler{userRepository: userRepository}
+func NewLoginHandler(userRepository databaseAbstract.DbRepository[entities.User], jwtService *helpers.JWTService) *LoginHandler {
+	return &LoginHandler{userRepository: userRepository, jwtService: jwtService}
 }
 
 func (h *LoginHandler) Handle(ctx context.Context, command LoginCommand) (string, error) {
@@ -54,7 +55,7 @@ func (h *LoginHandler) Handle(ctx context.Context, command LoginCommand) (string
 		if result.MatchedCount == 0 {
 			return "", helpers.NewLocalizedError("auth.error.account_locked")
 		}
-		return helpers.GenerateToken(user.Email, user.Id.Hex(), int(user.Role), user.Language)
+		return h.jwtService.GenerateToken(user.Email, user.Id.Hex(), int(user.Role), user.Language)
 	}
 
 	var updatedUser entities.User

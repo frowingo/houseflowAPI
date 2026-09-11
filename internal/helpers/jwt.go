@@ -1,7 +1,6 @@
 package helpers
 
 import (
-	"houseflowApi/internal/config"
 	"houseflowApi/internal/models/dtos"
 	"time"
 
@@ -14,13 +13,15 @@ type customClaims struct {
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(email string, userId string, role int, language string) (string, error) {
+type JWTService struct {
+	apiSecret []byte
+}
 
-	config, err := config.MustLoadConfig()
-	if err != nil {
-		return "", NewLocalizedError("config.error.not_found")
-	}
+func NewJWTService(apiSecret string) *JWTService {
+	return &JWTService{apiSecret: []byte(apiSecret)}
+}
 
+func (s *JWTService) GenerateToken(email string, userId string, role int, language string) (string, error) {
 	claim := customClaims{
 		Role:     role,
 		Language: NormalizeLanguage(language),
@@ -33,7 +34,7 @@ func GenerateToken(email string, userId string, role int, language string) (stri
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
-	signedToken, err := token.SignedString([]byte(config.Internal.JWT.ApiSecret))
+	signedToken, err := token.SignedString(s.apiSecret)
 	if err != nil {
 		return "", err
 	}
@@ -41,15 +42,9 @@ func GenerateToken(email string, userId string, role int, language string) (stri
 	return signedToken, nil
 }
 
-func ValidateToken(token string) (dtos.JwtModel, error) {
-
-	config, err := config.MustLoadConfig()
-	if err != nil {
-		return dtos.JwtModel{}, NewLocalizedError("config.error.not_found")
-	}
-
+func (s *JWTService) ValidateToken(token string) (dtos.JwtModel, error) {
 	parsedToken, err := jwt.ParseWithClaims(token, &customClaims{}, func(t *jwt.Token) (interface{}, error) {
-		return []byte(config.Internal.JWT.ApiSecret), nil
+		return s.apiSecret, nil
 	})
 	if err != nil {
 		return dtos.JwtModel{}, err
@@ -64,7 +59,6 @@ func ValidateToken(token string) (dtos.JwtModel, error) {
 			ExpiresAt:  dtos.NewUTCDateTime(claims.ExpiresAt.Time),
 			IssuedAt:   dtos.NewUTCDateTime(claims.IssuedAt.Time),
 		}, nil
-	} else {
-		return dtos.JwtModel{}, NewLocalizedError("auth.error.invalid_token")
 	}
+	return dtos.JwtModel{}, NewLocalizedError("auth.error.invalid_token")
 }

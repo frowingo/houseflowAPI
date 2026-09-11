@@ -53,5 +53,9 @@ func AllMigrations() []migration.Migration {
 		&concurrencyFoundation{},
 		// --- HTTP Error Contract ---
 		&httpErrorContractLocalizations{},
+		// --- Owner Reassignment ---
+		&ownerReassignmentLocalizations{},
+		// --- Auth House List ---
+		&houseMemberIDsIndex{},
 	}
 }

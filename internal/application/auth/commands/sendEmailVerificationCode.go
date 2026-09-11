@@ -4,7 +4,6 @@ import (
 	"context"
 
 	authAbstract "houseflowApi/internal/application/auth/abstract"
-	"houseflowApi/internal/config"
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -17,22 +16,27 @@ type SendEmailVerificationCodeCommand struct {
 }
 
 type SendEmailVerificationCodeHandler struct {
-	userRepository databaseAbstract.DbRepository[entities.User]
-	emailSender    authAbstract.EmailSender
+	userRepository  databaseAbstract.DbRepository[entities.User]
+	emailSender     authAbstract.EmailSender
+	resetSecret     string
+	validityMinutes int
 }
 
 func NewSendEmailVerificationCodeHandler(
 	userRepository databaseAbstract.DbRepository[entities.User],
 	emailSender authAbstract.EmailSender,
+	resetSecret string,
+	validityMinutes int,
 ) *SendEmailVerificationCodeHandler {
-	return &SendEmailVerificationCodeHandler{userRepository: userRepository, emailSender: emailSender}
+	return &SendEmailVerificationCodeHandler{
+		userRepository:  userRepository,
+		emailSender:     emailSender,
+		resetSecret:     resetSecret,
+		validityMinutes: validityMinutes,
+	}
 }
 
 func (h *SendEmailVerificationCodeHandler) Handle(ctx context.Context, command SendEmailVerificationCodeCommand) (cqrs.NoResult, error) {
-	settings, err := config.MustLoadConfig()
-	if err != nil {
-		return cqrs.NoResult{}, err
-	}
 	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
 	if err != nil {
 		return cqrs.NoResult{}, err
@@ -44,10 +48,9 @@ func (h *SendEmailVerificationCodeHandler) Handle(ctx context.Context, command S
 		return cqrs.NoResult{}, nil
 	}
 
-	validityMinutes := settings.Internal.PasswordReset.ValidityMinutes
-	window := helpers.ResetCodeWindow(validityMinutes)
-	code := helpers.GenerateResetCode(command.Email, settings.Internal.PasswordReset.Secret, window)
-	err = h.emailSender.SendEmailVerificationCode(command.Email, code, validityMinutes)
+	window := helpers.ResetCodeWindow(h.validityMinutes)
+	code := helpers.GenerateResetCode(command.Email, h.resetSecret, window)
+	err = h.emailSender.SendEmailVerificationCode(command.Email, code, h.validityMinutes)
 	return cqrs.NoResult{}, err
 }
 

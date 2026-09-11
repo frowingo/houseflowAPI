@@ -23,15 +23,18 @@ type SignUpCommand struct {
 type SignUpHandler struct {
 	userRepository        databaseAbstract.DbRepository[entities.User]
 	userHistoryRepository databaseAbstract.DbRepository[entities.UserInfoHistory]
+	jwtService            *helpers.JWTService
 }
 
 func NewSignUpHandler(
 	userRepository databaseAbstract.DbRepository[entities.User],
 	userHistoryRepository databaseAbstract.DbRepository[entities.UserInfoHistory],
+	jwtService *helpers.JWTService,
 ) *SignUpHandler {
 	return &SignUpHandler{
 		userRepository:        userRepository,
 		userHistoryRepository: userHistoryRepository,
+		jwtService:            jwtService,
 	}
 }
 
@@ -78,7 +81,7 @@ func (h *SignUpHandler) Handle(ctx context.Context, command SignUpCommand) (stri
 		return "", err
 	}
 
-	return helpers.GenerateToken(createdUser.Email, createdUser.Id.Hex(), int(createdUser.Role), createdUser.Language)
+	return h.jwtService.GenerateToken(createdUser.Email, createdUser.Id.Hex(), int(createdUser.Role), createdUser.Language)
 }
 
 var _ cqrs.CommandHandler[SignUpCommand, string] = (*SignUpHandler)(nil)

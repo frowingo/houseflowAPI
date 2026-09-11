@@ -108,7 +108,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	assignmentPolicy := chorePolicies.NewAssignmentPolicy(users)
 	workflowPolicy := chorePolicies.NewWorkflowPolicy()
 	createChoreHandler := choreCommands.NewCreateChoreHandler(
-		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy,
+		chores, choreStatusHistories, membershipPolicy, assignmentPolicy,
 	)
 	updateChoreHandler := choreCommands.NewUpdateChoreHandler(
 		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy,
@@ -121,7 +121,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(users, histories)
 	createUserHandler := userCommands.NewCreateUserHandler(users, histories)
-	deleteUserHandler := userCommands.NewDeleteUserHandler(users)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(users, houses)
 	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(users)
 	listUsersHandler := userQueries.NewListUsersHandler(users)
 	getUsersByHouseHandler := userQueries.NewGetUsersByHouseHandler(users, membershipPolicy)
@@ -137,13 +137,16 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	insertLocalizationsHandler := localizationCommands.NewInsertLocalizationsHandler(localizations, localizationCache)
 	insertLocalizationLanguageHandler := localizationCommands.NewInsertLocalizationLanguageHandler(languages)
 	emailSender := &recordingEmailSender{}
-	loginHandler := authCommands.NewLoginHandler(users)
-	signUpHandler := authCommands.NewSignUpHandler(users, histories)
-	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(users, emailSender)
-	resetPasswordHandler := authCommands.NewResetPasswordHandler(users)
-	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(users, emailSender)
-	validateEmailHandler := authCommands.NewValidateEmailHandler(users)
-	validateAuthHandler := authQueries.NewValidateAuthHandler(users)
+	jwtService := helpers.NewJWTService("test-jwt-secret")
+	const resetSecret = "test-reset-secret"
+	const validityMinutes = 5
+	loginHandler := authCommands.NewLoginHandler(users, jwtService)
+	signUpHandler := authCommands.NewSignUpHandler(users, histories, jwtService)
+	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(users, emailSender, resetSecret, validityMinutes)
+	resetPasswordHandler := authCommands.NewResetPasswordHandler(users, resetSecret, validityMinutes)
+	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(users, emailSender, resetSecret, validityMinutes)
+	validateEmailHandler := authCommands.NewValidateEmailHandler(users, resetSecret, validityMinutes)
+	validateAuthHandler := authQueries.NewValidateAuthHandler(users, houses, jwtService)
 	sender := cqrs.New()
 	cqrs.MustRegister[string, authCommands.LoginCommand](sender, loginHandler)
 	cqrs.MustRegister[string, authCommands.SignUpCommand](sender, signUpHandler)
@@ -151,7 +154,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ResetPasswordCommand](sender, resetPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.SendEmailVerificationCodeCommand](sender, sendEmailVerificationCodeHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](sender, validateEmailHandler)
-	cqrs.MustRegister[*dtos.UserResultModel, authQueries.ValidateAuthQuery](sender, validateAuthHandler)
+	cqrs.MustRegister[*dtos.AuthUserResultModel, authQueries.ValidateAuthQuery](sender, validateAuthHandler)
 	cqrs.MustRegister[[]dtos.LocalizationPlaintextResponseModel, localizationQueries.GetPlaintextsQuery](sender, getPlaintextsHandler)
 	cqrs.MustRegister[[]dtos.LocalizationLanguageResponseModel, localizationQueries.GetLanguagesQuery](sender, getLanguagesHandler)
 	cqrs.MustRegister[[]dtos.LocalizationLanguageResponseModel, localizationQueries.GetLanguageQuery](sender, getLanguageHandler)
@@ -217,15 +220,22 @@ func TestGetHouseDetailsQueryReturnsCompleteSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
+	createdChore, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
 		Title:       "Snapshot chore",
 		Description: "Snapshot test chore",
 		AssignedTo:  owner.Id.Hex(),
 		DueDate:     dtos.NewUTCDateTime(time.Now().Add(time.Hour)),
 		HouseId:     house.Id.Hex(),
 		Level:       entities.Easy,
-	}, owner.Id.Hex())); err != nil {
+	}, owner.Id.Hex()))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(createdChore.StatusHistories) != 1 || createdChore.StatusHistories[0].Status != entities.Draft {
+		t.Fatalf("created chore histories = %+v, want one draft history", createdChore.StatusHistories)
+	}
+	if len(createdChore.ReviewVotes) != 0 {
+		t.Fatalf("created chore review votes = %+v, want none", createdChore.ReviewVotes)
 	}
 
 	details, err := cqrs.Send[*dtos.HouseDetailsModel](f.ctx, f.sender, housequeries.GetHouseDetailsQuery{

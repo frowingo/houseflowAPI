@@ -30,7 +30,6 @@ type CreateChoreCommand struct {
 type CreateChoreHandler struct {
 	choreRepository         databaseAbstract.DbRepository[entities.Chore]
 	statusHistoryRepository databaseAbstract.DbRepository[entities.ChoreStatusHistory]
-	reviewVoteRepository    databaseAbstract.DbRepository[entities.ChoreReviewVote]
 	membershipPolicy        *housePolicies.MembershipPolicy
 	assignmentPolicy        *chorePolicies.AssignmentPolicy
 }
@@ -38,14 +37,12 @@ type CreateChoreHandler struct {
 func NewCreateChoreHandler(
 	choreRepository databaseAbstract.DbRepository[entities.Chore],
 	statusHistoryRepository databaseAbstract.DbRepository[entities.ChoreStatusHistory],
-	reviewVoteRepository databaseAbstract.DbRepository[entities.ChoreReviewVote],
 	membershipPolicy *housePolicies.MembershipPolicy,
 	assignmentPolicy *chorePolicies.AssignmentPolicy,
 ) *CreateChoreHandler {
 	return &CreateChoreHandler{
 		choreRepository:         choreRepository,
 		statusHistoryRepository: statusHistoryRepository,
-		reviewVoteRepository:    reviewVoteRepository,
 		membershipPolicy:        membershipPolicy,
 		assignmentPolicy:        assignmentPolicy,
 	}
@@ -53,6 +50,7 @@ func NewCreateChoreHandler(
 
 func (h *CreateChoreHandler) Handle(ctx context.Context, command CreateChoreCommand) (*dtos.ChoreResponseModel, error) {
 	var createdChore *entities.Chore
+	var createdHistory *entities.ChoreStatusHistory
 	err := h.choreRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
 		house, err := h.membershipPolicy.RequireMember(txCtx, command.HouseID, command.RequesterID)
 		if err != nil {
@@ -79,21 +77,23 @@ func (h *CreateChoreHandler) Handle(ctx context.Context, command CreateChoreComm
 		if err != nil {
 			return err
 		}
-		return addStatusHistory(txCtx, h.statusHistoryRepository, createdChore.Id.Hex(), entities.Draft, command.RequesterID, now)
+		createdHistory, err = h.statusHistoryRepository.Insert(txCtx, entities.ChoreStatusHistory{
+			ChoreId:  createdChore.Id.Hex(),
+			Status:   entities.Draft,
+			DateTime: now,
+			Updater:  command.RequesterID,
+		})
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	histories, err := h.statusHistoryRepository.FindManyByColumn(ctx, "choreId", createdChore.Id.Hex())
-	if err != nil {
-		return nil, err
-	}
-	votes, err := h.reviewVoteRepository.FindManyByColumn(ctx, "choreId", createdChore.Id.Hex())
-	if err != nil {
-		return nil, err
-	}
-	response := dtos.ChoreToResponseModelWithReview(*createdChore, histories, votes)
+	response := dtos.ChoreToResponseModelWithReview(
+		*createdChore,
+		[]entities.ChoreStatusHistory{*createdHistory},
+		[]entities.ChoreReviewVote{},
+	)
 	return &response, nil
 }
 

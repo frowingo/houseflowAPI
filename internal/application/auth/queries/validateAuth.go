@@ -10,23 +10,36 @@ import (
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type ValidateAuthQuery struct {
-	cqrs.Request[*dtos.UserResultModel]
+	cqrs.Request[*dtos.AuthUserResultModel]
 	Token string
 }
 
 type ValidateAuthHandler struct {
-	userRepository databaseAbstract.DbRepository[entities.User]
+	userRepository  databaseAbstract.DbRepository[entities.User]
+	houseRepository databaseAbstract.DbRepository[entities.House]
+	jwtService      *helpers.JWTService
 }
 
-func NewValidateAuthHandler(userRepository databaseAbstract.DbRepository[entities.User]) *ValidateAuthHandler {
-	return &ValidateAuthHandler{userRepository: userRepository}
+func NewValidateAuthHandler(
+	userRepository databaseAbstract.DbRepository[entities.User],
+	houseRepository databaseAbstract.DbRepository[entities.House],
+	jwtService *helpers.JWTService,
+) *ValidateAuthHandler {
+	return &ValidateAuthHandler{
+		userRepository:  userRepository,
+		houseRepository: houseRepository,
+		jwtService:      jwtService,
+	}
 }
 
-func (h *ValidateAuthHandler) Handle(ctx context.Context, query ValidateAuthQuery) (*dtos.UserResultModel, error) {
-	tokenData, err := helpers.ValidateToken(query.Token)
+func (h *ValidateAuthHandler) Handle(ctx context.Context, query ValidateAuthQuery) (*dtos.AuthUserResultModel, error) {
+	tokenData, err := h.jwtService.ValidateToken(query.Token)
 	if err != nil {
 		return nil, err
 	}
@@ -42,8 +55,20 @@ func (h *ValidateAuthHandler) Handle(ctx context.Context, query ValidateAuthQuer
 	if err != nil {
 		return nil, err
 	}
-	response := dtos.UserToResultModel(*user)
+
+	houses, err := h.houseRepository.FindManyByFilter(
+		ctx,
+		bson.M{"memberIds": user.Id.Hex()},
+		options.Find().
+			SetProjection(bson.M{"name": 1, "profileImage": 1}).
+			SetSort(bson.D{{Key: "_id", Value: 1}}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	response := dtos.UserToAuthResultModel(*user, houses)
 	return &response, nil
 }
 
-var _ cqrs.QueryHandler[ValidateAuthQuery, *dtos.UserResultModel] = (*ValidateAuthHandler)(nil)
+var _ cqrs.QueryHandler[ValidateAuthQuery, *dtos.AuthUserResultModel] = (*ValidateAuthHandler)(nil)

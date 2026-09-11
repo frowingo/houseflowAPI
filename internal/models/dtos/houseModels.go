@@ -58,6 +58,35 @@ func UserToResultModel(u entities.User) UserResultModel {
 	}
 }
 
+func UserToAuthResultModel(user entities.User, houses []entities.House) AuthUserResultModel {
+	houseList := make([]AuthHouseModel, 0, len(houses))
+	for _, house := range houses {
+		houseList = append(houseList, AuthHouseModel{
+			HouseID:      house.Id.Hex(),
+			HouseName:    house.Name,
+			HouseProfile: house.ProfileImage,
+		})
+	}
+
+	return AuthUserResultModel{
+		Id:            user.Id.Hex(),
+		Firstname:     user.Firstname,
+		Lastname:      user.Lastname,
+		PhoneNumber:   user.PhoneNumber,
+		Email:         user.Email,
+		BirthDay:      NewUTCDateTime(user.BirthDay),
+		ImageURL:      user.ImageURL,
+		Language:      user.Language,
+		HouseList:     houseList,
+		IsActive:      user.IsActive,
+		IsVerifyPhone: user.IsVerifyPhone,
+		IsVerifyEmail: user.IsVerifyEmail,
+		CreatedOn:     NewUTCDateTime(user.CreatedOn),
+		UpdatedOn:     NewUTCDateTime(user.UpdatedOn),
+		LastLogin:     NewUTCDateTime(user.LastLogin),
+	}
+}
+
 type CreateHouseModel struct {
 	OwnerId        string             `json:"ownerId"`
 	Name           string             `json:"name" validate:"required,min=3,max=100"`
