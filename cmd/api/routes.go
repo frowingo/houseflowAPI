@@ -6,6 +6,7 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
 	housequeries "houseflowApi/internal/application/house/queries"
@@ -156,6 +157,8 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	houseChoreReviewVoteRepository := database.NewDbContext[entities.ChoreReviewVote](client, dbName)
 	houseAnnouncementRepository := database.NewDbContext[entities.Announcement](client, dbName)
 	houseInviteCodeRepository := database.NewDbContext[entities.HouseInviteCode](client, dbName)
+	houseInfoHistoryRepository := database.NewDbContext[entities.HouseInfoHistory](client, dbName)
+	houseInfoReader := houseApplication.NewInfoReader(userRepository)
 
 	createHouseHandler := housecommands.NewCreateHouseHandler(houseRepository, userRepository)
 	generateHouseInviteCodeHandler := housecommands.NewGenerateHouseInviteCodeHandler(
@@ -175,6 +178,18 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 		userRepository,
 		houseAnnouncementRepository,
 	)
+	updateHouseProfileHandler := housecommands.NewUpdateHouseProfileHandler(
+		houseMembershipPolicy,
+		houseRepository,
+		houseInfoHistoryRepository,
+		houseInfoReader,
+	)
+	exitHouseHandler := housecommands.NewExitHouseHandler(
+		houseRepository,
+		userRepository,
+		houseInviteCodeRepository,
+	)
+	getHouseInfosHandler := housequeries.NewGetHouseInfosHandler(houseMembershipPolicy, houseInfoReader)
 	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
 		houseMembershipPolicy,
 		houseRepository,
@@ -188,6 +203,9 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[*dtos.HouseInviteCodeResponseModel, housecommands.GenerateHouseInviteCodeCommand](applicationMediator, generateHouseInviteCodeHandler)
 	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](applicationMediator, joinHouseHandler)
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](applicationMediator, createAnnouncementHandler)
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housecommands.UpdateHouseProfileCommand](applicationMediator, updateHouseProfileHandler)
+	cqrs.MustRegister[cqrs.NoResult, housecommands.ExitHouseCommand](applicationMediator, exitHouseHandler)
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housequeries.GetHouseInfosQuery](applicationMediator, getHouseInfosHandler)
 	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](applicationMediator, getHouseDetailsHandler)
 	houseController := controllers.NewHouseController(
 		applicationMediator,
@@ -196,10 +214,13 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 
 	houseRoutes := api.Group("/house", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	houseRoutes.Get("/details", houseController.GetHouseDetails)
+	houseRoutes.Get("/infos", houseController.GetHouseInfos)
 	houseRoutes.Post("/announcement", houseController.CreateAnnouncement)
 	houseRoutes.Post("/create", houseController.CreateHouse)
 	houseRoutes.Post("/inviteCode", houseController.GenerateInviteCode)
 	houseRoutes.Post("/join", houseController.JoinHouseByCode)
+	houseRoutes.Put("/profile", houseController.UpdateHouseProfile)
+	houseRoutes.Post("/exit", houseController.ExitHouse)
 	// ----------
 
 	// - CHORE -

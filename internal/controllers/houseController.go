@@ -9,6 +9,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -132,6 +133,131 @@ func (r *HouseController) GetHouseDetails(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(core.Success(details))
+}
+
+// @Summary Get house profile information
+// @Tags House
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param houseId query string true "House ID"
+// @Success 200 {object} core.ApiResponse[dtos.HouseInfosResponseModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Requester is not a house member"
+// @Failure 404 {object} core.ErrorResponse "House not found"
+// @Router /house/infos [get]
+func (r *HouseController) GetHouseInfos(c *fiber.Ctx) error {
+	houseID := c.Query("houseId")
+	if houseID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "house.error.house_id_query_required"))
+	}
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	response, err := cqrs.Send[*dtos.HouseInfosResponseModel](ctx, r.sender, housequeries.GetHouseInfosQuery{
+		HouseID:     houseID,
+		RequesterID: c.Locals("userID").(string),
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(core.Success(response))
+}
+
+// @Summary Update house profile
+// @Description Only the house owner can update fields. Each field can be changed once every 48 hours.
+// @Tags House
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param houseId query string true "House ID"
+// @Param profile body dtos.UpdateHouseProfileModel true "House profile fields"
+// @Success 200 {object} core.ApiResponse[dtos.HouseInfosResponseModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Only the house owner can update the profile"
+// @Failure 404 {object} core.ErrorResponse "House not found"
+// @Failure 409 {object} core.ErrorResponse "Member limit is below current member count"
+// @Failure 429 {object} core.ErrorResponse "Field update interval has not elapsed"
+// @Router /house/profile [put]
+func (r *HouseController) UpdateHouseProfile(c *fiber.Ctx) error {
+	houseID := c.Query("houseId")
+	if houseID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "house.error.house_id_query_required"))
+	}
+
+	model := new(dtos.UpdateHouseProfileModel)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
+	}
+	if !model.HasChanges() {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "house.error.profile_no_fields"))
+	}
+	if model.HouseName != nil {
+		value := strings.TrimSpace(*model.HouseName)
+		model.HouseName = &value
+	}
+	if model.HouseProfileImage != nil {
+		value := strings.TrimSpace(*model.HouseProfileImage)
+		model.HouseProfileImage = &value
+	}
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+	}
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	response, err := cqrs.Send[*dtos.HouseInfosResponseModel](ctx, r.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID:               houseID,
+		RequesterID:           c.Locals("userID").(string),
+		HouseName:             model.HouseName,
+		HouseProfileImage:     model.HouseProfileImage,
+		HouseMemberCountLimit: model.HouseMemberCountLimit,
+		HouseType:             model.HouseType,
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(core.Success(response))
+}
+
+// @Summary Exit a house or remove a member
+// @Description A member can leave the house; the owner can remove another member.
+// @Tags House
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param exitRequest body dtos.ExitHouseModel true "House and target user"
+// @Success 200 {object} dtos.SuccessResponseModel
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Insufficient house permissions"
+// @Failure 404 {object} core.ErrorResponse "House or member not found"
+// @Failure 409 {object} core.ErrorResponse "House membership changed concurrently"
+// @Router /house/exit [post]
+func (r *HouseController) ExitHouse(c *fiber.Ctx) error {
+	model := new(dtos.ExitHouseModel)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
+	}
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+	}
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, housecommands.ExitHouseCommand{
+		HouseID:      model.HouseId,
+		TargetUserID: model.UserId,
+		RequesterID:  c.Locals("userID").(string),
+	}); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(dtos.SuccessResponseModel{Success: true})
 }
 
 // @Summary Create a house announcement

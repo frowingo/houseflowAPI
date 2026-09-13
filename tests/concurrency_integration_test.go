@@ -8,6 +8,7 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
 	housequeries "houseflowApi/internal/application/house/queries"
@@ -91,6 +92,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	users := database.NewDbContext[entities.User](client, db.Name())
 	houses := database.NewDbContext[entities.House](client, db.Name())
 	houseInviteCodes := database.NewDbContext[entities.HouseInviteCode](client, db.Name())
+	houseInfoHistories := database.NewDbContext[entities.HouseInfoHistory](client, db.Name())
 	imageAssets := database.NewDbContext[entities.ImageAsset](client, db.Name())
 	localizations := database.NewDbContext[entities.Localization](client, db.Name())
 	languages := database.NewDbContext[entities.LocalizationLanguageOption](client, db.Name())
@@ -100,11 +102,17 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	choreStatusHistories := database.NewDbContext[entities.ChoreStatusHistory](client, db.Name())
 	choreReviewVotes := database.NewDbContext[entities.ChoreReviewVote](client, db.Name())
 	membershipPolicy := housePolicies.NewMembershipPolicy(houses)
+	houseInfoReader := houseApplication.NewInfoReader(users)
 	createHouseHandler := housecommands.NewCreateHouseHandler(houses, users)
 	const joinCodeSecret = "test-join-code-secret"
 	generateHouseInviteCodeHandler := housecommands.NewGenerateHouseInviteCodeHandler(houses, houseInviteCodes, joinCodeSecret, 2)
 	joinHouseHandler := housecommands.NewJoinHouseHandler(houses, users, houseInviteCodes, joinCodeSecret)
 	createAnnouncementHandler := housecommands.NewCreateAnnouncementHandler(membershipPolicy, users, announcements)
+	updateHouseProfileHandler := housecommands.NewUpdateHouseProfileHandler(
+		membershipPolicy, houses, houseInfoHistories, houseInfoReader,
+	)
+	exitHouseHandler := housecommands.NewExitHouseHandler(houses, users, houseInviteCodes)
+	getHouseInfosHandler := housequeries.NewGetHouseInfosHandler(membershipPolicy, houseInfoReader)
 	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
 		membershipPolicy, houses, users, chores, choreStatusHistories, choreReviewVotes, announcements,
 	)
@@ -167,6 +175,9 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	cqrs.MustRegister[*dtos.HouseInviteCodeResponseModel, housecommands.GenerateHouseInviteCodeCommand](sender, generateHouseInviteCodeHandler)
 	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](sender, joinHouseHandler)
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](sender, createAnnouncementHandler)
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housecommands.UpdateHouseProfileCommand](sender, updateHouseProfileHandler)
+	cqrs.MustRegister[cqrs.NoResult, housecommands.ExitHouseCommand](sender, exitHouseHandler)
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housequeries.GetHouseInfosQuery](sender, getHouseInfosHandler)
 	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](sender, getHouseDetailsHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](sender, createChoreHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](sender, updateChoreHandler)

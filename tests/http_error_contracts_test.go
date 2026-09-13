@@ -20,6 +20,7 @@ func TestApplicationErrorsMapToHTTPContract(t *testing.T) {
 	}{
 		{name: "bad request", err: helpers.NewLocalizedError("request.invalid"), wantStatus: fiber.StatusBadRequest, wantError: "request.invalid"},
 		{name: "not found", err: helpers.NewNotFoundError("resource.not_found"), wantStatus: fiber.StatusNotFound, wantError: "resource.not_found"},
+		{name: "forbidden", err: helpers.NewForbiddenError("resource.forbidden"), wantStatus: fiber.StatusForbidden, wantError: "resource.forbidden"},
 		{name: "conflict", err: helpers.NewConflictError("resource.conflict"), wantStatus: fiber.StatusConflict, wantError: "resource.conflict"},
 		{name: "rate limited", err: helpers.NewRateLimitError("resource.rate_limited"), wantStatus: fiber.StatusTooManyRequests, wantError: "resource.rate_limited"},
 		{name: "unavailable", err: helpers.NewUnavailableError("resource.unavailable", errors.New("connection failed")), wantStatus: fiber.StatusServiceUnavailable, wantError: "resource.unavailable"},

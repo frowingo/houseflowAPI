@@ -25,12 +25,26 @@ func (p *MembershipPolicy) RequireMember(ctx context.Context, houseID string, us
 
 	house, err := p.houseRepository.FindByID(ctx, houseObjectID)
 	if err != nil {
-		return nil, helpers.NewLocalizedError("house.error.not_found")
+		if helpers.IsApplicationError(err, "database.error.document_not_found") {
+			return nil, helpers.NewNotFoundError("house.error.not_found")
+		}
+		return nil, err
 	}
 	if !ContainsMember(house.MemberIds, userID) {
-		return nil, helpers.NewLocalizedError("house.error.user_not_member")
+		return nil, helpers.NewForbiddenError("house.error.user_not_member")
 	}
 
+	return house, nil
+}
+
+func (p *MembershipPolicy) RequireOwner(ctx context.Context, houseID string, userID string) (*entities.House, error) {
+	house, err := p.RequireMember(ctx, houseID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if house.OwnerId != userID {
+		return nil, helpers.NewForbiddenError("house.error.owner_required")
+	}
 	return house, nil
 }
 

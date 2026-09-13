@@ -105,6 +105,38 @@ type HouseInviteCodeResponseModel struct {
 	ExpiresInSeconds int    `json:"expiresInSeconds"`
 }
 
+type HouseMemberInfoModel struct {
+	UserId       string `json:"userId"`
+	Name         string `json:"name"`
+	ProfileImage string `json:"profileImage"`
+	IsOwner      bool   `json:"isOwner"`
+}
+
+type HouseInfosResponseModel struct {
+	HouseName             string                 `json:"houseName"`
+	HouseProfileImage     string                 `json:"houseProfileImage"`
+	HouseMemberCount      int                    `json:"houseMemberCount"`
+	HouseMemberCountLimit int                    `json:"houseMemberCountLimit"`
+	HouseType             entities.HouseType     `json:"houseType" swaggertype:"integer" enums:"1,2,3"`
+	HouseMembers          []HouseMemberInfoModel `json:"houseMembers"`
+}
+
+type UpdateHouseProfileModel struct {
+	HouseName             *string             `json:"houseName,omitempty" validate:"omitempty,required,min=3,max=100"`
+	HouseProfileImage     *string             `json:"houseProfileImage,omitempty" validate:"omitempty,required,url"`
+	HouseMemberCountLimit *int                `json:"houseMemberCountLimit,omitempty" validate:"omitempty,gte=1,lte=8"`
+	HouseType             *entities.HouseType `json:"houseType,omitempty" validate:"omitempty,oneof=1 2 3" swaggertype:"integer" enums:"1,2,3"`
+}
+
+func (m UpdateHouseProfileModel) HasChanges() bool {
+	return m.HouseName != nil || m.HouseProfileImage != nil || m.HouseMemberCountLimit != nil || m.HouseType != nil
+}
+
+type ExitHouseModel struct {
+	HouseId string `json:"houseId" validate:"required,len=24,alphanum"`
+	UserId  string `json:"userId" validate:"required,len=24,alphanum"`
+}
+
 type HouseResponseModel struct {
 	Id             string             `json:"id"`
 	OwnerId        string             `json:"ownerId"`

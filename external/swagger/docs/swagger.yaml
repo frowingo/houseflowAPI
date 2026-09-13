@@ -122,6 +122,16 @@ definitions:
     - ownerId
     - type
     type: object
+  dtos.ExitHouseModel:
+    properties:
+      houseId:
+        type: string
+      userId:
+        type: string
+    required:
+    - houseId
+    - userId
+    type: object
   dtos.HouseDetailsModel:
     properties:
       announcements:
@@ -157,6 +167,27 @@ definitions:
       updatedOn:
         type: string
     type: object
+  dtos.HouseInfosResponseModel:
+    properties:
+      houseMemberCount:
+        type: integer
+      houseMemberCountLimit:
+        type: integer
+      houseMembers:
+        items:
+          $ref: '#/definitions/dtos.HouseMemberInfoModel'
+        type: array
+      houseName:
+        type: string
+      houseProfileImage:
+        type: string
+      houseType:
+        enum:
+        - 1
+        - 2
+        - 3
+        type: integer
+    type: object
   dtos.HouseResponseModel:
     properties:
       createdOn:
@@ -182,6 +213,17 @@ definitions:
         - 3
         type: integer
       updatedOn:
+        type: string
+    type: object
+  dtos.HouseMemberInfoModel:
+    properties:
+      isOwner:
+        type: boolean
+      name:
+        type: string
+      profileImage:
+        type: string
+      userId:
         type: string
     type: object
   dtos.JoinHouseByCodeModel:
@@ -261,6 +303,30 @@ definitions:
     - firstName
     - lastName
     - password
+    type: object
+  dtos.SuccessResponseModel:
+    properties:
+      success:
+        type: boolean
+    type: object
+  dtos.UpdateHouseProfileModel:
+    properties:
+      houseMemberCountLimit:
+        maximum: 8
+        minimum: 1
+        type: integer
+      houseName:
+        maxLength: 100
+        minLength: 3
+        type: string
+      houseProfileImage:
+        type: string
+      houseType:
+        enum:
+        - 1
+        - 2
+        - 3
+        type: integer
     type: object
   dtos.UpdateChoreStatusModel:
     properties:
@@ -700,6 +766,97 @@ paths:
       summary: Get house details
       tags:
       - House
+  /house/exit:
+    post:
+      consumes:
+      - application/json
+      description: A member can leave the house; the owner can remove another member.
+      parameters:
+      - description: House and target user
+        in: body
+        name: exitRequest
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.ExitHouseModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.SuccessResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Insufficient house permissions
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: House or member not found
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: House membership changed concurrently
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Exit a house or remove a member
+      tags:
+      - House
+  /house/infos:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseInfosResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Requester is not a house member
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: House not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get house profile information
+      tags:
+      - House
   /house/join:
     post:
       consumes:
@@ -765,6 +922,65 @@ paths:
       security:
       - BearerAuth: []
       summary: Generate a temporary house invite code
+      tags:
+      - House
+  /house/profile:
+    put:
+      consumes:
+      - application/json
+      description: Only the house owner can update fields. Each field can be changed once every 48 hours.
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      - description: House profile fields
+        in: body
+        name: profile
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.UpdateHouseProfileModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseInfosResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Only the house owner can update the profile
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: House not found
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Member limit is below current member count
+          schema:
+            additionalProperties: true
+            type: object
+        "429":
+          description: Field update interval has not elapsed
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update house profile
       tags:
       - House
   /user:

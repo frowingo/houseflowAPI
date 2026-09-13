@@ -59,5 +59,7 @@ func AllMigrations() []migration.Migration {
 		&houseMemberIDsIndex{},
 		// --- Expiring House Invite Codes ---
 		&houseInviteCodes{},
+		// --- House Profile History ---
+		&houseInfoHistory{},
 	}
 }
