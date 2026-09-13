@@ -49,6 +49,8 @@ func RespondLocalizedError(c *fiber.Ctx, localizer MessageLocalizer, err error) 
 			status = fiber.StatusBadRequest
 		case ErrorKindNotFound:
 			status = fiber.StatusNotFound
+		case ErrorKindForbidden:
+			status = fiber.StatusForbidden
 		case ErrorKindConflict:
 			status = fiber.StatusConflict
 		case ErrorKindRateLimited:

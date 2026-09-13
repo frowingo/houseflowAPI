@@ -57,5 +57,9 @@ func AllMigrations() []migration.Migration {
 		&ownerReassignmentLocalizations{},
 		// --- Auth House List ---
 		&houseMemberIDsIndex{},
+		// --- Expiring House Invite Codes ---
+		&houseInviteCodes{},
+		// --- House Profile History ---
+		&houseInfoHistory{},
 	}
 }

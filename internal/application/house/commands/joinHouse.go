@@ -22,17 +22,23 @@ type JoinHouseCommand struct {
 }
 
 type JoinHouseHandler struct {
-	houseRepository databaseAbstract.DbRepository[entities.House]
-	userRepository  databaseAbstract.DbRepository[entities.User]
+	houseRepository       databaseAbstract.DbRepository[entities.House]
+	userRepository        databaseAbstract.DbRepository[entities.User]
+	houseInviteRepository databaseAbstract.DbRepository[entities.HouseInviteCode]
+	inviteCodeSecret      string
 }
 
 func NewJoinHouseHandler(
 	houseRepository databaseAbstract.DbRepository[entities.House],
 	userRepository databaseAbstract.DbRepository[entities.User],
+	houseInviteRepository databaseAbstract.DbRepository[entities.HouseInviteCode],
+	inviteCodeSecret string,
 ) *JoinHouseHandler {
 	return &JoinHouseHandler{
-		houseRepository: houseRepository,
-		userRepository:  userRepository,
+		houseRepository:       houseRepository,
+		userRepository:        userRepository,
+		houseInviteRepository: houseInviteRepository,
+		inviteCodeSecret:      inviteCodeSecret,
 	}
 }
 
@@ -48,9 +54,24 @@ func (h *JoinHouseHandler) Handle(ctx context.Context, command JoinHouseCommand)
 			return helpers.NewLocalizedError("user.error.not_found")
 		}
 
-		house, err := h.houseRepository.FindByColumn(txCtx, "inviteCode", command.InviteCode)
-		if err != nil || house == nil {
-			return helpers.NewLocalizedError("house.error.invalid_invite_code")
+		digest := helpers.GenerateInviteCodeDigest(command.InviteCode, h.inviteCodeSecret)
+		var invite entities.HouseInviteCode
+		if err := h.houseInviteRepository.Collection().FindOne(txCtx, bson.M{
+			"codeDigest": digest,
+			"expiresAt":  bson.M{"$gt": time.Now().UTC()},
+		}).Decode(&invite); err != nil {
+			if err == mongo.ErrNoDocuments {
+				return helpers.NewLocalizedError("house.error.invalid_or_expired_invite_code")
+			}
+			return err
+		}
+
+		house, err := h.houseRepository.FindByID(txCtx, invite.Id)
+		if err != nil {
+			if helpers.IsApplicationError(err, "database.error.document_not_found") {
+				return helpers.NewLocalizedError("house.error.invalid_or_expired_invite_code")
+			}
+			return err
 		}
 		if housePolicies.ContainsMember(house.MemberIds, command.UserID) {
 			return helpers.NewConflictError("house.error.user_already_member")

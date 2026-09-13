@@ -8,6 +8,7 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
 	housequeries "houseflowApi/internal/application/house/queries"
@@ -90,6 +91,8 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 
 	users := database.NewDbContext[entities.User](client, db.Name())
 	houses := database.NewDbContext[entities.House](client, db.Name())
+	houseInviteCodes := database.NewDbContext[entities.HouseInviteCode](client, db.Name())
+	houseInfoHistories := database.NewDbContext[entities.HouseInfoHistory](client, db.Name())
 	imageAssets := database.NewDbContext[entities.ImageAsset](client, db.Name())
 	localizations := database.NewDbContext[entities.Localization](client, db.Name())
 	languages := database.NewDbContext[entities.LocalizationLanguageOption](client, db.Name())
@@ -99,9 +102,17 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	choreStatusHistories := database.NewDbContext[entities.ChoreStatusHistory](client, db.Name())
 	choreReviewVotes := database.NewDbContext[entities.ChoreReviewVote](client, db.Name())
 	membershipPolicy := housePolicies.NewMembershipPolicy(houses)
+	houseInfoReader := houseApplication.NewInfoReader(users)
 	createHouseHandler := housecommands.NewCreateHouseHandler(houses, users)
-	joinHouseHandler := housecommands.NewJoinHouseHandler(houses, users)
+	const joinCodeSecret = "test-join-code-secret"
+	generateHouseInviteCodeHandler := housecommands.NewGenerateHouseInviteCodeHandler(houses, houseInviteCodes, joinCodeSecret, 2)
+	joinHouseHandler := housecommands.NewJoinHouseHandler(houses, users, houseInviteCodes, joinCodeSecret)
 	createAnnouncementHandler := housecommands.NewCreateAnnouncementHandler(membershipPolicy, users, announcements)
+	updateHouseProfileHandler := housecommands.NewUpdateHouseProfileHandler(
+		membershipPolicy, houses, houseInfoHistories, houseInfoReader,
+	)
+	exitHouseHandler := housecommands.NewExitHouseHandler(houses, users, houseInviteCodes)
+	getHouseInfosHandler := housequeries.NewGetHouseInfosHandler(membershipPolicy, houseInfoReader)
 	getHouseDetailsHandler := housequeries.NewGetHouseDetailsHandler(
 		membershipPolicy, houses, users, chores, choreStatusHistories, choreReviewVotes, announcements,
 	)
@@ -161,8 +172,12 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	cqrs.MustRegister[cqrs.NoResult, localizationCommands.InsertLocalizationsCommand](sender, insertLocalizationsHandler)
 	cqrs.MustRegister[cqrs.NoResult, localizationCommands.InsertLocalizationLanguageCommand](sender, insertLocalizationLanguageHandler)
 	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](sender, createHouseHandler)
+	cqrs.MustRegister[*dtos.HouseInviteCodeResponseModel, housecommands.GenerateHouseInviteCodeCommand](sender, generateHouseInviteCodeHandler)
 	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](sender, joinHouseHandler)
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](sender, createAnnouncementHandler)
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housecommands.UpdateHouseProfileCommand](sender, updateHouseProfileHandler)
+	cqrs.MustRegister[cqrs.NoResult, housecommands.ExitHouseCommand](sender, exitHouseHandler)
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housequeries.GetHouseInfosQuery](sender, getHouseInfosHandler)
 	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](sender, getHouseDetailsHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](sender, createChoreHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](sender, updateChoreHandler)
@@ -210,8 +225,9 @@ func TestGetHouseDetailsQueryReturnsCompleteSnapshot(t *testing.T) {
 	owner := f.seedUser(t, "correct-password")
 	house := f.createHouse(t, owner, 2)
 	member := f.seedUser(t, "correct-password")
+	inviteCode := f.generateHouseInviteCode(t, house, owner)
 	if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{
-		UserID: member.Id.Hex(), InviteCode: house.InviteCode,
+		UserID: member.Id.Hex(), InviteCode: inviteCode,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -283,10 +299,22 @@ func (f *concurrencyFixture) createHouse(t *testing.T, owner entities.User, capa
 	return house
 }
 
+func (f *concurrencyFixture) generateHouseInviteCode(t *testing.T, house *entities.House, owner entities.User) string {
+	t.Helper()
+	response, err := cqrs.Send[*dtos.HouseInviteCodeResponseModel](f.ctx, f.sender, housecommands.GenerateHouseInviteCodeCommand{
+		HouseID: house.Id.Hex(), UserID: owner.Id.Hex(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response.InviteCode
+}
+
 func TestConcurrentHouseJoinsRespectCapacityAndKeepMembershipConsistent(t *testing.T) {
 	f := newConcurrencyFixture(t)
 	owner := f.seedUser(t, "correct-password")
 	house := f.createHouse(t, owner, 5)
+	inviteCode := f.generateHouseInviteCode(t, house, owner)
 	users := make([]entities.User, 16)
 	for i := range users {
 		users[i] = f.seedUser(t, "correct-password")
@@ -301,7 +329,7 @@ func TestConcurrentHouseJoinsRespectCapacityAndKeepMembershipConsistent(t *testi
 			defer workers.Done()
 			<-start
 			_, errs[i] = cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{
-				UserID: users[i].Id.Hex(), InviteCode: house.InviteCode,
+				UserID: users[i].Id.Hex(), InviteCode: inviteCode,
 			})
 		}(i)
 	}
@@ -383,7 +411,8 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 	owner := f.seedUser(t, "correct-password")
 	house := f.createHouse(t, owner, 2)
 	member := f.seedUser(t, "correct-password")
-	if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{UserID: member.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
+	inviteCode := f.generateHouseInviteCode(t, house, owner)
+	if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{UserID: member.Id.Hex(), InviteCode: inviteCode}); err != nil {
 		t.Fatal(err)
 	}
 	create := func(title string) *dtos.ChoreResponseModel {
@@ -456,9 +485,10 @@ func TestConcurrentReviewVotesCompleteExactlyOnce(t *testing.T) {
 	f := newConcurrencyFixture(t)
 	owner := f.seedUser(t, "correct-password")
 	house := f.createHouse(t, owner, 3)
+	inviteCode := f.generateHouseInviteCode(t, house, owner)
 	reviewers := []entities.User{f.seedUser(t, "correct-password"), f.seedUser(t, "correct-password")}
 	for _, reviewer := range reviewers {
-		if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{UserID: reviewer.Id.Hex(), InviteCode: house.InviteCode}); err != nil {
+		if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{UserID: reviewer.Id.Hex(), InviteCode: inviteCode}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -634,6 +664,7 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 		owner := f.seedUser(t, "correct-password")
 		house := f.createHouse(t, owner, 2)
 		member := f.seedUser(t, "correct-password")
+		inviteCode := f.generateHouseInviteCode(t, house, owner)
 		if err := f.db.RunCommand(f.ctx, bson.D{
 			{Key: "collMod", Value: "User"},
 			{Key: "validator", Value: bson.M{"$jsonSchema": bson.M{
@@ -643,7 +674,7 @@ func TestTransactionsRollbackWhenSecondWriteFails(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := cqrs.Send[*entities.House](f.ctx, f.sender, housecommands.JoinHouseCommand{
-			UserID: member.Id.Hex(), InviteCode: house.InviteCode,
+			UserID: member.Id.Hex(), InviteCode: inviteCode,
 		}); err == nil {
 			t.Fatal("expected user validation failure")
 		}

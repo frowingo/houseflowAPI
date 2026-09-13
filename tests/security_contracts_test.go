@@ -19,6 +19,7 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	t.Setenv("JWT_SECRET", "jwt-secret")
 	t.Setenv("RESET_CODE_SECRET", "reset-secret")
 	t.Setenv("RESET_CODE_VALIDITY_MINUTES", "7")
+	t.Setenv("JOIN_CODE_SECRET", "join-code-secret")
 	t.Setenv("SMTP_PASSWORD", "smtp-secret")
 
 	cfg, err := config.MustLoadConfig()
@@ -31,6 +32,12 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	}
 	if cfg.Internal.PasswordReset.ValidityMinutes != 7 {
 		t.Fatalf("unexpected reset validity: %d", cfg.Internal.PasswordReset.ValidityMinutes)
+	}
+	if cfg.Internal.HouseJoinCode.Secret != "join-code-secret" {
+		t.Fatal("house join code environment secret was not applied")
+	}
+	if cfg.Internal.HouseJoinCode.ValidityMinutes != 2 {
+		t.Fatalf("unexpected house join code validity: %d", cfg.Internal.HouseJoinCode.ValidityMinutes)
 	}
 	if cfg.Internal.SMTP.Password != "smtp-secret" {
 		t.Fatal("SMTP password environment override was not applied")
@@ -106,5 +113,25 @@ func TestUpdateUserModelDoesNotExposeVerificationFlags(t *testing.T) {
 	}
 	if _, ok := modelType.FieldByName("IsVerifyEmail"); ok {
 		t.Fatal("UpdateUserModel must not allow clients to update email verification")
+	}
+}
+
+func TestHouseResponsesAndInviteEntityDoNotExposeInviteSecrets(t *testing.T) {
+	housePayload, err := json.Marshal(dtos.HouseResponseModel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(housePayload), "inviteCode") {
+		t.Fatalf("house response exposes an invite code: %s", housePayload)
+	}
+
+	invitePayload, err := json.Marshal(entities.HouseInviteCode{
+		CodeDigest: "sensitive-digest",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(invitePayload), "sensitive-digest") || strings.Contains(string(invitePayload), "codeDigest") {
+		t.Fatalf("invite entity exposes its digest: %s", invitePayload)
 	}
 }

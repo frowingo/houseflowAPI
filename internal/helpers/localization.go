@@ -58,6 +58,7 @@ type ErrorKind uint8
 const (
 	ErrorKindBadRequest ErrorKind = iota
 	ErrorKindNotFound
+	ErrorKindForbidden
 	ErrorKindConflict
 	ErrorKindRateLimited
 	ErrorKindUnavailable
@@ -84,6 +85,10 @@ func NewLocalizedError(key string, args ...string) error {
 
 func NewNotFoundError(key string, args ...string) error {
 	return newApplicationError(ErrorKindNotFound, key, nil, args...)
+}
+
+func NewForbiddenError(key string, args ...string) error {
+	return newApplicationError(ErrorKindForbidden, key, nil, args...)
 }
 
 func NewConflictError(key string, args ...string) error {

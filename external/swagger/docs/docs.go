@@ -485,6 +485,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/house/inviteCode": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates an 8-character invite code that expires after the configured validity period.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Generate a temporary house invite code",
+                "parameters": [
+                    {
+                        "description": "Invite code request",
+                        "name": "inviteRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.GenerateHouseInviteCodeModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseInviteCodeResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/house/join": {
             "post": {
                 "security": [
@@ -847,6 +900,232 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/house/infos": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Get house profile information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseInfosResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Requester is not a house member",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "House not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/house/profile": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Only the house owner can update fields. Each field can be changed once every 48 hours.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Update house profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "House profile fields",
+                        "name": "profile",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.UpdateHouseProfileModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseInfosResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Only the house owner can update the profile",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "House not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Member limit is below current member count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "429": {
+                        "description": "Field update interval has not elapsed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/house/exit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A member can leave the house; the owner can remove another member.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Exit a house or remove a member",
+                "parameters": [
+                    {
+                        "description": "House and target user",
+                        "name": "exitRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ExitHouseModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Insufficient house permissions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "House or member not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "House membership changed concurrently",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1047,9 +1326,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "inviteCode": {
-                    "type": "string"
-                },
                 "maxMemberCount": {
                     "type": "integer"
                 },
@@ -1090,9 +1366,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "inviteCode": {
-                    "type": "string"
-                },
                 "maxMemberCount": {
                     "type": "integer"
                 },
@@ -1127,14 +1400,32 @@ const docTemplate = `{
         "dtos.JoinHouseByCodeModel": {
             "type": "object",
             "required": [
-                "inviteCode",
-                "userId"
+                "inviteCode"
             ],
             "properties": {
                 "inviteCode": {
                     "type": "string"
+                }
+            }
+        },
+        "dtos.GenerateHouseInviteCodeModel": {
+            "type": "object",
+            "required": [
+                "houseId"
+            ],
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.HouseInviteCodeResponseModel": {
+            "type": "object",
+            "properties": {
+                "expiresInSeconds": {
+                    "type": "integer"
                 },
-                "userId": {
+                "inviteCode": {
                     "type": "string"
                 }
             }
@@ -1396,6 +1687,103 @@ const docTemplate = `{
                 },
                 "updatedOn": {
                     "type": "string"
+                }
+            }
+        },
+        "dtos.ExitHouseModel": {
+            "type": "object",
+            "required": [
+                "houseId",
+                "userId"
+            ],
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.HouseMemberInfoModel": {
+            "type": "object",
+            "properties": {
+                "isOwner": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "profileImage": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.HouseInfosResponseModel": {
+            "type": "object",
+            "properties": {
+                "houseMemberCount": {
+                    "type": "integer"
+                },
+                "houseMemberCountLimit": {
+                    "type": "integer"
+                },
+                "houseMembers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dtos.HouseMemberInfoModel"
+                    }
+                },
+                "houseName": {
+                    "type": "string"
+                },
+                "houseProfileImage": {
+                    "type": "string"
+                },
+                "houseType": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3
+                    ]
+                }
+            }
+        },
+        "dtos.SuccessResponseModel": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dtos.UpdateHouseProfileModel": {
+            "type": "object",
+            "properties": {
+                "houseMemberCountLimit": {
+                    "type": "integer",
+                    "maximum": 8,
+                    "minimum": 1
+                },
+                "houseName": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "houseProfileImage": {
+                    "type": "string"
+                },
+                "houseType": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3
+                    ]
                 }
             }
         }

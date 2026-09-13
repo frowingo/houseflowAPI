@@ -8,6 +8,8 @@ import (
 	"strconv"
 )
 
+const defaultHouseJoinCodeValidityMinutes = 2
+
 //go:embed staticFiles/code-email.html
 var staticFiles embed.FS
 
@@ -28,10 +30,16 @@ type ConfigExternal struct {
 type ConfigInternal struct {
 	JWT           ConfigJWT           `json:"jwt"`
 	PasswordReset ConfigPasswordReset `json:"passwordReset"`
+	HouseJoinCode ConfigHouseJoinCode `json:"houseJoinCode"`
 	SMTP          ConfigSMTP          `json:"smtp"`
 }
 
 type ConfigPasswordReset struct {
+	Secret          string `json:"secret"`
+	ValidityMinutes int    `json:"validityMinutes"`
+}
+
+type ConfigHouseJoinCode struct {
 	Secret          string `json:"secret"`
 	ValidityMinutes int    `json:"validityMinutes"`
 }
@@ -81,6 +89,10 @@ func LoadConfig() (*ConfigModel, error) {
 }
 
 func applyEnvOverrides(config *ConfigModel) {
+	if config.Internal.HouseJoinCode.ValidityMinutes <= 0 {
+		config.Internal.HouseJoinCode.ValidityMinutes = defaultHouseJoinCodeValidityMinutes
+	}
+
 	if uri := os.Getenv("MONGO_URI"); uri != "" {
 		config.External.Mongo.ConnectionString = uri
 	}
@@ -120,6 +132,10 @@ func applyEnvOverrides(config *ConfigModel) {
 		}
 	}
 
+	if joinCodeSecret := os.Getenv("JOIN_CODE_SECRET"); joinCodeSecret != "" {
+		config.Internal.HouseJoinCode.Secret = joinCodeSecret
+	}
+
 	if smtpPassword := os.Getenv("SMTP_PASSWORD"); smtpPassword != "" {
 		config.Internal.SMTP.Password = smtpPassword
 	}
@@ -140,6 +156,12 @@ func Validate(config *ConfigModel) error {
 	}
 	if config.Internal.PasswordReset.ValidityMinutes <= 0 {
 		return errors.New("password reset validity must be greater than zero")
+	}
+	if config.Internal.HouseJoinCode.Secret == "" {
+		return errors.New("house join code secret is required")
+	}
+	if config.Internal.HouseJoinCode.ValidityMinutes <= 0 {
+		return errors.New("house join code validity must be greater than zero")
 	}
 	return nil
 }

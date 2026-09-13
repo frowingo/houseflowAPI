@@ -4,28 +4,41 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
-const alphanumericChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const inviteCodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const codeLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const codeDigits = "0123456789"
 
 func GenerateInviteCode(length int) (string, error) {
 	result := make([]byte, length)
-	charsetLength := big.NewInt(int64(len(alphanumericChars)))
+	charsetLength := big.NewInt(int64(len(inviteCodeChars)))
 
 	for i := 0; i < length; i++ {
 		randomIndex, err := rand.Int(rand.Reader, charsetLength)
 		if err != nil {
 			return "", err
 		}
-		result[i] = alphanumericChars[randomIndex.Int64()]
+		result[i] = inviteCodeChars[randomIndex.Int64()]
 	}
 
 	return string(result), nil
+}
+
+func NormalizeInviteCode(code string) string {
+	replacer := strings.NewReplacer("-", "", " ", "")
+	return strings.ToUpper(replacer.Replace(strings.TrimSpace(code)))
+}
+
+func GenerateInviteCodeDigest(code, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("house-invite:v1|" + NormalizeInviteCode(code)))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func ResetCodeWindow(validityMinutes int) time.Time {
