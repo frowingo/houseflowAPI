@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -26,5 +27,29 @@ func TestIsResetCodeValidAcceptsCurrentAndPreviousWindows(t *testing.T) {
 	}
 	if helpers.IsResetCodeValid(email, "INVALID", secret, validityMinutes) {
 		t.Fatal("an unrelated code should be invalid")
+	}
+}
+
+func TestInviteCodeGenerationAndDigestNormalization(t *testing.T) {
+	code, err := helpers.GenerateInviteCode(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(code) != 8 {
+		t.Fatalf("invite code length = %d, want 8", len(code))
+	}
+	for _, character := range code {
+		if !strings.ContainsRune("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", character) {
+			t.Fatalf("invite code contains ambiguous or unsupported character %q", character)
+		}
+	}
+
+	upperDigest := helpers.GenerateInviteCodeDigest(code, "join-secret")
+	lowerDigest := helpers.GenerateInviteCodeDigest(strings.ToLower(code), "join-secret")
+	if upperDigest != lowerDigest {
+		t.Fatal("invite code digest should be case-insensitive")
+	}
+	if upperDigest == helpers.GenerateInviteCodeDigest(code, "different-secret") {
+		t.Fatal("invite code digest should be bound to its secret")
 	}
 }

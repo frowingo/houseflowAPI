@@ -2,7 +2,6 @@ package dtos
 
 import (
 	"houseflowApi/internal/data/entities"
-	"time"
 )
 
 type UserResultModel struct {
@@ -26,7 +25,6 @@ type UserResultModel struct {
 type HouseDetailsModel struct {
 	Id             string                      `json:"id"`
 	OwnerId        string                      `json:"ownerId"`
-	InviteCode     string                      `json:"inviteCode"`
 	Name           string                      `json:"name"`
 	Type           entities.HouseType          `json:"type" swaggertype:"integer" enums:"1,2,3"`
 	Members        []UserResultModel           `json:"members"`
@@ -95,14 +93,21 @@ type CreateHouseModel struct {
 }
 
 type JoinHouseByCodeModel struct {
-	UserId     string `json:"userId"`
 	InviteCode string `json:"inviteCode" validate:"required,len=8,alphanum"`
+}
+
+type GenerateHouseInviteCodeModel struct {
+	HouseId string `json:"houseId" validate:"required,len=24,alphanum"`
+}
+
+type HouseInviteCodeResponseModel struct {
+	InviteCode       string `json:"inviteCode"`
+	ExpiresInSeconds int    `json:"expiresInSeconds"`
 }
 
 type HouseResponseModel struct {
 	Id             string             `json:"id"`
 	OwnerId        string             `json:"ownerId"`
-	InviteCode     string             `json:"inviteCode"`
 	Name           string             `json:"name"`
 	Type           entities.HouseType `json:"type" swaggertype:"integer" enums:"1,2,3"`
 	MemberIds      []string           `json:"memberIds"`
@@ -112,24 +117,10 @@ type HouseResponseModel struct {
 	UpdatedOn      UTCDateTime        `json:"updatedOn"`
 }
 
-func (m *CreateHouseModel) ToEntity(inviteCode string) entities.House {
-	return entities.House{
-		OwnerId:        m.OwnerId,
-		InviteCode:     inviteCode,
-		Name:           m.Name,
-		Type:           m.Type,
-		MemberIds:      []string{m.OwnerId},
-		MaxMemberCount: m.MaxMemberCount,
-		CreatedOn:      time.Now(),
-		UpdatedOn:      time.Now(),
-	}
-}
-
 func HouseToResponseModel(house entities.House) HouseResponseModel {
 	return HouseResponseModel{
 		Id:             house.Id.Hex(),
 		OwnerId:        house.OwnerId,
-		InviteCode:     house.InviteCode,
 		Name:           house.Name,
 		Type:           house.Type,
 		MemberIds:      house.MemberIds,

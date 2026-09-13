@@ -155,9 +155,21 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	houseChoreStatusHistoryRepository := database.NewDbContext[entities.ChoreStatusHistory](client, dbName)
 	houseChoreReviewVoteRepository := database.NewDbContext[entities.ChoreReviewVote](client, dbName)
 	houseAnnouncementRepository := database.NewDbContext[entities.Announcement](client, dbName)
+	houseInviteCodeRepository := database.NewDbContext[entities.HouseInviteCode](client, dbName)
 
 	createHouseHandler := housecommands.NewCreateHouseHandler(houseRepository, userRepository)
-	joinHouseHandler := housecommands.NewJoinHouseHandler(houseRepository, userRepository)
+	generateHouseInviteCodeHandler := housecommands.NewGenerateHouseInviteCodeHandler(
+		houseRepository,
+		houseInviteCodeRepository,
+		cfg.HouseJoinCode.Secret,
+		cfg.HouseJoinCode.ValidityMinutes,
+	)
+	joinHouseHandler := housecommands.NewJoinHouseHandler(
+		houseRepository,
+		userRepository,
+		houseInviteCodeRepository,
+		cfg.HouseJoinCode.Secret,
+	)
 	createAnnouncementHandler := housecommands.NewCreateAnnouncementHandler(
 		houseMembershipPolicy,
 		userRepository,
@@ -173,6 +185,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 		houseAnnouncementRepository,
 	)
 	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](applicationMediator, createHouseHandler)
+	cqrs.MustRegister[*dtos.HouseInviteCodeResponseModel, housecommands.GenerateHouseInviteCodeCommand](applicationMediator, generateHouseInviteCodeHandler)
 	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](applicationMediator, joinHouseHandler)
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](applicationMediator, createAnnouncementHandler)
 	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](applicationMediator, getHouseDetailsHandler)
@@ -185,6 +198,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	houseRoutes.Get("/details", houseController.GetHouseDetails)
 	houseRoutes.Post("/announcement", houseController.CreateAnnouncement)
 	houseRoutes.Post("/create", houseController.CreateHouse)
+	houseRoutes.Post("/inviteCode", houseController.GenerateInviteCode)
 	houseRoutes.Post("/join", houseController.JoinHouseByCode)
 	// ----------
 

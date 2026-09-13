@@ -19,6 +19,10 @@
             "secret": "HOUSEFLOW_RESET_SECRET",
             "validityMinutes": 3
         },
+        "houseJoinCode": {
+            "secret": "HOUSEFLOW_JOIN_CODE_SECRET",
+            "validityMinutes": 2
+        },
         "smtp": {
             "password": "SMTP_PASSWORD"
         }

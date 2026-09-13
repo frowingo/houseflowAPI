@@ -69,6 +69,40 @@ func (r *HouseController) CreateHouse(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(core.Success(response))
 }
 
+// @Summary Generate a temporary house invite code
+// @Description Generates an 8-character invite code that expires after the configured validity period.
+// @Tags House
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param inviteRequest body dtos.GenerateHouseInviteCodeModel true "Invite code request"
+// @Success 200 {object} core.ApiResponse[dtos.HouseInviteCodeResponseModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Router /house/inviteCode [post]
+func (r *HouseController) GenerateInviteCode(c *fiber.Ctx) error {
+	model := new(dtos.GenerateHouseInviteCodeModel)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
+	}
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
+	}
+
+	userID := c.Locals("userID").(string)
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	response, err := cqrs.Send[*dtos.HouseInviteCodeResponseModel](ctx, r.sender, housecommands.GenerateHouseInviteCodeCommand{
+		HouseID: model.HouseId,
+		UserID:  userID,
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(core.Success(response))
+}
+
 // @Summary Get house details
 // @Tags House
 // @Accept json
@@ -152,17 +186,18 @@ func (r *HouseController) JoinHouseByCode(c *fiber.Ctx) error {
 	if err := c.BodyParser(model); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "common.error.cannot_parse_json"))
 	}
+	model.InviteCode = helpers.NormalizeInviteCode(model.InviteCode)
 
 	if err := r.validator.Validate(model); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, err.Error()))
 	}
 
-	model.UserId = c.Locals("userID").(string)
+	userID := c.Locals("userID").(string)
 
 	ctx, cancel := requestContext(c)
 	defer cancel()
 	house, err := cqrs.Send[*entities.House](ctx, r.sender, housecommands.JoinHouseCommand{
-		UserID:     model.UserId,
+		UserID:     userID,
 		InviteCode: model.InviteCode,
 	})
 	if err != nil {

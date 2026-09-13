@@ -485,6 +485,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/house/inviteCode": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates an 8-character invite code that expires after the configured validity period.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Generate a temporary house invite code",
+                "parameters": [
+                    {
+                        "description": "Invite code request",
+                        "name": "inviteRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.GenerateHouseInviteCodeModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.HouseInviteCodeResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/house/join": {
             "post": {
                 "security": [
@@ -1047,9 +1100,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "inviteCode": {
-                    "type": "string"
-                },
                 "maxMemberCount": {
                     "type": "integer"
                 },
@@ -1090,9 +1140,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "inviteCode": {
-                    "type": "string"
-                },
                 "maxMemberCount": {
                     "type": "integer"
                 },
@@ -1127,14 +1174,32 @@ const docTemplate = `{
         "dtos.JoinHouseByCodeModel": {
             "type": "object",
             "required": [
-                "inviteCode",
-                "userId"
+                "inviteCode"
             ],
             "properties": {
                 "inviteCode": {
                     "type": "string"
+                }
+            }
+        },
+        "dtos.GenerateHouseInviteCodeModel": {
+            "type": "object",
+            "required": [
+                "houseId"
+            ],
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                }
+            }
+        },
+        "dtos.HouseInviteCodeResponseModel": {
+            "type": "object",
+            "properties": {
+                "expiresInSeconds": {
+                    "type": "integer"
                 },
-                "userId": {
+                "inviteCode": {
                     "type": "string"
                 }
             }

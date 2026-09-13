@@ -136,8 +136,6 @@ definitions:
         type: string
       id:
         type: string
-      inviteCode:
-        type: string
       maxMemberCount:
         type: integer
       members:
@@ -165,8 +163,6 @@ definitions:
         type: string
       id:
         type: string
-      inviteCode:
-        type: string
       maxMemberCount:
         type: integer
       memberIds:
@@ -192,11 +188,22 @@ definitions:
     properties:
       inviteCode:
         type: string
-      userId:
-        type: string
     required:
     - inviteCode
-    - userId
+    type: object
+  dtos.GenerateHouseInviteCodeModel:
+    properties:
+      houseId:
+        type: string
+    required:
+    - houseId
+    type: object
+  dtos.HouseInviteCodeResponseModel:
+    properties:
+      expiresInSeconds:
+        type: integer
+      inviteCode:
+        type: string
     type: object
   dtos.LoginRequestModel:
     properties:
@@ -724,6 +731,40 @@ paths:
       security:
       - BearerAuth: []
       summary: Join house by invite code
+      tags:
+      - House
+  /house/inviteCode:
+    post:
+      consumes:
+      - application/json
+      description: Generates an 8-character invite code that expires after the configured validity period.
+      parameters:
+      - description: Invite code request
+        in: body
+        name: inviteRequest
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.GenerateHouseInviteCodeModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.HouseInviteCodeResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate a temporary house invite code
       tags:
       - House
   /user:

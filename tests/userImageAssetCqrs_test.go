@@ -60,8 +60,9 @@ func TestDeleteUserRemovesHouseMembership(t *testing.T) {
 	owner := fixture.seedUser(t, "correct-password")
 	house := fixture.createHouse(t, owner, 2)
 	member := fixture.seedUser(t, "correct-password")
+	inviteCode := fixture.generateHouseInviteCode(t, house, owner)
 	if _, err := cqrs.Send[*entities.House](fixture.ctx, fixture.sender, housecommands.JoinHouseCommand{
-		UserID: member.Id.Hex(), InviteCode: house.InviteCode,
+		UserID: member.Id.Hex(), InviteCode: inviteCode,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -87,8 +88,9 @@ func TestDeleteHouseOwnerReassignsOwnershipToRemainingMember(t *testing.T) {
 	owner := fixture.seedUser(t, "correct-password")
 	house := fixture.createHouse(t, owner, 2)
 	member := fixture.seedUser(t, "correct-password")
+	inviteCode := fixture.generateHouseInviteCode(t, house, owner)
 	if _, err := cqrs.Send[*entities.House](fixture.ctx, fixture.sender, housecommands.JoinHouseCommand{
-		UserID: member.Id.Hex(), InviteCode: house.InviteCode,
+		UserID: member.Id.Hex(), InviteCode: inviteCode,
 	}); err != nil {
 		t.Fatal(err)
 	}

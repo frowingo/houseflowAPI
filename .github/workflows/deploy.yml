@@ -24,7 +24,8 @@ jobs:
         run:
           flyctl secrets set MONGO_URI="${{ secrets.MONGO_URI }}" JWT_SECRET="${{
           secrets.JWT_SECRET }}" RESET_CODE_SECRET="${{
-          secrets.RESET_CODE_SECRET }}" SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}"
+          secrets.RESET_CODE_SECRET }}" JOIN_CODE_SECRET="${{
+          secrets.JOIN_CODE_SECRET }}" SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}"
           APP_ENV="production" --app houseflowapi
           --stage
         env:

@@ -136,7 +136,6 @@ func (h *GetHouseDetailsHandler) Handle(ctx context.Context, query GetHouseDetai
 		details = &dtos.HouseDetailsModel{
 			Id:             house.Id.Hex(),
 			OwnerId:        house.OwnerId,
-			InviteCode:     house.InviteCode,
 			Name:           house.Name,
 			Type:           house.Type,
 			MaxMemberCount: house.MaxMemberCount,
