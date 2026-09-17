@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"houseflowApi/external/migration"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
@@ -85,7 +84,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
 		t.Fatal(err)
 	}
-	if err := migration.RunAll(ctx, db, migrations.AllMigrations()); err != nil {
+	if err := migrations.RunAll(ctx, db, migrations.AllMigrations()); err != nil {
 		t.Fatal(err)
 	}
 

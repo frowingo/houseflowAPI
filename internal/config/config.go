@@ -142,11 +142,8 @@ func applyEnvOverrides(config *ConfigModel) {
 }
 
 func Validate(config *ConfigModel) error {
-	if config.External.Mongo.ConnectionString == "" {
-		return errors.New("mongo connection string is required")
-	}
-	if config.External.Mongo.DbName == "" {
-		return errors.New("mongo db name is required")
+	if err := ValidateMongo(config.External.Mongo); err != nil {
+		return err
 	}
 	if config.Internal.JWT.ApiSecret == "" {
 		return errors.New("jwt secret is required")
@@ -162,6 +159,19 @@ func Validate(config *ConfigModel) error {
 	}
 	if config.Internal.HouseJoinCode.ValidityMinutes <= 0 {
 		return errors.New("house join code validity must be greater than zero")
+	}
+	if config.Internal.SMTP.Password == "" {
+		return errors.New("smtp password is required")
+	}
+	return nil
+}
+
+func ValidateMongo(config ConfigMongo) error {
+	if config.ConnectionString == "" {
+		return errors.New("mongo connection string is required")
+	}
+	if config.DbName == "" {
+		return errors.New("mongo db name is required")
 	}
 	return nil
 }

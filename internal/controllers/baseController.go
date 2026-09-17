@@ -2,13 +2,15 @@ package controllers
 
 import (
 	"context"
-	"houseflowApi/internal/helpers"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 const requestTimeout = 10 * time.Second
+const readinessTimeout = 2 * time.Second
+
+type ReadinessCheck func(context.Context) error
 
 func requestContext(c *fiber.Ctx) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(c.UserContext(), requestTimeout)
@@ -29,11 +31,19 @@ func HealthController(c *fiber.Ctx) error {
 	})
 }
 
-func LocalizedHealthController(localizer helpers.MessageLocalizer) fiber.Handler {
+func ReadinessController(check ReadinessCheck) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.UserContext(), readinessTimeout)
+		defer cancel()
+
+		if err := check(ctx); err != nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"status": "unavailable",
+			})
+		}
+
 		return c.JSON(fiber.Map{
-			"status":  "ok",
-			"message": helpers.LocalizedMessage(c, localizer, "base.message.api_running"),
+			"status": "ready",
 		})
 	}
 }

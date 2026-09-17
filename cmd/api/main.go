@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -11,11 +15,15 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/swagger"
 
-	"houseflowApi/external/migration"
 	docs "houseflowApi/external/swagger/docs" // Swagger docs
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/data/database"
-	"houseflowApi/internal/data/migrations"
+)
+
+const (
+	startupTimeout   = 15 * time.Second
+	shutdownTimeout  = 10 * time.Second
+	requestBodyLimit = 4 * 1024 * 1024
 )
 
 // @title HouseFlow API
@@ -38,22 +46,43 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 func main() {
-	ctx := context.Background()
+	command := "serve"
+	if len(os.Args) > 1 {
+		command = os.Args[1]
+	}
+
+	var err error
+	switch command {
+	case "serve":
+		err = runAPI()
+	case "migrate":
+		err = runMigrations()
+	default:
+		err = fmt.Errorf("unknown command %q; expected serve or migrate", command)
+	}
+
+	if err != nil {
+		log.Printf("application stopped with error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func runAPI() error {
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
-		log.Fatal("failed to load config:", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
-	mongoClient, db, err := database.NewDatabase(ctx, cfg.External.Mongo)
+	startupCtx, cancelStartup := context.WithTimeout(rootCtx, startupTimeout)
+	mongoClient, db, err := database.NewDatabase(startupCtx, cfg.External.Mongo)
+	cancelStartup()
 	if err != nil {
-		log.Fatal("failed to connect to database:", err)
+		return fmt.Errorf("connect to database: %w", err)
 	}
-	defer mongoClient.Disconnect(ctx)
-
-	if err := migration.RunAll(ctx, db, migrations.AllMigrations()); err != nil {
-		log.Fatal("migration failed:", err)
-	}
+	defer disconnectDatabase(mongoClient)
 
 	// Host'u boş bırakarak Swagger UI'nin isteğin geldiği host/scheme'i
 	// kullanmasını sağla (localhost, OrbStack domain, vs. ile uyumlu).
@@ -61,8 +90,12 @@ func main() {
 	docs.SwaggerInfo.Schemes = []string{}
 
 	app := fiber.New(fiber.Config{
-		AppName:     "HouseFlow API",
-		ProxyHeader: fiber.HeaderXForwardedFor,
+		AppName:      "HouseFlow API",
+		ProxyHeader:  fiber.HeaderXForwardedFor,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+		BodyLimit:    requestBodyLimit,
 	})
 
 	app.Use(recover.New())
@@ -75,9 +108,47 @@ func main() {
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	SetupRoutes(ctx, app, mongoClient, db.Name(), cfg.Internal)
+	SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal)
 
-	log.Fatal(app.Listen(":3162"))
+	listenError := make(chan error, 1)
+	go func() {
+		listenError <- app.Listen(":3162")
+	}()
+
+	select {
+	case err := <-listenError:
+		if err != nil {
+			return fmt.Errorf("listen: %w", err)
+		}
+		return nil
+	case <-rootCtx.Done():
+		log.Println("shutdown signal received")
+	}
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelShutdown()
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown HTTP server: %w", err)
+	}
+
+	select {
+	case err := <-listenError:
+		if err != nil {
+			return fmt.Errorf("listen shutdown: %w", err)
+		}
+	case <-shutdownCtx.Done():
+		return fmt.Errorf("wait for HTTP server shutdown: %w", shutdownCtx.Err())
+	}
+
+	return nil
+}
+
+func disconnectDatabase(client interface{ Disconnect(context.Context) error }) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Disconnect(ctx); err != nil {
+		log.Printf("database disconnect failed: %v", err)
+	}
 }
 
 func getAllowedOrigins() string {

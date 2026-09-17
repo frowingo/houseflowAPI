@@ -30,6 +30,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string, cfg config.ConfigInternal) {
@@ -54,10 +55,14 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[cqrs.NoResult, localizationCommands.InsertLocalizationLanguageCommand](applicationMediator, insertLocalizationLanguageHandler)
 	localizationController := controllers.NewLocalizationController(applicationMediator, localizationCache)
 
-	api := app.Group("/api/v1", middleware.IPRateLimit(localizationCache))
+	baseRoutes := app.Group("/api/v1/base")
+	baseRoutes.Get("/health", controllers.HealthController)
+	baseRoutes.Get("/health/live", controllers.HealthController)
+	baseRoutes.Get("/health/ready", controllers.ReadinessController(func(ctx context.Context) error {
+		return client.Ping(ctx, readpref.Primary())
+	}))
 
-	baseRoutes := api.Group("/base")
-	baseRoutes.Get("/health", controllers.LocalizedHealthController(localizationCache))
+	api := app.Group("/api/v1", middleware.IPRateLimit(localizationCache))
 
 	// - LOCALIZATION -
 	localizationRoutes := api.Group("/localization", middleware.IPRateLimit(localizationCache))

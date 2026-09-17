@@ -4,21 +4,78 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
+
+concurrency:
+  group: houseflow-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create config.json from template
-        run: cp internal/config/config.template.json internal/config/config.json
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        run: go test -race ./... -count=1
+
+      - name: Start MongoDB replica set
+        run: |
+          docker compose up -d mongodb mongodb-init
+          docker compose wait mongodb-init
+
+      - name: Run MongoDB integration tests
+        run: docker compose --profile test run --rm --no-deps integrationTests
+
+      - name: Stop test containers
+        if: always()
+        run: docker compose --profile test down --volumes
+
+  deploy:
+    name: Deploy
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Validate deployment secrets
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          RESET_CODE_SECRET: ${{ secrets.RESET_CODE_SECRET }}
+          JOIN_CODE_SECRET: ${{ secrets.JOIN_CODE_SECRET }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          test -n "$MONGO_URI"
+          test -n "$JWT_SECRET"
+          test -n "$RESET_CODE_SECRET"
+          test -n "$JOIN_CODE_SECRET"
+          test -n "$SMTP_PASSWORD"
+          test -n "$FLY_API_TOKEN"
 
       - name: Set secrets on Fly.io
         run:

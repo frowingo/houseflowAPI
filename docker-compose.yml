@@ -11,12 +11,30 @@ services:
       - MONGO_DB=houseflowDb
       - MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
     depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks:
+      - houseflow-network
+    volumes:
+      - ./internal/config/config.json:/root/internal/config/config.json
+
+  migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: houseflow-migration
+    command: ["./houseflowapi", "migrate"]
+    environment:
+      - MONGO_DB=houseflowDb
+      - MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
+    depends_on:
       mongodb-init:
         condition: service_completed_successfully
     networks:
       - houseflow-network
     volumes:
       - ./internal/config/config.json:/root/internal/config/config.json
+    restart: "no"
 
   # MongoDB
   mongodb:
@@ -63,6 +81,21 @@ services:
           sleep(1000);
         }
         if (!ready) throw new Error("MongoDB primary did not become ready");
+
+  integrationTests:
+    image: golang:1.24-alpine
+    profiles: ["test"]
+    working_dir: /app
+    environment:
+      - HOUSEFLOW_TEST_MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
+    depends_on:
+      mongodb-init:
+        condition: service_completed_successfully
+    networks:
+      - houseflow-network
+    volumes:
+      - .:/app
+    command: ["go", "test", "./tests", "-count=1"]
 
   # Optional: Mongo Express (MongoDB yönetim paneli)
   mongo-express:
