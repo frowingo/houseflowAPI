@@ -4,6 +4,9 @@
             "connectionString": "mongodb://mongodb:27017",
             "dbName": "houseflowDb"
         },
+        "redis": {
+            "url": ""
+        },
         "cloudinary": {
             "cloudName": "CLOUDINARY_CLOUD_NAME",
             "apiKey": "CLOUDINARY_API_KEY",

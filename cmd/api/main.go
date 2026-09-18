@@ -17,6 +17,7 @@ import (
 
 	docs "houseflowApi/external/swagger/docs" // Swagger docs
 	"houseflowApi/internal/config"
+	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
 )
 
@@ -84,6 +85,9 @@ func runAPI() error {
 	}
 	defer disconnectDatabase(mongoClient)
 
+	coordinator := initializeCoordinator(rootCtx, cfg.External.Redis)
+	defer closeCoordinator(coordinator)
+
 	// Host'u boş bırakarak Swagger UI'nin isteğin geldiği host/scheme'i
 	// kullanmasını sağla (localhost, OrbStack domain, vs. ile uyumlu).
 	docs.SwaggerInfo.Host = ""
@@ -107,6 +111,10 @@ func runAPI() error {
 	}))
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
+	app.Get(
+		"/api/v1/base/health/coordination",
+		controllers.ReadinessController(coordinationReadiness(coordinator)),
+	)
 
 	SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal)
 

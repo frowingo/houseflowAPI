@@ -383,3 +383,35 @@ indirilmiştir. Eski `HouseService` kaldırılmıştır. Sıradaki CQRS çalış
 Chore modülüdür. WebSocket, Redis ve RabbitMQ eklenmemiştir. İstemci retry'larını
 aynı işlem olarak tanıyacak genel `commandId` sözleşmesi de henüz yoktur; bu
 sözleşme ilk oyun command'ları tasarlanırken ele alınacaktır.
+
+## ADR-009 — Multi-instance coordination oyun domain'inden önce kurulacak
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+ADR-008'deki tek-instance WebSocket MVP sırası, ürünün ilk sürümden itibaren
+birden fazla API instance'ında çalışması hedeflendiği için değiştirilmiştir.
+Bu karar oyun kurallarını erkenden genelleştiren bir game engine oluşturmaz;
+yalnız instance'lar arasında ortak olacak teknik koordinasyon sınırını kurar.
+
+Redis yalnız kısa ömürlü coordination verisi için kullanılır:
+
+- instance heartbeat,
+- TTL'li room owner lease ve monoton fencing token,
+- connection presence,
+- instance'a yönlenen command'lar,
+- room event dağıtımı,
+- message idempotency kaydı.
+
+Kalıcı oyun sonucu, leaderboard, kullanıcı/hane verisi ve her frame/tick Redis'e
+yazılmaz. Normal HTTP endpoint'lerinin readiness'i Redis'e bağlanmaz. Redis
+kesintisinde yalnız coordination/realtime özelliği unavailable olur.
+
+Instance command'ları kısa kesintilerde kaybolmaması ve işlendikten sonra açıkça
+ACK edilebilmesi için süreli Redis Streams girdileridir. Room event'leri anlıktır
+ve ileride snapshot ile telafi edileceğinden Redis Pub/Sub üzerinden dağıtılır.
+Room event yayınlama işlemi lease değerini aynı Redis script'i içinde doğrular;
+eski owner'ın fencing token'ıyla event yayınlamasına izin verilmez.
+
+RabbitMQ, kalıcı asenkron business job veya outbox consumer ihtiyacı oluşana
+kadar; Kafka ise replay edilebilir yüksek hacimli event stream ihtiyacı oluşana
+kadar eklenmeyecektir.

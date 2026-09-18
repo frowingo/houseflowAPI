@@ -4,10 +4,14 @@ go 1.24.0
 
 toolchain go1.24.11
 
-require github.com/go-playground/validator/v10 v10.30.1
+require (
+	github.com/cloudinary/cloudinary-go/v2 v2.15.0
+	github.com/go-playground/validator/v10 v10.30.1
+	github.com/redis/go-redis/v9 v9.22.0
+)
 
 require (
-	github.com/cloudinary/cloudinary-go/v2 v2.15.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/creasty/defaults v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -16,6 +20,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )
 
@@ -38,7 +43,7 @@ require (
 	github.com/gofiber/swagger v1.1.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

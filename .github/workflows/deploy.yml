@@ -36,12 +36,13 @@ jobs:
       - name: Test with race detector
         run: go test -race ./... -count=1
 
-      - name: Start MongoDB replica set
+      - name: Start integration dependencies
         run: |
+          docker compose up -d --wait redis
           docker compose up -d mongodb mongodb-init
           docker compose wait mongodb-init
 
-      - name: Run MongoDB integration tests
+      - name: Run integration tests
         run: docker compose --profile test run --rm --no-deps integrationTests
 
       - name: Stop test containers
@@ -64,6 +65,7 @@ jobs:
       - name: Validate deployment secrets
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           RESET_CODE_SECRET: ${{ secrets.RESET_CODE_SECRET }}
           JOIN_CODE_SECRET: ${{ secrets.JOIN_CODE_SECRET }}
@@ -71,6 +73,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           test -n "$MONGO_URI"
+          test -n "$REDIS_URL"
           test -n "$JWT_SECRET"
           test -n "$RESET_CODE_SECRET"
           test -n "$JOIN_CODE_SECRET"
@@ -78,12 +81,16 @@ jobs:
           test -n "$FLY_API_TOKEN"
 
       - name: Set secrets on Fly.io
-        run:
-          flyctl secrets set MONGO_URI="${{ secrets.MONGO_URI }}" JWT_SECRET="${{
-          secrets.JWT_SECRET }}" RESET_CODE_SECRET="${{
-          secrets.RESET_CODE_SECRET }}" JOIN_CODE_SECRET="${{
-          secrets.JOIN_CODE_SECRET }}" SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}"
-          APP_ENV="production" --app houseflowapi
+        run: >-
+          flyctl secrets set
+          MONGO_URI="${{ secrets.MONGO_URI }}"
+          REDIS_URL="${{ secrets.REDIS_URL }}"
+          JWT_SECRET="${{ secrets.JWT_SECRET }}"
+          RESET_CODE_SECRET="${{ secrets.RESET_CODE_SECRET }}"
+          JOIN_CODE_SECRET="${{ secrets.JOIN_CODE_SECRET }}"
+          SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}"
+          APP_ENV="production"
+          --app houseflowapi
           --stage
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

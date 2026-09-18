@@ -10,6 +10,7 @@ services:
     environment:
       - MONGO_DB=houseflowDb
       - MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       migration:
         condition: service_completed_successfully
@@ -82,15 +83,31 @@ services:
         }
         if (!ready) throw new Error("MongoDB primary did not become ready");
 
+  # Ephemeral multi-instance coordination state
+  redis:
+    image: redis:8.2-alpine
+    container_name: houseflow-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - houseflow-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   integrationTests:
     image: golang:1.24-alpine
     profiles: ["test"]
     working_dir: /app
     environment:
       - HOUSEFLOW_TEST_MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - HOUSEFLOW_TEST_REDIS_URL=redis://redis:6379/15
     depends_on:
       mongodb-init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     networks:
       - houseflow-network
     volumes:

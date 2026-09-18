@@ -25,6 +25,7 @@ type ConfigModel struct {
 type ConfigExternal struct {
 	Mongo      ConfigMongo      `json:"mongo"`
 	Cloudinary ConfigCloudinary `json:"cloudinary"`
+	Redis      ConfigRedis      `json:"redis"`
 }
 
 type ConfigInternal struct {
@@ -55,6 +56,10 @@ type ConfigSMTP struct {
 type ConfigMongo struct {
 	ConnectionString string `json:"connectionString"`
 	DbName           string `json:"dbName"`
+}
+
+type ConfigRedis struct {
+	URL string `json:"url"`
 }
 
 type ConfigCloudinary struct {
@@ -99,6 +104,10 @@ func applyEnvOverrides(config *ConfigModel) {
 
 	if db := os.Getenv("MONGO_DB"); db != "" {
 		config.External.Mongo.DbName = db
+	}
+
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		config.External.Redis.URL = redisURL
 	}
 
 	if cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME"); cloudName != "" {
