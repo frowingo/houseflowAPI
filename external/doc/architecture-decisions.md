@@ -415,3 +415,45 @@ eski owner'ın fencing token'ıyla event yayınlamasına izin verilmez.
 RabbitMQ, kalıcı asenkron business job veya outbox consumer ihtiyacı oluşana
 kadar; Kafka ise replay edilebilir yüksek hacimli event stream ihtiyacı oluşana
 kadar eklenmeyecektir.
+
+## ADR-010 — GameSession ortak lifecycle aggregate'i
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+Oyun türlerinden bağımsız ortak lifecycle `GameSession` aggregate'i tarafından
+yönetilir:
+
+```text
+lobby -> readyWindow -> countdown -> running -> finished
+   ^          |
+   +----------+
+
+Her terminal olmayan state -> cancelled
+```
+
+- `lobby`: Oyuncular katılabilir ve ready durumunu değiştirebilir.
+- `readyWindow`: Minimum ready oyuncu sayısına ulaşılmıştır; yeni oyuncular
+  belirlenen süre boyunca katılabilir.
+- `countdown`: Katılım ve ready değişikliği kapanmıştır. Ready olmayan oyuncular
+  session dışında bırakılır.
+- `running`: Oyun türüne özel runtime çalışır.
+- `finished` / `cancelled`: Terminal state'lerdir.
+
+Session kuralları minimum/maksimum oyuncu, ready window süresi, countdown süresi,
+oyun modu ve protokol version'ını içerir. State yalnız aggregate metotlarıyla
+değişir. Her başarılı değişiklik monoton `version` ve sıralı bir domain event
+üretir. Snapshot'tan restore işlemi event üretmez.
+
+Domain event'leri publication başarısızlığında kaybolmasın diye aggregate
+tarafından otomatik silinmez. Application katmanı ileride snapshot ve event/outbox
+kaydını aynı transaction'da kalıcılaştırdıktan sonra pending event'leri temizler.
+
+WebSocket connection/presence bilgisi aggregate'e eklenmez. Bu bilgi Redis
+coordination katmanında kısa ömürlüdür; reconnect eden kullanıcı kalıcı connection
+state'i yerine session snapshot'ını alır. Skor, fizik, elenme ve leaderboard
+kuralları da ortak aggregate'e ait değildir; oyun türüne özel domain tarafından
+yönetilir.
+
+Bu faz MongoDB adapter'ı, HTTP/WebSocket endpoint'i veya realtime room runtime
+eklemez. Persistence concurrency sözleşmesi ve room runtime ayrı çalışma
+paketlerinde GameSession snapshot/version modeli üzerinden kurulacaktır.
