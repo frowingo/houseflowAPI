@@ -61,5 +61,7 @@ func AllMigrations() []Migration {
 		&houseInfoHistory{},
 		// --- Game Session Persistence ---
 		&gameSessionPersistence{},
+		// --- Game Session Command Idempotency ---
+		&gameSessionCommandReceipts{},
 	}
 }

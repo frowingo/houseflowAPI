@@ -6,6 +6,9 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	gameCommands "houseflowApi/internal/application/game/commands"
+	gameDomain "houseflowApi/internal/application/game/domain"
+	gameQueries "houseflowApi/internal/application/game/queries"
 	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
@@ -119,6 +122,13 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	imageAssetRepository := database.NewDbContext[entities.ImageAsset](client, dbName)
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
+	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
+	createGameSessionHandler := gameCommands.NewCreateGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	joinGameSessionHandler := gameCommands.NewJoinGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	setPlayerReadyHandler := gameCommands.NewSetPlayerReadyHandler(gameSessionRepository, houseMembershipPolicy)
+	leaveGameSessionHandler := gameCommands.NewLeaveGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	cancelGameSessionHandler := gameCommands.NewCancelGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	getGameSessionHandler := gameQueries.NewGetGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
 	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository)
@@ -141,6 +151,12 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.UpdateImageAssetCommand](applicationMediator, updateImageAssetHandler)
 	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](applicationMediator, getImagesByCategoryHandler)
 	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](applicationMediator, getImageByPublicIDHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CreateGameSessionCommand](applicationMediator, createGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](applicationMediator, joinGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.SetPlayerReadyCommand](applicationMediator, setPlayerReadyHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](applicationMediator, leaveGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](applicationMediator, cancelGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](applicationMediator, getGameSessionHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))

@@ -72,7 +72,12 @@ func TestGameSessionRepositoryPersistsSnapshotAndOutboxAtomically(t *testing.T) 
 	session := newPersistenceTestSession(t)
 	events := session.PendingEvents()
 
-	if err := fixture.repository.Create(fixture.ctx, session.Snapshot(), events); err != nil {
+	if _, err := fixture.repository.Create(
+		fixture.ctx,
+		session.Snapshot(),
+		events,
+		persistenceCommand("create-1", "gameSession.create", "create-payload"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	session.ClearPendingEvents()
@@ -138,14 +143,16 @@ func TestGameSessionRepositoryRejectsConcurrentUpdateWithoutExtraOutbox(t *testi
 	results := make(chan saveResult, 2)
 	save := func(playerID string, session *gameDomain.GameSession) {
 		<-start
+		_, err := fixture.repository.Save(
+			fixture.ctx,
+			1,
+			session.Snapshot(),
+			session.PendingEvents(),
+			persistenceCommand("join-"+playerID, "gameSession.join", playerID),
+		)
 		results <- saveResult{
 			playerID: playerID,
-			err: fixture.repository.Save(
-				fixture.ctx,
-				1,
-				session.Snapshot(),
-				session.PendingEvents(),
-			),
+			err:      err,
 		}
 	}
 	go save("player-1", firstWriter)
@@ -197,7 +204,13 @@ func TestGameSessionRepositoryRollsBackSnapshotWhenOutboxInsertFails(t *testing.
 	}
 	events := session.PendingEvents()
 	events[0].EventID = initialEventID
-	if err := fixture.repository.Save(fixture.ctx, 1, session.Snapshot(), events); err == nil {
+	if _, err := fixture.repository.Save(
+		fixture.ctx,
+		1,
+		session.Snapshot(),
+		events,
+		persistenceCommand("join-rollback", "gameSession.join", "rollback-payload"),
+	); err == nil {
 		t.Fatal("save must fail when the outbox event ID already exists")
 	}
 
@@ -218,7 +231,12 @@ func TestGameSessionRepositoryRejectsInconsistentPersistenceBatch(t *testing.T) 
 	fixture := newGameSessionPersistenceFixture(t)
 	session := newPersistenceTestSession(t)
 
-	err := fixture.repository.Create(fixture.ctx, session.Snapshot(), nil)
+	_, err := fixture.repository.Create(
+		fixture.ctx,
+		session.Snapshot(),
+		nil,
+		persistenceCommand("create-invalid", "gameSession.create", "invalid-payload"),
+	)
 	if !errors.Is(err, gameAbstract.ErrInvalidPersistenceBatch) {
 		t.Fatalf("create error = %v, want ErrInvalidPersistenceBatch", err)
 	}
@@ -262,7 +280,12 @@ func seedGameSession(
 	t.Helper()
 	session := newPersistenceTestSession(t)
 	events := session.PendingEvents()
-	if err := fixture.repository.Create(fixture.ctx, session.Snapshot(), events); err != nil {
+	if _, err := fixture.repository.Create(
+		fixture.ctx,
+		session.Snapshot(),
+		events,
+		persistenceCommand("create-seed", "gameSession.create", "seed-payload"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	session.ClearPendingEvents()
@@ -283,4 +306,13 @@ func assertOutboxMessageCount(t *testing.T, fixture *gameSessionPersistenceFixtu
 
 func persistenceTestTime() time.Time {
 	return time.Date(2026, time.September, 19, 12, 0, 0, 0, time.UTC)
+}
+
+func persistenceCommand(commandID string, commandType string, payloadHash string) gameAbstract.CommandDescriptor {
+	return gameAbstract.CommandDescriptor{
+		CommandID:   commandID,
+		ActorID:     "user-1",
+		CommandType: commandType,
+		PayloadHash: payloadHash,
+	}
 }

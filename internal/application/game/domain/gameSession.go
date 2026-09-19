@@ -8,7 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const EndReasonInsufficientPlayers = "insufficientPlayers"
+const (
+	EndReasonInsufficientPlayers = "insufficientPlayers"
+	EndReasonCancelledByUser     = "cancelledByUser"
+)
 
 type NewSessionParams struct {
 	SessionID       string

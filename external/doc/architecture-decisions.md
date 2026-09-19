@@ -485,3 +485,28 @@ eklenmemiştir.
 
 Kalıcı snapshot ortak lifecycle verisiyle sınırlıdır. Skor, oyun fiziği, elenme,
 leaderboard ve connection presence ortak GameSession document'ına eklenmez.
+
+## ADR-012 — GameSession application orchestration ve command idempotency
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+GameSession kullanım akışları transport katmanından bağımsız CQRS handler'larıyla
+yürütülür. Session oluşturma, katılma, ready durumunu değiştirme, ayrılma ve iptal
+etme command; yetkili snapshot okuma ise query olarak tanımlanır. Handler'lar house
+üyelik ve iptal yetkisini kontrol ettikten sonra aggregate metodunu çalıştırır ve
+snapshot ile pending event'leri repository üzerinden kalıcılaştırır.
+
+Mutating command'larda `actorId + commandId` çifti idempotency anahtarıdır. Command
+türü ve business payload hash'i receipt kaydında tutulur. Receipt, GameSession
+snapshot'ı ve outbox event'leri aynı MongoDB transaction'ında yazılır. Aynı command
+tekrar geldiğinde state ikinci kez değiştirilmez; aynı anahtar farklı command veya
+payload için kullanılırsa conflict üretilir. State'i değiştirmeyen başarılı
+command'lar da receipt bırakarak aynı sözleşmeye uyar.
+
+Receipt kayıtlarına bu aşamada TTL eklenmez. GameSession saklama süresi ve replay
+penceresi ürün davranışıyla birlikte belirlendiğinde session ve receipt retention
+politikası beraber tanımlanacaktır.
+
+Bu faz HTTP/WebSocket endpoint'i, realtime room runtime, oyun türüne özel command,
+outbox publisher veya message broker eklemez. Aynı handler'lar sonraki fazlarda
+HTTP ya da WebSocket/room runtime tarafından çağrılabilir.
