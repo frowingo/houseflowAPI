@@ -19,13 +19,13 @@ const (
 )
 
 type SessionEvent struct {
-	EventID    string
-	SessionID  string
-	Type       SessionEventType
-	Version    int64
-	OccurredAt time.Time
-	PlayerID   string
-	State      SessionState
-	Deadline   time.Time
-	Reason     string
+	EventID    string           `json:"eventId"`
+	SessionID  string           `json:"sessionId"`
+	Type       SessionEventType `json:"type"`
+	Version    int64            `json:"version"`
+	OccurredAt time.Time        `json:"occurredAt"`
+	PlayerID   string           `json:"playerId,omitempty"`
+	State      SessionState     `json:"state"`
+	Deadline   time.Time        `json:"deadline,omitempty"`
+	Reason     string           `json:"reason,omitempty"`
 }

@@ -59,5 +59,7 @@ func AllMigrations() []Migration {
 		&houseInviteCodes{},
 		// --- House Profile History ---
 		&houseInfoHistory{},
+		// --- Game Session Persistence ---
+		&gameSessionPersistence{},
 	}
 }

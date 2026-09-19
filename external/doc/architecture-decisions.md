@@ -457,3 +457,31 @@ yönetilir.
 Bu faz MongoDB adapter'ı, HTTP/WebSocket endpoint'i veya realtime room runtime
 eklemez. Persistence concurrency sözleşmesi ve room runtime ayrı çalışma
 paketlerinde GameSession snapshot/version modeli üzerinden kurulacaktır.
+
+## ADR-011 — GameSession optimistic concurrency ve transactional outbox
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+`GameSession` aggregate snapshot'ı MongoDB'de kalıcılaştırılır. Her update,
+aggregate yüklenirken görülen `expectedVersion` ile mevcut document version'ını
+aynı write filtresinde karşılaştırır. Version eşleşmezse ikinci yazarın değişikliği
+uygulanmaz ve application katmanına açık bir concurrency hatası döner. Bu yaklaşım
+process içi mutex veya distributed lock gerektirmeden birden fazla API instance'ı
+arasında kayıp update'i önler.
+
+Aggregate snapshot'ı ile o değişiklikte oluşan domain event'leri aynı MongoDB
+transaction'ında yazılır. Event'ler oyunlara özel olmayan `OutboxMessage`
+koleksiyonunda saklanır. Event ID ve aggregate-version çiftleri unique index ile
+korunur; böylece aynı event'in mükerrer kalıcılaştırılması engellenir. Snapshot
+yazımı veya outbox insert'lerinden biri başarısız olursa transaction bütünüyle
+rollback edilir.
+
+Repository yalnız başarılı transaction sonrasında aggregate'in pending event'leri
+temizlenebilecek şekilde tasarlanmıştır. Outbox publisher bu paketin kapsamında
+değildir. İleride publisher eklendiğinde unpublished kayıtları claim ederek
+at-least-once teslim edecek; consumer'lar `eventId` üzerinden idempotent olacaktır.
+Henüz retention süresi belli olmadığı için published event'lere TTL index
+eklenmemiştir.
+
+Kalıcı snapshot ortak lifecycle verisiyle sınırlıdır. Skor, oyun fiziği, elenme,
+leaderboard ve connection presence ortak GameSession document'ına eklenmez.
