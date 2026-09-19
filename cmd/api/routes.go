@@ -6,6 +6,7 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
@@ -27,6 +28,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
 	"houseflowApi/internal/infrastructure/middleware"
+	"houseflowApi/internal/infrastructure/realtime"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 	"log"
@@ -36,7 +38,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string, cfg config.ConfigInternal) {
+func SetupRoutes(
+	ctx context.Context,
+	app *fiber.App,
+	client *mongo.Client,
+	dbName string,
+	cfg config.ConfigInternal,
+	coordinator coordinationAbstract.Coordinator,
+) (*realtime.RoomManager, error) {
 	applicationMediator := cqrs.New()
 	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
@@ -128,6 +137,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	setPlayerReadyHandler := gameCommands.NewSetPlayerReadyHandler(gameSessionRepository, houseMembershipPolicy)
 	leaveGameSessionHandler := gameCommands.NewLeaveGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 	cancelGameSessionHandler := gameCommands.NewCancelGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	advanceGameSessionHandler := gameCommands.NewAdvanceGameSessionHandler(gameSessionRepository)
 	getGameSessionHandler := gameQueries.NewGetGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
@@ -156,6 +166,7 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.SetPlayerReadyCommand](applicationMediator, setPlayerReadyHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](applicationMediator, leaveGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](applicationMediator, cancelGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](applicationMediator, advanceGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](applicationMediator, getGameSessionHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)
 
@@ -286,4 +297,21 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Put("/:id", choreController.UpdateChore)
 	// ----------
+
+	if coordinator == nil {
+		return nil, nil
+	}
+	roomManager, err := realtime.NewRoomManager(
+		coordinator,
+		gameSessionRepository,
+		applicationMediator,
+		realtime.RoomManagerOptions{},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := roomManager.Start(ctx); err != nil {
+		return nil, err
+	}
+	return roomManager, nil
 }

@@ -182,6 +182,37 @@ func TestCommandRoutingIsDurableAndMessageClaimIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestUnacknowledgedCommandIsRedeliveredWithoutProcessRestart(t *testing.T) {
+	redisURL := prepareRedis(t)
+	sender := newTestCoordinator(t, redisURL, "redelivery-sender")
+	owner := newTestCoordinator(t, redisURL, "redelivery-owner")
+	ctx, cancel := context.WithTimeout(context.Background(), coordinationTestTimeout)
+	defer cancel()
+
+	commands, err := owner.SubscribeCommands(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer commands.Close()
+	envelope := testEnvelope("redelivered-command", "redelivery-room")
+	if err := sender.PublishCommand(ctx, owner.InstanceID(), envelope); err != nil {
+		t.Fatal(err)
+	}
+
+	first := awaitCommandDelivery(t, ctx, commands)
+	second := awaitCommandDelivery(t, ctx, commands)
+	if second.Envelope().MessageID != first.Envelope().MessageID {
+		t.Fatalf(
+			"redelivered message ID = %q, want %q",
+			second.Envelope().MessageID,
+			first.Envelope().MessageID,
+		)
+	}
+	if err := second.Ack(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestShutdownRemovesHeartbeatPresenceAndOwnedLease(t *testing.T) {
 	redisURL := prepareRedis(t)
 	first := newTestCoordinator(t, redisURL, "instance-a")
@@ -318,6 +349,23 @@ func assertEvent(
 	case <-ctx.Done():
 		t.Fatalf("event %q was not delivered", messageID)
 	}
+}
+
+func awaitCommandDelivery(
+	t *testing.T,
+	ctx context.Context,
+	subscription coordinationAbstract.CommandSubscription,
+) coordinationAbstract.CommandDelivery {
+	t.Helper()
+	select {
+	case delivery := <-subscription.Deliveries():
+		return delivery
+	case err := <-subscription.Errors():
+		t.Fatalf("command subscription error: %v", err)
+	case <-ctx.Done():
+		t.Fatal("command was not delivered")
+	}
+	return nil
 }
 
 func eventually(t *testing.T, timeout time.Duration, condition func() bool) {

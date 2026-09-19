@@ -11,7 +11,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
-const leaveGameSessionCommandType = "gameSession.leave"
+const LeaveGameSessionCommandType = "gameSession.leave"
 
 type LeaveGameSessionCommand struct {
 	cqrs.Request[gameDomain.SessionSnapshot]
@@ -36,7 +36,7 @@ func (handler *LeaveGameSessionHandler) Handle(
 	ctx context.Context,
 	command LeaveGameSessionCommand,
 ) (gameDomain.SessionSnapshot, error) {
-	descriptor, err := describeCommand(command.CommandID, command.UserID, leaveGameSessionCommandType, struct {
+	descriptor, err := describeCommand(command.CommandID, command.UserID, LeaveGameSessionCommandType, struct {
 		SessionID string
 	}{command.SessionID})
 	if err != nil {

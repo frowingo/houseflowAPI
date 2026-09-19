@@ -11,7 +11,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
-const joinGameSessionCommandType = "gameSession.join"
+const JoinGameSessionCommandType = "gameSession.join"
 
 type JoinGameSessionCommand struct {
 	cqrs.Request[gameDomain.SessionSnapshot]
@@ -36,7 +36,7 @@ func (handler *JoinGameSessionHandler) Handle(
 	ctx context.Context,
 	command JoinGameSessionCommand,
 ) (gameDomain.SessionSnapshot, error) {
-	descriptor, err := describeCommand(command.CommandID, command.UserID, joinGameSessionCommandType, struct {
+	descriptor, err := describeCommand(command.CommandID, command.UserID, JoinGameSessionCommandType, struct {
 		SessionID string
 	}{command.SessionID})
 	if err != nil {

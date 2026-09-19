@@ -510,3 +510,52 @@ politikası beraber tanımlanacaktır.
 Bu faz HTTP/WebSocket endpoint'i, realtime room runtime, oyun türüne özel command,
 outbox publisher veya message broker eklemez. Aynı handler'lar sonraki fazlarda
 HTTP ya da WebSocket/room runtime tarafından çağrılabilir.
+
+## ADR-013 — Realtime room runtime ve tek-yazar oda modeli
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+Her aktif GameSession odası aynı anda yalnız bir API instance'ı tarafından
+işletilir. Owner seçimi Redis lease ile yapılır; lease düzenli yenilenir ve her
+yeni owner monoton artan bir fencing token alır. Instance lease'i yenileyemezse
+odayı işlemeyi bırakır. Eski owner'ın event yayınlaması Redis tarafında fencing
+kontrolüyle reddedilir.
+
+Runtime'ın sorumlulukları şunlardır:
+
+- odayı yüklemek ve lease sahibi instance'ta sınırlı bir command kuyruğu açmak,
+- instance'a yönlendirilmiş Redis Stream command'larını oda içinde sırayla
+  mevcut CQRS handler'larına iletmek,
+- başarılı command sonrasında version'lı GameSession snapshot event'i yayınlamak,
+- `readyWindow` ve `countdown` deadline'larını kalıcı snapshot'tan yeniden kurmak,
+- owner kapanırsa yeni owner'ın MongoDB snapshot'ından devam edebilmesini
+  sağlamak.
+
+MongoDB kalıcı ve doğrulanabilir source of truth olmaya devam eder. Redis oda
+sahipliği, command taşıma ve anlık event yayını içindir. Pub/Sub event'i geçici
+bir kesintide kaçabilir; istemci reconnect olduğunda MongoDB'deki güncel snapshot
+ve version ile toparlanır. Command ise başarılı application işlemi sonrasında ACK
+edilir. ACK edilmeyen stream girdileri çalışan process içinde de yeniden teslim
+edilir; handler receipt'leri aynı command'ın state'i ikinci kez değiştirmesini
+engeller.
+
+Deadline geçişleri kullanıcıya ait sahte bir kimlikle değil,
+`gameSessionRuntime` system actor'ı ve session/deadline'dan türetilen deterministik
+bir command ID ile kalıcılaştırılır. Böylece failover sırasında aynı deadline iki
+instance tarafından denenirse Mongo optimistic concurrency ile command receipt
+birlikte sonucu tekilleştirir.
+
+Lease süresi; renew aralığı, command timeout'u ve retry bütçesini kapsamak
+zorundadır. Aksi bir runtime konfigürasyonu başlangıçta reddedilir. Bu, uzun süren
+bir command yüzünden instance'ın fark etmeden lease dışına çıkmasını önler.
+
+Kullanıcı actor kimliği command payload'ından kabul edilmez. Realtime envelope'un
+`actorId` alanı ileride JWT doğrulayan transport gateway tarafından doldurulur;
+runtime CQRS command'larındaki `UserID` değerini yalnız bu doğrulanmış alandan
+üretir. Böylece bir house üyesi payload içinde başka bir üyenin ID'sini yazarak
+onun adına ready, leave veya cancel işlemi yapamaz.
+
+Bu paket WebSocket endpoint'i, bağlantı kimlik doğrulama, presence lifecycle,
+slow-consumer politikası, Flappy Bird fiziği/tick'leri, skor, elenme veya
+leaderboard içermez. Bunlar sırasıyla transport gateway ve oyuna özel runtime
+paketlerinde ele alınacaktır.

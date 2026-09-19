@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const createGameSessionCommandType = "gameSession.create"
+const CreateGameSessionCommandType = "gameSession.create"
 
 type CreateGameSessionCommand struct {
 	cqrs.Request[gameDomain.SessionSnapshot]
@@ -46,7 +46,7 @@ func (handler *CreateGameSessionHandler) Handle(
 	ctx context.Context,
 	command CreateGameSessionCommand,
 ) (gameDomain.SessionSnapshot, error) {
-	descriptor, err := describeCommand(command.CommandID, command.UserID, createGameSessionCommandType, struct {
+	descriptor, err := describeCommand(command.CommandID, command.UserID, CreateGameSessionCommandType, struct {
 		HouseID         string
 		GameKey         string
 		ProtocolVersion int

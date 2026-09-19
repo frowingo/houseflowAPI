@@ -11,7 +11,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
-const setPlayerReadyCommandType = "gameSession.setReady"
+const SetPlayerReadyCommandType = "gameSession.setReady"
 
 type SetPlayerReadyCommand struct {
 	cqrs.Request[gameDomain.SessionSnapshot]
@@ -37,7 +37,7 @@ func (handler *SetPlayerReadyHandler) Handle(
 	ctx context.Context,
 	command SetPlayerReadyCommand,
 ) (gameDomain.SessionSnapshot, error) {
-	descriptor, err := describeCommand(command.CommandID, command.UserID, setPlayerReadyCommandType, struct {
+	descriptor, err := describeCommand(command.CommandID, command.UserID, SetPlayerReadyCommandType, struct {
 		SessionID string
 		Ready     bool
 	}{command.SessionID, command.Ready})

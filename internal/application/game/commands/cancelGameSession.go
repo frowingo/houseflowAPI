@@ -12,7 +12,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
-const cancelGameSessionCommandType = "gameSession.cancel"
+const CancelGameSessionCommandType = "gameSession.cancel"
 
 type CancelGameSessionCommand struct {
 	cqrs.Request[gameDomain.SessionSnapshot]
@@ -37,7 +37,7 @@ func (handler *CancelGameSessionHandler) Handle(
 	ctx context.Context,
 	command CancelGameSessionCommand,
 ) (gameDomain.SessionSnapshot, error) {
-	descriptor, err := describeCommand(command.CommandID, command.UserID, cancelGameSessionCommandType, struct {
+	descriptor, err := describeCommand(command.CommandID, command.UserID, CancelGameSessionCommandType, struct {
 		SessionID string
 	}{command.SessionID})
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
+	"houseflowApi/internal/infrastructure/realtime"
 )
 
 const (
@@ -116,7 +117,11 @@ func runAPI() error {
 		controllers.ReadinessController(coordinationReadiness(coordinator)),
 	)
 
-	SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal)
+	roomManager, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, coordinator)
+	if err != nil {
+		return fmt.Errorf("initialize realtime room runtime: %w", err)
+	}
+	defer closeRoomManager(roomManager)
 
 	listenError := make(chan error, 1)
 	go func() {
@@ -149,6 +154,17 @@ func runAPI() error {
 	}
 
 	return nil
+}
+
+func closeRoomManager(manager *realtime.RoomManager) {
+	if manager == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	if err := manager.Close(ctx); err != nil && err != context.Canceled {
+		log.Printf("realtime room runtime shutdown failed: %v", err)
+	}
 }
 
 func disconnectDatabase(client interface{ Disconnect(context.Context) error }) {

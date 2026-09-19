@@ -15,12 +15,12 @@ import (
 )
 
 type redisCommandDelivery struct {
-	coordinator *RedisCoordinator
-	streamKey   string
-	entryID     string
-	envelope    coordinationAbstract.MessageEnvelope
-	ackOnce     sync.Once
-	ackError    error
+	coordinator  *RedisCoordinator
+	streamKey    string
+	entryID      string
+	envelope     coordinationAbstract.MessageEnvelope
+	mutex        sync.Mutex
+	acknowledged bool
 }
 
 func (delivery *redisCommandDelivery) Envelope() coordinationAbstract.MessageEnvelope {
@@ -28,13 +28,22 @@ func (delivery *redisCommandDelivery) Envelope() coordinationAbstract.MessageEnv
 }
 
 func (delivery *redisCommandDelivery) Ack(ctx context.Context) error {
-	delivery.ackOnce.Do(func() {
-		delivery.ackError = delivery.coordinator.client.XDel(ctx, delivery.streamKey, delivery.entryID).Err()
-		if delivery.ackError != nil {
-			delivery.ackError = unavailableError(delivery.ackError)
-		}
-	})
-	return delivery.ackError
+	delivery.mutex.Lock()
+	defer delivery.mutex.Unlock()
+	if delivery.acknowledged {
+		return nil
+	}
+	if err := delivery.coordinator.client.XDel(ctx, delivery.streamKey, delivery.entryID).Err(); err != nil {
+		return unavailableError(err)
+	}
+	delivery.acknowledged = true
+	return nil
+}
+
+func (delivery *redisCommandDelivery) isAcknowledged() bool {
+	delivery.mutex.Lock()
+	defer delivery.mutex.Unlock()
+	return delivery.acknowledged
 }
 
 type redisCommandSubscription struct {
@@ -47,6 +56,13 @@ type redisCommandSubscription struct {
 	started     atomic.Bool
 	closeOnce   sync.Once
 }
+
+type pendingCommandDelivery struct {
+	delivery       *redisCommandDelivery
+	redeliverAfter time.Time
+}
+
+const commandRedeliveryInterval = 2 * time.Second
 
 func newRedisCommandSubscription(
 	coordinator *RedisCoordinator,
@@ -94,6 +110,7 @@ func (subscription *redisCommandSubscription) readLoop() {
 
 	streamKey := commandStreamKey(subscription.coordinator.instanceID)
 	lastID := "0-0"
+	pending := make(map[string]*pendingCommandDelivery)
 	for {
 		streams, err := subscription.coordinator.client.XRead(subscription.ctx, &redis.XReadArgs{
 			Streams: []string{streamKey, lastID},
@@ -101,6 +118,7 @@ func (subscription *redisCommandSubscription) readLoop() {
 			Block:   time.Second,
 		}).Result()
 		if errors.Is(err, redis.Nil) {
+			subscription.redeliverPending(pending)
 			continue
 		}
 		if err != nil {
@@ -109,6 +127,7 @@ func (subscription *redisCommandSubscription) readLoop() {
 			}
 			subscription.coordinator.available.Store(false)
 			subscription.sendError(unavailableError(err))
+			subscription.redeliverPending(pending)
 			continue
 		}
 		subscription.coordinator.available.Store(true)
@@ -138,11 +157,38 @@ func (subscription *redisCommandSubscription) readLoop() {
 				}
 				select {
 				case subscription.deliveries <- delivery:
+					pending[message.ID] = &pendingCommandDelivery{
+						delivery:       delivery,
+						redeliverAfter: time.Now().Add(commandRedeliveryInterval),
+					}
 					lastID = message.ID
 				case <-subscription.ctx.Done():
 					return
 				}
 			}
+		}
+		subscription.redeliverPending(pending)
+	}
+}
+
+func (subscription *redisCommandSubscription) redeliverPending(
+	pending map[string]*pendingCommandDelivery,
+) {
+	now := time.Now()
+	for entryID, item := range pending {
+		if item.delivery.isAcknowledged() {
+			delete(pending, entryID)
+			continue
+		}
+		if now.Before(item.redeliverAfter) {
+			continue
+		}
+		select {
+		case subscription.deliveries <- item.delivery:
+			item.redeliverAfter = now.Add(commandRedeliveryInterval)
+		case <-subscription.ctx.Done():
+			return
+		default:
 		}
 	}
 }
