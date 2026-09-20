@@ -63,5 +63,9 @@ func AllMigrations() []Migration {
 		&gameSessionPersistence{},
 		// --- Game Session Command Idempotency ---
 		&gameSessionCommandReceipts{},
+		// --- Realtime WebSocket Gateway ---
+		&realtimeGateway{},
+		// --- Game Catalog And Active Session Slot ---
+		&gameCatalogActiveSession{},
 	}
 }

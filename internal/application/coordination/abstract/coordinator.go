@@ -27,6 +27,7 @@ type MessageEnvelope struct {
 	RoomID           string          `json:"roomId"`
 	Type             string          `json:"type"`
 	ActorID          string          `json:"actorId,omitempty"`
+	ConnectionID     string          `json:"connectionId,omitempty"`
 	SourceInstanceID string          `json:"sourceInstanceId"`
 	FencingToken     int64           `json:"fencingToken,omitempty"`
 	Sequence         int64           `json:"sequence,omitempty"`

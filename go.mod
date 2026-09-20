@@ -6,7 +6,9 @@ toolchain go1.24.11
 
 require (
 	github.com/cloudinary/cloudinary-go/v2 v2.15.0
+	github.com/fasthttp/websocket v1.5.8
 	github.com/go-playground/validator/v10 v10.30.1
+	github.com/gofiber/contrib/websocket v1.3.4
 	github.com/redis/go-redis/v9 v9.22.0
 )
 
@@ -20,7 +22,9 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )
 

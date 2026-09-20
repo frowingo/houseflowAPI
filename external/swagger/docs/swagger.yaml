@@ -1,11 +1,122 @@
 basePath: /api/v1
 definitions:
-  dtos.AnnouncementResponseModel:
+  houseflowApi_internal_data_entities.ChoreLevel:
+    enum:
+    - 10
+    - 20
+    - 30
+    type: integer
+    x-enum-varnames:
+    - Easy
+    - Medium
+    - Hard
+  houseflowApi_internal_data_entities.ChoreStatus:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-varnames:
+    - Draft
+    - Progress
+    - InTest
+    - Completed
+  houseflowApi_internal_models_core.ApiResponse-any:
+    properties:
+      data: {}
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ImageAssetResultModel'
+        type: array
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationLanguageResponseModel:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.LocalizationLanguageResponseModel'
+        type: array
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationPlaintextResponseModel:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.LocalizationPlaintextResponseModel'
+        type: array
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameSessionResponseModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.GameSessionResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseDetailsModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.HouseDetailsModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInfosResponseModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.HouseInfosResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInviteCodeResponseModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.HouseInviteCodeResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseResponseModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.HouseResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_UserResultModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UserResultModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ErrorResponse:
+    properties:
+      error:
+        type: string
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_dtos.AnnouncementResponseModel:
     properties:
       announcedBy:
         type: string
       createdOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       description:
         type: string
       houseId:
@@ -15,20 +126,77 @@ definitions:
       title:
         type: string
     type: object
-  dtos.ChoreResponseModel:
+  houseflowApi_internal_models_dtos.AuthHouseModel:
+    properties:
+      houseId:
+        type: string
+      houseName:
+        type: string
+      houseProfile:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.AuthUserResultModel:
+    properties:
+      birthDay:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      createdOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      email:
+        type: string
+      firstName:
+        type: string
+      houseList:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.AuthHouseModel'
+        type: array
+      id:
+        type: string
+      imageUrl:
+        type: string
+      isActive:
+        type: boolean
+      isVerifyEmail:
+        type: boolean
+      isVerifyPhone:
+        type: boolean
+      language:
+        type: string
+      lastLogin:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      lastName:
+        type: string
+      phoneNumber:
+        type: string
+      updatedOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+    type: object
+  houseflowApi_internal_models_dtos.BulkUpdateChoreStatusModel:
+    properties:
+      chores:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.UpdateChoreStatusModel'
+        minItems: 1
+        type: array
+      houseId:
+        type: string
+    required:
+    - chores
+    - houseId
+    type: object
+  houseflowApi_internal_models_dtos.ChoreResponseModel:
     properties:
       assignedTo:
         type: string
       completedAt:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       completedBy:
         type: string
       createdOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       description:
         type: string
       dueDate:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       houseId:
         type: string
       houseOwnerId:
@@ -40,15 +208,68 @@ definitions:
       isRecurring:
         type: boolean
       level:
-        $ref: '#/definitions/entities.ChoreLevel'
+        $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreLevel'
       recurringInterval:
         type: integer
+      reviewRound:
+        type: integer
+      reviewVotes:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreReviewVoteModel'
+        type: array
       status:
-        $ref: '#/definitions/entities.ChoreStatus'
+        $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreStatus'
+      statusHistories:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreStatusHistoryModel'
+        type: array
       title:
         type: string
     type: object
-  dtos.CreateChoreModel:
+  houseflowApi_internal_models_dtos.ChoreReviewVoteModel:
+    properties:
+      choreId:
+        type: string
+      createdOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      houseId:
+        type: string
+      id:
+        type: string
+      isApproved:
+        type: boolean
+      reviewRound:
+        type: integer
+      reviewerId:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.ChoreStatusHistoryModel:
+    properties:
+      choreId:
+        type: string
+      dateTime:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      id:
+        type: string
+      status:
+        $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreStatus'
+      updater:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.CreateAnnouncementModel:
+    properties:
+      description:
+        type: string
+      houseId:
+        type: string
+      title:
+        type: string
+    required:
+    - description
+    - houseId
+    - title
+    type: object
+  houseflowApi_internal_models_dtos.CreateChoreModel:
     properties:
       assignedTo:
         type: string
@@ -57,7 +278,7 @@ definitions:
         minLength: 5
         type: string
       dueDate:
-        example: "2026-07-12 00:00:00"
+        example: "2026-07-12T00:00:00Z"
         type: string
       houseId:
         type: string
@@ -65,9 +286,11 @@ definitions:
         type: boolean
       level:
         allOf:
-        - $ref: '#/definitions/entities.ChoreLevel'
+        - $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreLevel'
         enum:
         - 10
+        - 20
+        - 30
       recurringInterval:
         maximum: 365
         minimum: 1
@@ -84,20 +307,7 @@ definitions:
     - level
     - title
     type: object
-  dtos.CreateAnnouncementModel:
-    properties:
-      description:
-        type: string
-      houseId:
-        type: string
-      title:
-        type: string
-    required:
-    - description
-    - houseId
-    - title
-    type: object
-  dtos.CreateHouseModel:
+  houseflowApi_internal_models_dtos.CreateHouseModel:
     properties:
       maxMemberCount:
         maximum: 8
@@ -119,10 +329,31 @@ definitions:
     required:
     - maxMemberCount
     - name
-    - ownerId
     - type
     type: object
-  dtos.ExitHouseModel:
+  houseflowApi_internal_models_dtos.CreateImageAssetModel:
+    properties:
+      category:
+        type: string
+      fileName:
+        type: string
+      fileURL:
+        type: string
+      isActive:
+        type: boolean
+    required:
+    - category
+    - fileName
+    - fileURL
+    type: object
+  houseflowApi_internal_models_dtos.EnsureGameSessionModel:
+    properties:
+      houseId:
+        type: string
+    required:
+    - houseId
+    type: object
+  houseflowApi_internal_models_dtos.ExitHouseModel:
     properties:
       houseId:
         type: string
@@ -132,25 +363,102 @@ definitions:
     - houseId
     - userId
     type: object
-  dtos.HouseDetailsModel:
+  houseflowApi_internal_models_dtos.ForgotPasswordRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  houseflowApi_internal_models_dtos.GameSessionPlayerModel:
+    properties:
+      joinedAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      leftAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      playerId:
+        type: string
+      readyAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      state:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.GameSessionResponseModel:
+    properties:
+      countdownEndsAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      createdAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      createdBy:
+        type: string
+      endReason:
+        type: string
+      endedAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      gameKey:
+        type: string
+      houseId:
+        type: string
+      mode:
+        type: string
+      players:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.GameSessionPlayerModel'
+        type: array
+      protocolVersion:
+        type: integer
+      readyWindowEndsAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      rules:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.GameSessionRulesModel'
+      sessionId:
+        type: string
+      startedAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      state:
+        type: string
+      updatedAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      version:
+        type: integer
+    type: object
+  houseflowApi_internal_models_dtos.GameSessionRulesModel:
+    properties:
+      countdownMilliseconds:
+        type: integer
+      maximumPlayers:
+        type: integer
+      minimumPlayers:
+        type: integer
+      readyWindowMilliseconds:
+        type: integer
+    type: object
+  houseflowApi_internal_models_dtos.GenerateHouseInviteCodeModel:
+    properties:
+      houseId:
+        type: string
+    required:
+    - houseId
+    type: object
+  houseflowApi_internal_models_dtos.HouseDetailsModel:
     properties:
       announcements:
         items:
-          $ref: '#/definitions/dtos.AnnouncementResponseModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel'
         type: array
       chores:
         items:
-          $ref: '#/definitions/dtos.ChoreResponseModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel'
         type: array
       createdOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       id:
         type: string
       maxMemberCount:
         type: integer
       members:
         items:
-          $ref: '#/definitions/dtos.UserResultModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.UserResultModel'
         type: array
       name:
         type: string
@@ -165,9 +473,9 @@ definitions:
         - 3
         type: integer
       updatedOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
     type: object
-  dtos.HouseInfosResponseModel:
+  houseflowApi_internal_models_dtos.HouseInfosResponseModel:
     properties:
       houseMemberCount:
         type: integer
@@ -175,7 +483,7 @@ definitions:
         type: integer
       houseMembers:
         items:
-          $ref: '#/definitions/dtos.HouseMemberInfoModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.HouseMemberInfoModel'
         type: array
       houseName:
         type: string
@@ -188,10 +496,28 @@ definitions:
         - 3
         type: integer
     type: object
-  dtos.HouseResponseModel:
+  houseflowApi_internal_models_dtos.HouseInviteCodeResponseModel:
+    properties:
+      expiresInSeconds:
+        type: integer
+      inviteCode:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.HouseMemberInfoModel:
+    properties:
+      isOwner:
+        type: boolean
+      name:
+        type: string
+      profileImage:
+        type: string
+      userId:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.HouseResponseModel:
     properties:
       createdOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       id:
         type: string
       maxMemberCount:
@@ -213,58 +539,116 @@ definitions:
         - 3
         type: integer
       updatedOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
     type: object
-  dtos.HouseMemberInfoModel:
+  houseflowApi_internal_models_dtos.ImageAssetResultModel:
     properties:
-      isOwner:
-        type: boolean
-      name:
+      createdOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      fileName:
         type: string
-      profileImage:
+      fileURL:
         type: string
-      userId:
+      publicId:
         type: string
+      updatedOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
     type: object
-  dtos.JoinHouseByCodeModel:
+  houseflowApi_internal_models_dtos.IsAuthResponseModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.AuthUserResultModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_dtos.JoinHouseByCodeModel:
     properties:
       inviteCode:
         type: string
     required:
     - inviteCode
     type: object
-  dtos.GenerateHouseInviteCodeModel:
+  houseflowApi_internal_models_dtos.LocalizationLanguageRequestModel:
     properties:
-      houseId:
+      image:
+        type: string
+      isActive:
+        type: boolean
+      isDefault:
+        type: boolean
+      name:
+        type: string
+      nativeName:
+        type: string
+      prefix:
         type: string
     required:
-    - houseId
+    - image
+    - name
+    - nativeName
+    - prefix
     type: object
-  dtos.HouseInviteCodeResponseModel:
+  houseflowApi_internal_models_dtos.LocalizationLanguageResponseModel:
     properties:
-      expiresInSeconds:
-        type: integer
-      inviteCode:
+      image:
+        type: string
+      isActive:
+        type: boolean
+      isDefault:
+        type: boolean
+      name:
+        type: string
+      nativeName:
+        type: string
+      prefix:
         type: string
     type: object
-  dtos.LoginRequestModel:
+  houseflowApi_internal_models_dtos.LocalizationPlaintextResponseModel:
+    properties:
+      key:
+        type: string
+      language:
+        type: string
+      value:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.LocalizationRequestModel:
+    properties:
+      key:
+        type: string
+      language:
+        type: string
+      type:
+        type: string
+      value:
+        type: string
+    required:
+    - key
+    - language
+    - type
+    - value
+    type: object
+  houseflowApi_internal_models_dtos.LoginRequestModel:
     properties:
       email:
         type: string
       password:
         type: string
     type: object
-  dtos.NewUserModel:
+  houseflowApi_internal_models_dtos.NewUserModel:
     properties:
-      age:
-        maximum: 150
-        minimum: 0
-        type: integer
+      birthDay:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       email:
         type: string
       firstName:
         maxLength: 50
         minLength: 2
+        type: string
+      language:
+        enum:
+        - en
+        - tr
         type: string
       lastName:
         maxLength: 50
@@ -283,7 +667,31 @@ definitions:
     - lastName
     - password
     type: object
-  dtos.SignUpUserModel:
+  houseflowApi_internal_models_dtos.ResetPasswordRequest:
+    properties:
+      code:
+        type: string
+      email:
+        type: string
+      newPassword:
+        minLength: 6
+        type: string
+    required:
+    - code
+    - email
+    - newPassword
+    type: object
+  houseflowApi_internal_models_dtos.ReviewChoreModel:
+    properties:
+      choreId:
+        type: string
+      isApproved:
+        type: boolean
+    required:
+    - choreId
+    - isApproved
+    type: object
+  houseflowApi_internal_models_dtos.SignUpUserModel:
     properties:
       email:
         type: string
@@ -304,12 +712,33 @@ definitions:
     - lastName
     - password
     type: object
-  dtos.SuccessResponseModel:
+  houseflowApi_internal_models_dtos.SuccessResponseModel:
     properties:
       success:
         type: boolean
     type: object
-  dtos.UpdateHouseProfileModel:
+  houseflowApi_internal_models_dtos.UTCDateTime:
+    properties:
+      time.Time:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.UpdateChoreStatusModel:
+    properties:
+      choreId:
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreStatus'
+        enum:
+        - 0
+        - 1
+        - 2
+        - 3
+    required:
+    - choreId
+    - status
+    type: object
+  houseflowApi_internal_models_dtos.UpdateHouseProfileModel:
     properties:
       houseMemberCountLimit:
         maximum: 8
@@ -327,34 +756,34 @@ definitions:
         - 2
         - 3
         type: integer
-    type: object
-  dtos.UpdateChoreStatusModel:
-    properties:
-      choreId:
-        type: string
-      status:
-        allOf:
-        - $ref: '#/definitions/entities.ChoreStatus'
-        enum:
-        - 0
     required:
-    - choreId
-    - status
+    - houseName
+    - houseProfileImage
     type: object
-  dtos.UpdateUserModel:
+  houseflowApi_internal_models_dtos.UpdateImageAssetModel:
     properties:
-      age:
-        maximum: 150
-        minimum: 0
-        type: integer
+      fileURL:
+        type: string
+      isActive:
+        type: boolean
+      publicId:
+        type: string
+    required:
+    - publicId
+    type: object
+  houseflowApi_internal_models_dtos.UpdateUserModel:
+    properties:
+      birthDay:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       firstName:
         type: string
       imageUrl:
         type: string
-      isVerifyEmail:
-        type: boolean
-      isVerifyPhone:
-        type: boolean
+      language:
+        enum:
+        - en
+        - tr
+        type: string
       lastName:
         type: string
       phoneNumber:
@@ -362,12 +791,12 @@ definitions:
         minLength: 10
         type: string
     type: object
-  dtos.UserResultModel:
+  houseflowApi_internal_models_dtos.UserResultModel:
     properties:
-      age:
-        type: integer
+      birthDay:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       createdOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       email:
         type: string
       firstName:
@@ -386,71 +815,23 @@ definitions:
         type: boolean
       isVerifyPhone:
         type: boolean
-      lastLogin:
+      language:
         type: string
+      lastLogin:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       lastName:
         type: string
       phoneNumber:
         type: string
       updatedOn:
-        type: string
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
     type: object
-  entities.ChoreLevel:
-    enum:
-    - 10
-    - 20
-    - 30
-    type: integer
-    x-enum-varnames:
-    - Easy
-    - Medium
-    - Hard
-  entities.ChoreStatus:
-    enum:
-    - 0
-    - 1
-    - 2
-    - 3
-    type: integer
-    x-enum-varnames:
-    - Draft
-    - Progress
-    - InTest
-    - Completed
-  entities.User:
+  houseflowApi_internal_models_dtos.ValidateEmailRequest:
     properties:
-      age:
-        type: integer
-      createdOn:
+      code:
         type: string
-      email:
-        type: string
-      firstName:
-        type: string
-      houseIds:
-        items:
-          type: string
-        type: array
-      id:
-        type: string
-      imageUrl:
-        type: string
-      isActive:
-        type: boolean
-      isVerifyEmail:
-        type: boolean
-      isVerifyPhone:
-        type: boolean
-      lastLogin:
-        type: string
-      lastName:
-        type: string
-      password:
-        type: string
-      phoneNumber:
-        type: string
-      updatedOn:
-        type: string
+    required:
+    - code
     type: object
 host: localhost:3162
 info:
@@ -465,6 +846,52 @@ info:
   title: HouseFlow API
   version: "1.0"
 paths:
+  /auth/forget:
+    post:
+      consumes:
+      - application/json
+      description: Generates a 6-character reset code for the given email and sends
+        it to the user's email address.
+      parameters:
+      - description: Email address
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Operation status
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+      summary: Forgot Password
+      tags:
+      - Auth
+  /auth/isAuth:
+    get:
+      description: Returns true if the token has not expired, false otherwise
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.IsAuthResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.IsAuthResponseModel'
+      security:
+      - BearerAuth: []
+      summary: Check if token is valid
+      tags:
+      - Auth
   /auth/login:
     post:
       consumes:
@@ -476,7 +903,7 @@ paths:
         name: login
         required: true
         schema:
-          $ref: '#/definitions/dtos.LoginRequestModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.LoginRequestModel'
       produces:
       - application/json
       responses:
@@ -499,6 +926,35 @@ paths:
       summary: User Login
       tags:
       - Auth
+  /auth/reset:
+    post:
+      consumes:
+      - application/json
+      description: Verifies the 6-character reset code and updates the user's password.
+      parameters:
+      - description: Reset credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password updated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request or invalid code
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Reset Password
+      tags:
+      - Auth
   /auth/signup:
     post:
       consumes:
@@ -511,7 +967,7 @@ paths:
         name: signup
         required: true
         schema:
-          $ref: '#/definitions/dtos.SignUpUserModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.SignUpUserModel'
       produces:
       - application/json
       responses:
@@ -532,6 +988,64 @@ paths:
             additionalProperties: true
             type: object
       summary: User Signup
+      tags:
+      - Auth
+  /auth/validate-email:
+    get:
+      description: Sends a 6-character verification code to the authenticated user's
+        email address.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification code sent
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Send Email Verification Code
+      tags:
+      - Auth
+    post:
+      consumes:
+      - application/json
+      description: Verifies the authenticated user's email address with the submitted
+        6-character code.
+      parameters:
+      - description: Verification code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ValidateEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email verified
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "400":
+          description: Bad request or invalid code
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Validate Email
       tags:
       - Auth
   /base/health:
@@ -559,14 +1073,14 @@ paths:
         name: chore
         required: true
         schema:
-          $ref: '#/definitions/dtos.CreateChoreModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.CreateChoreModel'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
-            $ref: '#/definitions/dtos.ChoreResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel'
         "400":
           description: Bad Request
           schema:
@@ -598,14 +1112,14 @@ paths:
         name: chore
         required: true
         schema:
-          $ref: '#/definitions/dtos.CreateChoreModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.CreateChoreModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.ChoreResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel'
         "400":
           description: Bad Request
           schema:
@@ -626,6 +1140,45 @@ paths:
       summary: Update chore
       tags:
       - Chore
+  /chore/review:
+    put:
+      consumes:
+      - application/json
+      description: Approve or reject a chore that is in review
+      parameters:
+      - description: Review object
+        in: body
+        name: review
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ReviewChoreModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Review chore
+      tags:
+      - Chore
   /chore/status:
     put:
       consumes:
@@ -637,16 +1190,16 @@ paths:
         name: statusUpdates
         required: true
         schema:
-          items:
-            $ref: '#/definitions/dtos.UpdateChoreStatusModel'
-          type: array
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.BulkUpdateChoreStatusModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            type: boolean
+            items:
+              $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel'
+            type: array
         "400":
           description: Bad Request
           schema:
@@ -667,6 +1220,102 @@ paths:
       summary: Update chore status
       tags:
       - Chore
+  /game/{gameKey}/session:
+    get:
+      consumes:
+      - application/json
+      description: Returns the current non-terminal session for the selected house
+        and game without creating one.
+      parameters:
+      - description: Game key
+        example: flappyBird
+        in: path
+        name: gameKey
+        required: true
+        type: string
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameSessionResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Requester is not a house member
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "404":
+          description: Active session or game not found
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the active game session
+      tags:
+      - Game
+    put:
+      consumes:
+      - application/json
+      description: Returns the current active session for the house and game, or atomically
+        creates one from the server-side game catalog.
+      parameters:
+      - description: Game key
+        example: flappyBird
+        in: path
+        name: gameKey
+        required: true
+        type: string
+      - description: House selection
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.EnsureGameSessionModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameSessionResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Requester is not a house member
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "404":
+          description: Game not found
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "409":
+          description: House capacity is too small
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ensure an active game session
+      tags:
+      - Game
   /house/announcement:
     post:
       consumes:
@@ -678,24 +1327,22 @@ paths:
         name: announcement
         required: true
         schema:
-          $ref: '#/definitions/dtos.CreateAnnouncementModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.CreateAnnouncementModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.AnnouncementResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Create a house announcement
@@ -711,24 +1358,22 @@ paths:
         name: house
         required: true
         schema:
-          $ref: '#/definitions/dtos.CreateHouseModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.CreateHouseModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseResponseModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Create new house
@@ -750,17 +1395,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseDetailsModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseDetailsModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get house details
@@ -777,39 +1420,34 @@ paths:
         name: exitRequest
         required: true
         schema:
-          $ref: '#/definitions/dtos.ExitHouseModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ExitHouseModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.SuccessResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "403":
           description: Insufficient house permissions
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "404":
           description: House or member not found
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "409":
           description: House membership changed concurrently
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Exit a house or remove a member
@@ -831,30 +1469,59 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseInfosResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInfosResponseModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "403":
           description: Requester is not a house member
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "404":
           description: House not found
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get house profile information
+      tags:
+      - House
+  /house/inviteCode:
+    post:
+      consumes:
+      - application/json
+      description: Generates an 8-character invite code that expires after the configured
+        validity period.
+      parameters:
+      - description: Invite code request
+        in: body
+        name: inviteRequest
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.GenerateHouseInviteCodeModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInviteCodeResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate a temporary house invite code
       tags:
       - House
   /house/join:
@@ -867,68 +1534,33 @@ paths:
         name: joinRequest
         required: true
         schema:
-          $ref: '#/definitions/dtos.JoinHouseByCodeModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.JoinHouseByCodeModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseResponseModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Join house by invite code
-      tags:
-      - House
-  /house/inviteCode:
-    post:
-      consumes:
-      - application/json
-      description: Generates an 8-character invite code that expires after the configured validity period.
-      parameters:
-      - description: Invite code request
-        in: body
-        name: inviteRequest
-        required: true
-        schema:
-          $ref: '#/definitions/dtos.GenerateHouseInviteCodeModel'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dtos.HouseInviteCodeResponseModel'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Generate a temporary house invite code
       tags:
       - House
   /house/profile:
     put:
       consumes:
       - application/json
-      description: Only the house owner can update fields. Each field can be changed once every 48 hours.
+      description: Only the house owner can update fields. Each field can be changed
+        once every 48 hours.
       parameters:
       - description: House ID
         in: query
@@ -940,49 +1572,179 @@ paths:
         name: profile
         required: true
         schema:
-          $ref: '#/definitions/dtos.UpdateHouseProfileModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.UpdateHouseProfileModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.HouseInfosResponseModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInfosResponseModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "403":
           description: Only the house owner can update the profile
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "404":
           description: House not found
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "409":
           description: Member limit is below current member count
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "429":
           description: Field update interval has not elapsed
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Update house profile
       tags:
       - House
+  /language:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Localization values
+        in: body
+        name: localization
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.LocalizationRequestModel'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Insert localization values
+      tags:
+      - Localization
+  /localization/language:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Localization language
+        in: body
+        name: language
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.LocalizationLanguageRequestModel'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Insert localization language
+      tags:
+      - Localization
+  /localization/language/{prefix}:
+    get:
+      parameters:
+      - description: Language prefix
+        in: path
+        name: prefix
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationLanguageResponseModel'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get supported localization language by prefix
+      tags:
+      - Localization
+  /localization/languages:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationLanguageResponseModel'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get supported localization languages
+      tags:
+      - Localization
+  /localization/plaintext/{language}:
+    get:
+      parameters:
+      - description: Language code
+        in: path
+        name: language
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationPlaintextResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      summary: Get plaintext localization values
+      tags:
+      - Localization
   /user:
     post:
       consumes:
@@ -994,14 +1756,14 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/dtos.NewUserModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.NewUserModel'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/dtos.NewUserModel'
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.NewUserModel'
         "400":
           description: Bad Request
           schema:
@@ -1065,20 +1827,80 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/entities.User'
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.UserResultModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get user by email
+      tags:
+      - User
+  /user/getImage:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve an image asset by its public ID
+      parameters:
+      - description: Image public ID
+        in: query
+        name: publicId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get image by public ID
+      tags:
+      - User
+  /user/getImages:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all image assets for a given category
+      parameters:
+      - description: Image category
+        in: query
+        name: category
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get images by category
       tags:
       - User
   /user/getUsersByHouse:
@@ -1099,21 +1921,91 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/entities.User'
+              $ref: '#/definitions/houseflowApi_internal_models_dtos.UserResultModel'
             type: array
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get users by house
+      tags:
+      - User
+  /user/images:
+    post:
+      consumes:
+      - application/json
+      description: Create a new image asset (SuperAdmin only)
+      parameters:
+      - description: Image asset data
+        in: body
+        name: image
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.CreateImageAssetModel'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create image asset
+      tags:
+      - User
+    put:
+      consumes:
+      - application/json
+      description: Update fileURL and/or isActive of an image asset by publicId (SuperAdmin
+        only)
+      parameters:
+      - description: Fields to update
+        in: body
+        name: image
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.UpdateImageAssetModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update image asset
       tags:
       - User
   /user/profile/{id}:
@@ -1133,24 +2025,22 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/dtos.UpdateUserModel'
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.UpdateUserModel'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/entities.User'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_UserResultModel'
         "400":
           description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Update user profile
@@ -1168,7 +2058,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/dtos.NewUserModel'
+              $ref: '#/definitions/houseflowApi_internal_models_dtos.UserResultModel'
             type: array
         "400":
           description: Bad Request

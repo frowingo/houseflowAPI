@@ -18,18 +18,20 @@ import (
 const gameSessionAggregateType = "gameSession"
 
 type GameSessionRepository struct {
-	sessions databaseAbstract.DbRepository[gameSessionDocument]
-	outbox   databaseAbstract.DbRepository[entities.OutboxMessage]
-	receipts databaseAbstract.DbRepository[entities.GameSessionCommandReceipt]
+	sessions       databaseAbstract.DbRepository[gameSessionDocument]
+	activeSessions databaseAbstract.DbRepository[activeGameSessionDocument]
+	outbox         databaseAbstract.DbRepository[entities.OutboxMessage]
+	receipts       databaseAbstract.DbRepository[entities.GameSessionCommandReceipt]
 }
 
 var _ gameAbstract.GameSessionRepository = (*GameSessionRepository)(nil)
 
 func NewGameSessionRepository(client *mongo.Client, dbName string) *GameSessionRepository {
 	return &GameSessionRepository{
-		sessions: NewDbContext[gameSessionDocument](client, dbName),
-		outbox:   NewDbContext[entities.OutboxMessage](client, dbName),
-		receipts: NewDbContext[entities.GameSessionCommandReceipt](client, dbName),
+		sessions:       NewDbContext[gameSessionDocument](client, dbName),
+		activeSessions: NewDbContext[activeGameSessionDocument](client, dbName),
+		outbox:         NewDbContext[entities.OutboxMessage](client, dbName),
+		receipts:       NewDbContext[entities.GameSessionCommandReceipt](client, dbName),
 	}
 }
 
@@ -51,9 +53,18 @@ func (repository *GameSessionRepository) Create(
 		return gameAbstract.PersistenceResult{}, err
 	}
 	receipt := commandReceipt(command, snapshot.SessionID)
+	activeSession := activeGameSessionDocument{
+		HouseID:   snapshot.HouseID,
+		GameKey:   snapshot.GameKey,
+		SessionID: snapshot.SessionID,
+		CreatedAt: snapshot.CreatedAt,
+	}
 
 	err = repository.sessions.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
 		if _, err := repository.receipts.Insert(txCtx, receipt); err != nil {
+			return err
+		}
+		if _, err := repository.activeSessions.Insert(txCtx, activeSession); err != nil {
 			return err
 		}
 		if _, err := repository.sessions.Insert(txCtx, document); err != nil {
@@ -68,6 +79,13 @@ func (repository *GameSessionRepository) Create(
 		}
 		if found {
 			return result, nil
+		}
+		active, activeErr := repository.FindActive(ctx, snapshot.HouseID, snapshot.GameKey)
+		if activeErr == nil && active.Snapshot().SessionID != snapshot.SessionID {
+			return gameAbstract.PersistenceResult{}, gameAbstract.ErrActiveGameSessionExists
+		}
+		if activeErr != nil && !errors.Is(activeErr, gameAbstract.ErrGameSessionNotFound) {
+			return gameAbstract.PersistenceResult{}, activeErr
 		}
 		return gameAbstract.PersistenceResult{}, gameAbstract.ErrGameSessionAlreadyExists
 	}
@@ -95,6 +113,42 @@ func (repository *GameSessionRepository) FindByID(
 	session, err := gameDomain.RestoreGameSession(document.snapshot())
 	if err != nil {
 		return nil, err
+	}
+	return session, nil
+}
+
+func (repository *GameSessionRepository) FindActive(
+	ctx context.Context,
+	houseID string,
+	gameKey string,
+) (*gameDomain.GameSession, error) {
+	if houseID == "" {
+		return nil, gameDomain.ErrHouseIDRequired
+	}
+	if gameKey == "" {
+		return nil, gameDomain.ErrGameKeyRequired
+	}
+	var active activeGameSessionDocument
+	err := repository.activeSessions.Collection().FindOne(ctx, bson.M{
+		"houseId": houseID,
+		"gameKey": gameKey,
+	}).Decode(&active)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, gameAbstract.ErrGameSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	session, err := repository.FindByID(ctx, active.SessionID)
+	if errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
+		return nil, gameAbstract.ErrActiveSessionInvariant
+	}
+	if err != nil {
+		return nil, err
+	}
+	snapshot := session.Snapshot()
+	if snapshot.HouseID != houseID || snapshot.GameKey != gameKey || isTerminalSession(snapshot.State) {
+		return nil, gameAbstract.ErrActiveSessionInvariant
 	}
 	return session, nil
 }
@@ -167,6 +221,19 @@ func (repository *GameSessionRepository) Save(
 			}
 			return gameAbstract.ErrConcurrentSessionUpdate
 		}
+		if isTerminalSession(snapshot.State) {
+			result, err := repository.activeSessions.Collection().DeleteOne(txCtx, bson.M{
+				"houseId":   snapshot.HouseID,
+				"gameKey":   snapshot.GameKey,
+				"sessionId": snapshot.SessionID,
+			})
+			if err != nil {
+				return err
+			}
+			if result.DeletedCount != 1 {
+				return gameAbstract.ErrActiveSessionInvariant
+			}
+		}
 		return repository.outbox.InsertMany(txCtx, messages)
 	})
 	if err != nil {
@@ -180,6 +247,10 @@ func (repository *GameSessionRepository) Save(
 		return gameAbstract.PersistenceResult{}, err
 	}
 	return gameAbstract.PersistenceResult{SessionID: snapshot.SessionID}, nil
+}
+
+func isTerminalSession(state gameDomain.SessionState) bool {
+	return state == gameDomain.SessionFinished || state == gameDomain.SessionCancelled
 }
 
 func validateCommandDescriptor(command gameAbstract.CommandDescriptor) error {

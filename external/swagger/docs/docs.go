@@ -23,6 +23,77 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/forget": {
+            "post": {
+                "description": "Generates a 6-character reset code for the given email and sends it to the user's email address.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Forgot Password",
+                "parameters": [
+                    {
+                        "description": "Email address",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ForgotPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Operation status",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/isAuth": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns true if the token has not expired, false otherwise",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Check if token is valid",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.IsAuthResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.IsAuthResponseModel"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Login with email and password to receive JWT token",
@@ -43,7 +114,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.LoginRequestModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.LoginRequestModel"
                         }
                     }
                 ],
@@ -74,6 +145,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/reset": {
+            "post": {
+                "description": "Verifies the 6-character reset code and updates the user's password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Reset Password",
+                "parameters": [
+                    {
+                        "description": "Reset credentials",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ResetPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Password updated",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request or invalid code",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/auth/signup": {
             "post": {
                 "description": "Signup with email, password, firstname, and lastname to receive JWT token",
@@ -94,7 +209,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.SignUpUserModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SignUpUserModel"
                         }
                     }
                 ],
@@ -117,6 +232,94 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Invalid credentials",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/validate-email": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sends a 6-character verification code to the authenticated user's email address.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Send Email Verification Code",
+                "responses": {
+                    "200": {
+                        "description": "Verification code sent",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Verifies the authenticated user's email address with the submitted 6-character code.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Validate Email",
+                "parameters": [
+                    {
+                        "description": "Verification code",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ValidateEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email verified",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request or invalid code",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -172,15 +375,15 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.CreateChoreModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.CreateChoreModel"
                         }
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.ChoreResponseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel"
                         }
                     },
                     "400": {
@@ -192,6 +395,66 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/chore/review": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Approve or reject a chore that is in review",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chore"
+                ],
+                "summary": "Review chore",
+                "parameters": [
+                    {
+                        "description": "Review object",
+                        "name": "review",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ReviewChoreModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -225,10 +488,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/dtos.UpdateChoreStatusModel"
-                            }
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.BulkUpdateChoreStatusModel"
                         }
                     }
                 ],
@@ -236,7 +496,10 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "boolean"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel"
+                            }
                         }
                     },
                     "400": {
@@ -295,7 +558,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.CreateChoreModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.CreateChoreModel"
                         }
                     }
                 ],
@@ -303,7 +566,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.ChoreResponseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel"
                         }
                     },
                     "400": {
@@ -330,14 +593,158 @@ const docTemplate = `{
                 }
             }
         },
-        "/house/announcement": {
-            "post": {
-                "description": "Create an announcement that is displayed for 24 hours",
+        "/game/{gameKey}/session": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
+                "description": "Returns the current non-terminal session for the selected house and game without creating one.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "Get the active game session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "flappyBird",
+                        "description": "Game key",
+                        "name": "gameKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameSessionResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Requester is not a house member",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Active session or game not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the current active session for the house and game, or atomically creates one from the server-side game catalog.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "Ensure an active game session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "flappyBird",
+                        "description": "Game key",
+                        "name": "gameKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "House selection",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.EnsureGameSessionModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameSessionResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Requester is not a house member",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Game not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "House capacity is too small",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/house/announcement": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create an announcement that is displayed for 24 hours",
                 "consumes": [
                     "application/json"
                 ],
@@ -355,7 +762,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.CreateAnnouncementModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.CreateAnnouncementModel"
                         }
                     }
                 ],
@@ -363,21 +770,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.AnnouncementResponseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -407,7 +812,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.CreateHouseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.CreateHouseModel"
                         }
                     }
                 ],
@@ -415,21 +820,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.HouseResponseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseResponseModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -465,21 +868,148 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.HouseDetailsModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseDetailsModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/house/exit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A member can leave the house; the owner can remove another member.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Exit a house or remove a member",
+                "parameters": [
+                    {
+                        "description": "House and target user",
+                        "name": "exitRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ExitHouseModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Insufficient house permissions",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "House or member not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "House membership changed concurrently",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/house/infos": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Get house profile information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInfosResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Requester is not a house member",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "House not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -510,7 +1040,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.GenerateHouseInviteCodeModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.GenerateHouseInviteCodeModel"
                         }
                     }
                 ],
@@ -518,21 +1048,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.HouseInviteCodeResponseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInviteCodeResponseModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -562,7 +1090,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.JoinHouseByCodeModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.JoinHouseByCodeModel"
                         }
                     }
                 ],
@@ -570,21 +1098,319 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.HouseResponseModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseResponseModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/house/profile": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Only the house owner can update fields. Each field can be changed once every 48 hours.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "House"
+                ],
+                "summary": "Update house profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "House profile fields",
+                        "name": "profile",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.UpdateHouseProfileModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInfosResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Only the house owner can update the profile",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "House not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Member limit is below current member count",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Field update interval has not elapsed",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/language": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Localization"
+                ],
+                "summary": "Insert localization values",
+                "parameters": [
+                    {
+                        "description": "Localization values",
+                        "name": "localization",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/houseflowApi_internal_models_dtos.LocalizationRequestModel"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/localization/language": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Localization"
+                ],
+                "summary": "Insert localization language",
+                "parameters": [
+                    {
+                        "description": "Localization language",
+                        "name": "language",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.LocalizationLanguageRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/localization/language/{prefix}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Localization"
+                ],
+                "summary": "Get supported localization language by prefix",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Language prefix",
+                        "name": "prefix",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationLanguageResponseModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/localization/languages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Localization"
+                ],
+                "summary": "Get supported localization languages",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationLanguageResponseModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/localization/plaintext/{language}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Localization"
+                ],
+                "summary": "Get plaintext localization values",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Language code",
+                        "name": "language",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationPlaintextResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -615,7 +1441,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.NewUserModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.NewUserModel"
                         }
                     }
                 ],
@@ -623,7 +1449,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/dtos.NewUserModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.NewUserModel"
                         }
                     },
                     "400": {
@@ -674,21 +1500,117 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/entities.User"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.UserResultModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/user/getImage": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve an image asset by its public ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Get image by public ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Image public ID",
+                        "name": "publicId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/user/getImages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all image assets for a given category",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Get images by category",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Image category",
+                        "name": "category",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -727,22 +1649,132 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/entities.User"
+                                "$ref": "#/definitions/houseflowApi_internal_models_dtos.UserResultModel"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/user/images": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update fileURL and/or isActive of an image asset by publicId (SuperAdmin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Update image asset",
+                "parameters": [
+                    {
+                        "description": "Fields to update",
+                        "name": "image",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.UpdateImageAssetModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new image asset (SuperAdmin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Create image asset",
+                "parameters": [
+                    {
+                        "description": "Image asset data",
+                        "name": "image",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.CreateImageAssetModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -780,7 +1812,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dtos.UpdateUserModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.UpdateUserModel"
                         }
                     }
                 ],
@@ -788,21 +1820,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/entities.User"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_UserResultModel"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
                 }
@@ -832,7 +1862,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/dtos.NewUserModel"
+                                "$ref": "#/definitions/houseflowApi_internal_models_dtos.UserResultModel"
                             }
                         }
                     },
@@ -900,243 +1930,184 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "/house/infos": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "House"
-                ],
-                "summary": "Get house profile information",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "House ID",
-                        "name": "houseId",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dtos.HouseInfosResponseModel"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Requester is not a house member",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "House not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/house/profile": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Only the house owner can update fields. Each field can be changed once every 48 hours.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "House"
-                ],
-                "summary": "Update house profile",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "House ID",
-                        "name": "houseId",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "description": "House profile fields",
-                        "name": "profile",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dtos.UpdateHouseProfileModel"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dtos.HouseInfosResponseModel"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Only the house owner can update the profile",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "House not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "409": {
-                        "description": "Member limit is below current member count",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "429": {
-                        "description": "Field update interval has not elapsed",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/house/exit": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "A member can leave the house; the owner can remove another member.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "House"
-                ],
-                "summary": "Exit a house or remove a member",
-                "parameters": [
-                    {
-                        "description": "House and target user",
-                        "name": "exitRequest",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dtos.ExitHouseModel"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dtos.SuccessResponseModel"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Insufficient house permissions",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "House or member not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "409": {
-                        "description": "House membership changed concurrently",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
-        "dtos.AnnouncementResponseModel": {
+        "houseflowApi_internal_data_entities.ChoreLevel": {
+            "type": "integer",
+            "enum": [
+                10,
+                20,
+                30
+            ],
+            "x-enum-varnames": [
+                "Easy",
+                "Medium",
+                "Hard"
+            ]
+        },
+        "houseflowApi_internal_data_entities.ChoreStatus": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "Draft",
+                "Progress",
+                "InTest",
+                "Completed"
+            ]
+        },
+        "houseflowApi_internal_models_core.ApiResponse-any": {
+            "type": "object",
+            "properties": {
+                "data": {},
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.ImageAssetResultModel"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationLanguageResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.LocalizationLanguageResponseModel"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_LocalizationPlaintextResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.LocalizationPlaintextResponseModel"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameSessionResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameSessionResponseModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseDetailsModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.HouseDetailsModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInfosResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.HouseInfosResponseModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseInviteCodeResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.HouseInviteCodeResponseModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_HouseResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.HouseResponseModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_UserResultModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UserResultModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.AnnouncementResponseModel": {
             "type": "object",
             "properties": {
                 "announcedBy": {
                     "type": "string"
                 },
                 "createdOn": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "description": {
                     "type": "string"
@@ -1152,26 +2123,112 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.ChoreResponseModel": {
+        "houseflowApi_internal_models_dtos.AuthHouseModel": {
+            "type": "object",
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                },
+                "houseName": {
+                    "type": "string"
+                },
+                "houseProfile": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.AuthUserResultModel": {
+            "type": "object",
+            "properties": {
+                "birthDay": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "createdOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "houseList": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.AuthHouseModel"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "isVerifyEmail": {
+                    "type": "boolean"
+                },
+                "isVerifyPhone": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "lastLogin": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "phoneNumber": {
+                    "type": "string"
+                },
+                "updatedOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.BulkUpdateChoreStatusModel": {
+            "type": "object",
+            "required": [
+                "chores",
+                "houseId"
+            ],
+            "properties": {
+                "chores": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.UpdateChoreStatusModel"
+                    }
+                },
+                "houseId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ChoreResponseModel": {
             "type": "object",
             "properties": {
                 "assignedTo": {
                     "type": "string"
                 },
                 "completedAt": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "completedBy": {
                     "type": "string"
                 },
                 "createdOn": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "description": {
                     "type": "string"
                 },
                 "dueDate": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "houseId": {
                     "type": "string"
@@ -1189,20 +2246,81 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "level": {
-                    "$ref": "#/definitions/entities.ChoreLevel"
+                    "$ref": "#/definitions/houseflowApi_internal_data_entities.ChoreLevel"
                 },
                 "recurringInterval": {
                     "type": "integer"
                 },
+                "reviewRound": {
+                    "type": "integer"
+                },
+                "reviewVotes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreReviewVoteModel"
+                    }
+                },
                 "status": {
-                    "$ref": "#/definitions/entities.ChoreStatus"
+                    "$ref": "#/definitions/houseflowApi_internal_data_entities.ChoreStatus"
+                },
+                "statusHistories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreStatusHistoryModel"
+                    }
                 },
                 "title": {
                     "type": "string"
                 }
             }
         },
-        "dtos.CreateAnnouncementModel": {
+        "houseflowApi_internal_models_dtos.ChoreReviewVoteModel": {
+            "type": "object",
+            "properties": {
+                "choreId": {
+                    "type": "string"
+                },
+                "createdOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "houseId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isApproved": {
+                    "type": "boolean"
+                },
+                "reviewRound": {
+                    "type": "integer"
+                },
+                "reviewerId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ChoreStatusHistoryModel": {
+            "type": "object",
+            "properties": {
+                "choreId": {
+                    "type": "string"
+                },
+                "dateTime": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/houseflowApi_internal_data_entities.ChoreStatus"
+                },
+                "updater": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.CreateAnnouncementModel": {
             "type": "object",
             "required": [
                 "description",
@@ -1221,7 +2339,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.CreateChoreModel": {
+        "houseflowApi_internal_models_dtos.CreateChoreModel": {
             "type": "object",
             "required": [
                 "assignedTo",
@@ -1242,7 +2360,7 @@ const docTemplate = `{
                 },
                 "dueDate": {
                     "type": "string",
-                    "example": "2026-07-12 00:00:00"
+                    "example": "2026-07-12T00:00:00Z"
                 },
                 "houseId": {
                     "type": "string"
@@ -1252,11 +2370,13 @@ const docTemplate = `{
                 },
                 "level": {
                     "enum": [
-                        10
+                        10,
+                        20,
+                        30
                     ],
                     "allOf": [
                         {
-                            "$ref": "#/definitions/entities.ChoreLevel"
+                            "$ref": "#/definitions/houseflowApi_internal_data_entities.ChoreLevel"
                         }
                     ]
                 },
@@ -1272,12 +2392,11 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.CreateHouseModel": {
+        "houseflowApi_internal_models_dtos.CreateHouseModel": {
             "type": "object",
             "required": [
                 "maxMemberCount",
                 "name",
-                "ownerId",
                 "type"
             ],
             "properties": {
@@ -1305,23 +2424,189 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.HouseDetailsModel": {
+        "houseflowApi_internal_models_dtos.CreateImageAssetModel": {
+            "type": "object",
+            "required": [
+                "category",
+                "fileName",
+                "fileURL"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "fileURL": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.EnsureGameSessionModel": {
+            "type": "object",
+            "required": [
+                "houseId"
+            ],
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ExitHouseModel": {
+            "type": "object",
+            "required": [
+                "houseId",
+                "userId"
+            ],
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ForgotPasswordRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.GameSessionPlayerModel": {
+            "type": "object",
+            "properties": {
+                "joinedAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "leftAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "playerId": {
+                    "type": "string"
+                },
+                "readyAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.GameSessionResponseModel": {
+            "type": "object",
+            "properties": {
+                "countdownEndsAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "createdAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "endReason": {
+                    "type": "string"
+                },
+                "endedAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "gameKey": {
+                    "type": "string"
+                },
+                "houseId": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "players": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameSessionPlayerModel"
+                    }
+                },
+                "protocolVersion": {
+                    "type": "integer"
+                },
+                "readyWindowEndsAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "rules": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameSessionRulesModel"
+                },
+                "sessionId": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.GameSessionRulesModel": {
+            "type": "object",
+            "properties": {
+                "countdownMilliseconds": {
+                    "type": "integer"
+                },
+                "maximumPlayers": {
+                    "type": "integer"
+                },
+                "minimumPlayers": {
+                    "type": "integer"
+                },
+                "readyWindowMilliseconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.GenerateHouseInviteCodeModel": {
+            "type": "object",
+            "required": [
+                "houseId"
+            ],
+            "properties": {
+                "houseId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.HouseDetailsModel": {
             "type": "object",
             "properties": {
                 "announcements": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/dtos.AnnouncementResponseModel"
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel"
                     }
                 },
                 "chores": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/dtos.ChoreResponseModel"
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel"
                     }
                 },
                 "createdOn": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "id": {
                     "type": "string"
@@ -1332,7 +2617,7 @@ const docTemplate = `{
                 "members": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/dtos.UserResultModel"
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.UserResultModel"
                     }
                 },
                 "name": {
@@ -1353,15 +2638,74 @@ const docTemplate = `{
                     ]
                 },
                 "updatedOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.HouseInfosResponseModel": {
+            "type": "object",
+            "properties": {
+                "houseMemberCount": {
+                    "type": "integer"
+                },
+                "houseMemberCountLimit": {
+                    "type": "integer"
+                },
+                "houseMembers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.HouseMemberInfoModel"
+                    }
+                },
+                "houseName": {
+                    "type": "string"
+                },
+                "houseProfileImage": {
+                    "type": "string"
+                },
+                "houseType": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3
+                    ]
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.HouseInviteCodeResponseModel": {
+            "type": "object",
+            "properties": {
+                "expiresInSeconds": {
+                    "type": "integer"
+                },
+                "inviteCode": {
                     "type": "string"
                 }
             }
         },
-        "dtos.HouseResponseModel": {
+        "houseflowApi_internal_models_dtos.HouseMemberInfoModel": {
+            "type": "object",
+            "properties": {
+                "isOwner": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "profileImage": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.HouseResponseModel": {
             "type": "object",
             "properties": {
                 "createdOn": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "id": {
                     "type": "string"
@@ -1393,11 +2737,42 @@ const docTemplate = `{
                     ]
                 },
                 "updatedOn": {
-                    "type": "string"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 }
             }
         },
-        "dtos.JoinHouseByCodeModel": {
+        "houseflowApi_internal_models_dtos.ImageAssetResultModel": {
+            "type": "object",
+            "properties": {
+                "createdOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "fileURL": {
+                    "type": "string"
+                },
+                "publicId": {
+                    "type": "string"
+                },
+                "updatedOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.IsAuthResponseModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.AuthUserResultModel"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.JoinHouseByCodeModel": {
             "type": "object",
             "required": [
                 "inviteCode"
@@ -1408,29 +2783,96 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.GenerateHouseInviteCodeModel": {
+        "houseflowApi_internal_models_dtos.LocalizationLanguageRequestModel": {
             "type": "object",
             "required": [
-                "houseId"
+                "image",
+                "name",
+                "nativeName",
+                "prefix"
             ],
             "properties": {
-                "houseId": {
+                "image": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "isDefault": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nativeName": {
+                    "type": "string"
+                },
+                "prefix": {
                     "type": "string"
                 }
             }
         },
-        "dtos.HouseInviteCodeResponseModel": {
+        "houseflowApi_internal_models_dtos.LocalizationLanguageResponseModel": {
             "type": "object",
             "properties": {
-                "expiresInSeconds": {
-                    "type": "integer"
+                "image": {
+                    "type": "string"
                 },
-                "inviteCode": {
+                "isActive": {
+                    "type": "boolean"
+                },
+                "isDefault": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nativeName": {
+                    "type": "string"
+                },
+                "prefix": {
                     "type": "string"
                 }
             }
         },
-        "dtos.LoginRequestModel": {
+        "houseflowApi_internal_models_dtos.LocalizationPlaintextResponseModel": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.LocalizationRequestModel": {
+            "type": "object",
+            "required": [
+                "key",
+                "language",
+                "type",
+                "value"
+            ],
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.LoginRequestModel": {
             "type": "object",
             "properties": {
                 "email": {
@@ -1441,7 +2883,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.NewUserModel": {
+        "houseflowApi_internal_models_dtos.NewUserModel": {
             "type": "object",
             "required": [
                 "email",
@@ -1450,10 +2892,8 @@ const docTemplate = `{
                 "password"
             ],
             "properties": {
-                "age": {
-                    "type": "integer",
-                    "maximum": 150,
-                    "minimum": 0
+                "birthDay": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
                 },
                 "email": {
                     "type": "string"
@@ -1462,6 +2902,13 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 50,
                     "minLength": 2
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "en",
+                        "tr"
+                    ]
                 },
                 "lastName": {
                     "type": "string",
@@ -1479,7 +2926,42 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.SignUpUserModel": {
+        "houseflowApi_internal_models_dtos.ResetPasswordRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "newPassword"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "newPassword": {
+                    "type": "string",
+                    "minLength": 6
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ReviewChoreModel": {
+            "type": "object",
+            "required": [
+                "choreId",
+                "isApproved"
+            ],
+            "properties": {
+                "choreId": {
+                    "type": "string"
+                },
+                "isApproved": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.SignUpUserModel": {
             "type": "object",
             "required": [
                 "email",
@@ -1507,7 +2989,23 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.UpdateChoreStatusModel": {
+        "houseflowApi_internal_models_dtos.SuccessResponseModel": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.UTCDateTime": {
+            "type": "object",
+            "properties": {
+                "time.Time": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.UpdateChoreStatusModel": {
             "type": "object",
             "required": [
                 "choreId",
@@ -1519,250 +3017,25 @@ const docTemplate = `{
                 },
                 "status": {
                     "enum": [
-                        0
+                        0,
+                        1,
+                        2,
+                        3
                     ],
                     "allOf": [
                         {
-                            "$ref": "#/definitions/entities.ChoreStatus"
+                            "$ref": "#/definitions/houseflowApi_internal_data_entities.ChoreStatus"
                         }
                     ]
                 }
             }
         },
-        "dtos.UpdateUserModel": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer",
-                    "maximum": 150,
-                    "minimum": 0
-                },
-                "firstName": {
-                    "type": "string"
-                },
-                "imageUrl": {
-                    "type": "string"
-                },
-                "isVerifyEmail": {
-                    "type": "boolean"
-                },
-                "isVerifyPhone": {
-                    "type": "boolean"
-                },
-                "lastName": {
-                    "type": "string"
-                },
-                "phoneNumber": {
-                    "type": "string",
-                    "maxLength": 15,
-                    "minLength": 10
-                }
-            }
-        },
-        "dtos.UserResultModel": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer"
-                },
-                "createdOn": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "firstName": {
-                    "type": "string"
-                },
-                "houseIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "imageUrl": {
-                    "type": "string"
-                },
-                "isActive": {
-                    "type": "boolean"
-                },
-                "isVerifyEmail": {
-                    "type": "boolean"
-                },
-                "isVerifyPhone": {
-                    "type": "boolean"
-                },
-                "lastLogin": {
-                    "type": "string"
-                },
-                "lastName": {
-                    "type": "string"
-                },
-                "phoneNumber": {
-                    "type": "string"
-                },
-                "updatedOn": {
-                    "type": "string"
-                }
-            }
-        },
-        "entities.ChoreLevel": {
-            "type": "integer",
-            "enum": [
-                10,
-                20,
-                30
-            ],
-            "x-enum-varnames": [
-                "Easy",
-                "Medium",
-                "Hard"
-            ]
-        },
-        "entities.ChoreStatus": {
-            "type": "integer",
-            "enum": [
-                0,
-                1,
-                2,
-                3
-            ],
-            "x-enum-varnames": [
-                "Draft",
-                "Progress",
-                "InTest",
-                "Completed"
-            ]
-        },
-        "entities.User": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer"
-                },
-                "createdOn": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "firstName": {
-                    "type": "string"
-                },
-                "houseIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "imageUrl": {
-                    "type": "string"
-                },
-                "isActive": {
-                    "type": "boolean"
-                },
-                "isVerifyEmail": {
-                    "type": "boolean"
-                },
-                "isVerifyPhone": {
-                    "type": "boolean"
-                },
-                "lastLogin": {
-                    "type": "string"
-                },
-                "lastName": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "phoneNumber": {
-                    "type": "string"
-                },
-                "updatedOn": {
-                    "type": "string"
-                }
-            }
-        },
-        "dtos.ExitHouseModel": {
+        "houseflowApi_internal_models_dtos.UpdateHouseProfileModel": {
             "type": "object",
             "required": [
-                "houseId",
-                "userId"
+                "houseName",
+                "houseProfileImage"
             ],
-            "properties": {
-                "houseId": {
-                    "type": "string"
-                },
-                "userId": {
-                    "type": "string"
-                }
-            }
-        },
-        "dtos.HouseMemberInfoModel": {
-            "type": "object",
-            "properties": {
-                "isOwner": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "profileImage": {
-                    "type": "string"
-                },
-                "userId": {
-                    "type": "string"
-                }
-            }
-        },
-        "dtos.HouseInfosResponseModel": {
-            "type": "object",
-            "properties": {
-                "houseMemberCount": {
-                    "type": "integer"
-                },
-                "houseMemberCountLimit": {
-                    "type": "integer"
-                },
-                "houseMembers": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dtos.HouseMemberInfoModel"
-                    }
-                },
-                "houseName": {
-                    "type": "string"
-                },
-                "houseProfileImage": {
-                    "type": "string"
-                },
-                "houseType": {
-                    "type": "integer",
-                    "enum": [
-                        1,
-                        2,
-                        3
-                    ]
-                }
-            }
-        },
-        "dtos.SuccessResponseModel": {
-            "type": "object",
-            "properties": {
-                "success": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "dtos.UpdateHouseProfileModel": {
-            "type": "object",
             "properties": {
                 "houseMemberCountLimit": {
                     "type": "integer",
@@ -1784,6 +3057,116 @@ const docTemplate = `{
                         2,
                         3
                     ]
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.UpdateImageAssetModel": {
+            "type": "object",
+            "required": [
+                "publicId"
+            ],
+            "properties": {
+                "fileURL": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "publicId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.UpdateUserModel": {
+            "type": "object",
+            "properties": {
+                "birthDay": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "en",
+                        "tr"
+                    ]
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "phoneNumber": {
+                    "type": "string",
+                    "maxLength": 15,
+                    "minLength": 10
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.UserResultModel": {
+            "type": "object",
+            "properties": {
+                "birthDay": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "createdOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "houseIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "isVerifyEmail": {
+                    "type": "boolean"
+                },
+                "isVerifyPhone": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "lastLogin": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "phoneNumber": {
+                    "type": "string"
+                },
+                "updatedOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ValidateEmailRequest": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
                 }
             }
         }

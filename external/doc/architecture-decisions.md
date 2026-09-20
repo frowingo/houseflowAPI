@@ -559,3 +559,97 @@ Bu paket WebSocket endpoint'i, bağlantı kimlik doğrulama, presence lifecycle,
 slow-consumer politikası, Flappy Bird fiziği/tick'leri, skor, elenme veya
 leaderboard içermez. Bunlar sırasıyla transport gateway ve oyuna özel runtime
 paketlerinde ele alınacaktır.
+
+## ADR-014 — Realtime protocol ve WebSocket gateway
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+Mobil istemciler realtime GameSession akışına aşağıdaki endpoint üzerinden
+bağlanır:
+
+```text
+GET /api/v1/game/:sessionId/realtime
+Authorization: Bearer <JWT>
+Upgrade: websocket
+```
+
+JWT HTTP upgrade tamamlanmadan doğrulanır. Session erişimi house membership
+policy ile kontrol edilir ve kullanıcı kimliği client mesajından alınmaz. Gateway,
+command envelope içindeki `actorId` değerini doğrulanmış JWT subject'inden üretir.
+Browser origin'i varsa `CORS_ALLOW_ORIGINS` ile eşleşmek zorundadır; native mobil
+istemcilerin Origin header'ı göndermemesi desteklenir.
+
+Client mesaj sözleşmesi protocol version, benzersiz message ID, command type ve
+oyuna/command'a ait payload'dan oluşur. Bu sürümün desteklediği ortak command'lar
+`gameSession.join`, `gameSession.setReady`, `gameSession.leave` ve
+`gameSession.cancel` ile sınırlıdır. Bilinmeyen üst seviye alanlar reddedilir.
+
+Server mesajları üç temel tipe ayrılır:
+
+- `gameSession.commandAccepted`: Mesaj gateway tarafından doğrulanmış ve kalıcı
+  Redis Stream'e yönlendirilmek üzere kabul edilmiştir; business işleminin
+  tamamlandığı anlamına gelmez.
+- `gameSession.snapshot`: Başarılı işlemin kesin sonucudur. `sequence`, kalıcı
+  GameSession version'ıdır ve `messageId` sonucu tetikleyen command ile
+  korelasyon kurar.
+- `gameSession.commandRejected`: Kalıcı olarak uygulanamayan command'ın hata kodu,
+  argümanları ve retry bilgisidir. Yalnız command'ı gönderen connection'a iletilir.
+
+Bağlantı kurulduğunda MongoDB'den güncel snapshot gönderilir. Gateway snapshot
+okunurken oluşabilecek Pub/Sub event'lerini geçici olarak buffer'lar; initial
+snapshot'tan eski version'ları eler ve daha yeni event'leri sırayla teslim eder.
+Reconnect kalıcı socket state'ini geri yüklemeye çalışmaz; MongoDB snapshot ve
+version üzerinden toparlanır.
+
+Her API instance'ı oda başına tek Redis Pub/Sub subscription açar ve event'i o
+instance'taki bağlantılara process içinde dağıtır. Her connection için ayrı Redis
+subscription açılmaz. Connection presence Redis'te TTL ile tutulur ve periyodik
+yenilenir; bağlantı kapanınca silinir.
+
+Gateway; 16 KiB inbound mesaj sınırı, bağlantı bazlı command rate limit,
+ping/pong idle timeout, tek-yazarlı socket writer ve 64 mesajlık sınırlı outbound
+queue uygular. Kuyruğu dolduran slow consumer veya art arda protokol ihlali yapan
+istemci policy violation ile kapatılır. Uygulama shutdown'ında önce yeni realtime
+trafik durdurulur ve socket/hub'lar kapatılır, sonra room runtime ve Redis
+coordinator kapatılır.
+
+Bu protokol Flappy Bird frame/input mesajlarını, fizik tick'lerini, skor, elenme
+ve leaderboard'u tanımlamaz. Bunlar ortak lifecycle command'larından ayrı,
+oyuna özel protokol ve runtime paketinde ele alınacaktır.
+
+## ADR-015 — Game catalog ve tek aktif session
+
+**Durum:** Kabul edildi — 20 Eylül 2026
+
+Mobil istemci oyun modu, protokol sürümü, oyuncu sayısı veya lobby sürelerini
+belirleyemez. Bu değerler uygulama içindeki statik game catalog tarafından
+yönetilir. İlk tanım `flappyBird` için realtime mod, protokol sürümü 1, minimum 2
+oyuncu, en fazla 8 oyuncu, 30 saniyelik ready window ve 3 saniyelik countdown
+olarak belirlenmiştir. Bir house'un daha düşük üye limiti varsa session oyuncu
+limiti house kapasitesine düşürülür; kapasite minimum oyuncu sayısından düşükse
+session oluşturulmaz.
+
+Aktif session açma ve keşfetme sözleşmeleri şöyledir:
+
+```text
+PUT /api/v1/game/:gameKey/session
+GET /api/v1/game/:gameKey/session?houseId=:houseId
+```
+
+`PUT` aynı house ve oyun için aktif session varsa onu döndürür, yoksa katalogdaki
+tanımdan yeni session oluşturur. Bu nedenle aynı aktif kaynak için tekrarlanabilir
+bir ensure işlemidir; command kimliği sunucu tarafından üretilir. `GET` hiçbir
+state üretmeden yalnız mevcut aktif session'ı döndürür. Her iki işlem de JWT ve
+house membership kontrolünden geçer.
+
+Aynı house ve game key için tek aktif session garantisi process belleğiyle değil,
+MongoDB'deki `ActiveGameSession` koleksiyonunun unique index'iyle sağlanır. Slot,
+session snapshot'ı, command receipt ve outbox mesajıyla aynı transaction içinde
+oluşturulur. Session `finished` veya `cancelled` olduğunda slot yine snapshot
+değişikliğiyle aynı transaction içinde silinir. Böylece farklı API instance'larına
+eşzamanlı gelen create istekleri iki ayrı aktif lobby üretemez.
+
+Migration mevcut non-terminal GameSession kayıtları için slotları backfill eder.
+Aynı house ve oyun için birden fazla aktif eski kayıt bulunursa sessizce seçim
+yapmak yerine migration hata verir; veri kaybına yol açabilecek otomatik iptal
+uygulanmaz.

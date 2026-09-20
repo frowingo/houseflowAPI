@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -117,11 +118,11 @@ func runAPI() error {
 		controllers.ReadinessController(coordinationReadiness(coordinator)),
 	)
 
-	roomManager, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, coordinator)
+	realtimeService, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, coordinator)
 	if err != nil {
 		return fmt.Errorf("initialize realtime room runtime: %w", err)
 	}
-	defer closeRoomManager(roomManager)
+	defer closeRealtimeService(realtimeService)
 
 	listenError := make(chan error, 1)
 	go func() {
@@ -156,14 +157,14 @@ func runAPI() error {
 	return nil
 }
 
-func closeRoomManager(manager *realtime.RoomManager) {
-	if manager == nil {
+func closeRealtimeService(service *realtime.Service) {
+	if service == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
-	if err := manager.Close(ctx); err != nil && err != context.Canceled {
-		log.Printf("realtime room runtime shutdown failed: %v", err)
+	if err := service.Close(ctx); err != nil && err != context.Canceled {
+		log.Printf("realtime service shutdown failed: %v", err)
 	}
 }
 
@@ -184,4 +185,22 @@ func getAllowedOrigins() string {
 		return ""
 	}
 	return "*"
+}
+
+func webSocketAllowedOrigins() []string {
+	origins := os.Getenv("CORS_ALLOW_ORIGINS")
+	if origins == "" {
+		if os.Getenv("APP_ENV") == "production" {
+			return nil
+		}
+		return []string{"*"}
+	}
+	values := strings.Split(origins, ",")
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }

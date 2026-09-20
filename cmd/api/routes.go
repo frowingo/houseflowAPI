@@ -7,6 +7,7 @@ import (
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
+	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
@@ -45,7 +46,7 @@ func SetupRoutes(
 	dbName string,
 	cfg config.ConfigInternal,
 	coordinator coordinationAbstract.Coordinator,
-) (*realtime.RoomManager, error) {
+) (*realtime.Service, error) {
 	applicationMediator := cqrs.New()
 	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
@@ -132,13 +133,26 @@ func SetupRoutes(
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
-	createGameSessionHandler := gameCommands.NewCreateGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	gameCatalog, err := gameApplication.NewDefaultCatalog()
+	if err != nil {
+		return nil, err
+	}
+	ensureActiveGameSessionHandler := gameCommands.NewEnsureActiveGameSessionHandler(
+		gameSessionRepository,
+		gameCatalog,
+		houseMembershipPolicy,
+	)
 	joinGameSessionHandler := gameCommands.NewJoinGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 	setPlayerReadyHandler := gameCommands.NewSetPlayerReadyHandler(gameSessionRepository, houseMembershipPolicy)
 	leaveGameSessionHandler := gameCommands.NewLeaveGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 	cancelGameSessionHandler := gameCommands.NewCancelGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 	advanceGameSessionHandler := gameCommands.NewAdvanceGameSessionHandler(gameSessionRepository)
 	getGameSessionHandler := gameQueries.NewGetGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	getActiveGameSessionHandler := gameQueries.NewGetActiveGameSessionHandler(
+		gameSessionRepository,
+		gameCatalog,
+		houseMembershipPolicy,
+	)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
 	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository)
@@ -161,13 +175,14 @@ func SetupRoutes(
 	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.UpdateImageAssetCommand](applicationMediator, updateImageAssetHandler)
 	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](applicationMediator, getImagesByCategoryHandler)
 	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](applicationMediator, getImageByPublicIDHandler)
-	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CreateGameSessionCommand](applicationMediator, createGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](applicationMediator, ensureActiveGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](applicationMediator, joinGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.SetPlayerReadyCommand](applicationMediator, setPlayerReadyHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](applicationMediator, leaveGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](applicationMediator, cancelGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](applicationMediator, advanceGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](applicationMediator, getGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](applicationMediator, getActiveGameSessionHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
@@ -297,21 +312,52 @@ func SetupRoutes(
 	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Put("/:id", choreController.UpdateChore)
 	// ----------
+	gameController := controllers.NewGameController(applicationMediator, localizationCache)
+	gameRoutes := api.Group(
+		"/game",
+		middleware.AuthRequired(jwtService, localizationCache),
+	)
+	gameRoutes.Put(
+		"/:gameKey/session",
+		middleware.UserRateLimit(localizationCache),
+		gameController.EnsureActiveSession,
+	)
+	gameRoutes.Get(
+		"/:gameKey/session",
+		middleware.UserRateLimit(localizationCache),
+		gameController.GetActiveSession,
+	)
 
 	if coordinator == nil {
+		gameRoutes.Get("/:sessionId/realtime", func(c *fiber.Ctx) error {
+			return helpers.RespondLocalizedError(
+				c,
+				localizationCache,
+				helpers.NewUnavailableError("realtime.error.unavailable", coordinationAbstract.ErrUnavailable),
+			)
+		})
 		return nil, nil
 	}
-	roomManager, err := realtime.NewRoomManager(
+	realtimeService, err := realtime.NewService(
 		coordinator,
 		gameSessionRepository,
 		applicationMediator,
 		realtime.RoomManagerOptions{},
+		realtime.GatewayOptions{
+			AllowedOrigins: webSocketAllowedOrigins(),
+			Localizer:      localizationCache,
+		},
 	)
 	if err != nil {
 		return nil, err
 	}
-	if err := roomManager.Start(ctx); err != nil {
+	if err := realtimeService.Start(ctx); err != nil {
 		return nil, err
 	}
-	return roomManager, nil
+	gameRoutes.Get(
+		"/:sessionId/realtime",
+		realtimeService.UpgradeMiddleware(),
+		realtimeService.Handler(),
+	)
+	return realtimeService, nil
 }

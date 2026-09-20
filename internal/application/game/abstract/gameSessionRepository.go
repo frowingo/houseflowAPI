@@ -10,6 +10,8 @@ import (
 var (
 	ErrGameSessionNotFound      = errors.New("game session was not found")
 	ErrGameSessionAlreadyExists = errors.New("game session already exists")
+	ErrActiveGameSessionExists  = errors.New("an active game session already exists")
+	ErrActiveSessionInvariant   = errors.New("active game session pointer is inconsistent")
 	ErrConcurrentSessionUpdate  = errors.New("game session was changed by another owner")
 	ErrInvalidPersistenceBatch  = errors.New("game session snapshot and event batch are inconsistent")
 	ErrCommandIDRequired        = errors.New("game session command ID is required")
@@ -39,6 +41,7 @@ type GameSessionRepository interface {
 		command CommandDescriptor,
 	) (PersistenceResult, error)
 	FindByID(ctx context.Context, sessionID string) (*gameDomain.GameSession, error)
+	FindActive(ctx context.Context, houseID string, gameKey string) (*gameDomain.GameSession, error)
 	FindProcessedCommand(ctx context.Context, command CommandDescriptor) (PersistenceResult, bool, error)
 	Save(
 		ctx context.Context,

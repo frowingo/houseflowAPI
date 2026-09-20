@@ -14,6 +14,8 @@ func MapError(err error) error {
 		return nil
 	case errors.Is(err, gameAbstract.ErrGameSessionNotFound):
 		return helpers.NewNotFoundError("game.error.session_not_found")
+	case errors.Is(err, gameAbstract.ErrGameDefinitionNotFound):
+		return helpers.NewNotFoundError("game.error.definition_not_found")
 	case errors.Is(err, gameAbstract.ErrGameSessionAlreadyExists):
 		return helpers.NewConflictError("game.error.session_already_exists")
 	case errors.Is(err, gameAbstract.ErrConcurrentSessionUpdate):
@@ -46,4 +48,11 @@ func MapError(err error) error {
 	default:
 		return err
 	}
+}
+
+func MapActiveSessionError(err error) error {
+	if errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
+		return helpers.NewNotFoundError("game.error.active_session_not_found")
+	}
+	return MapError(err)
 }

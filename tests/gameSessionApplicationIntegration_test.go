@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
@@ -63,20 +64,16 @@ func (fixture *gameSessionApplicationFixture) membershipPolicy() *housePolicies.
 
 func (fixture *gameSessionApplicationFixture) createSession(t *testing.T) gameDomain.SessionSnapshot {
 	t.Helper()
-	handler := gameCommands.NewCreateGameSessionHandler(fixture.repository, fixture.membershipPolicy())
-	snapshot, err := handler.Handle(fixture.ctx, gameCommands.CreateGameSessionCommand{
-		CommandID:       "create-session",
-		UserID:          fixture.ownerID,
-		HouseID:         fixture.houseID,
-		GameKey:         "shared-game",
-		ProtocolVersion: 1,
-		Mode:            gameDomain.RealtimeGame,
-		Rules: gameDomain.SessionRules{
-			MinimumPlayers:      2,
-			MaximumPlayers:      4,
-			ReadyWindowDuration: 30 * time.Second,
-			CountdownDuration:   3 * time.Second,
-		},
+	catalog, err := gameApplication.NewDefaultCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy())
+	snapshot, err := handler.Handle(fixture.ctx, gameCommands.EnsureActiveGameSessionCommand{
+		CommandID: "create-session",
+		UserID:    fixture.ownerID,
+		HouseID:   fixture.houseID,
+		GameKey:   gameApplication.FlappyBirdGameKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,20 +83,16 @@ func (fixture *gameSessionApplicationFixture) createSession(t *testing.T) gameDo
 
 func TestGameSessionApplicationCreateAndJoinAreIdempotent(t *testing.T) {
 	fixture := newGameSessionApplicationFixture(t)
-	createHandler := gameCommands.NewCreateGameSessionHandler(fixture.repository, fixture.membershipPolicy())
-	createCommand := gameCommands.CreateGameSessionCommand{
-		CommandID:       "create-idempotent",
-		UserID:          fixture.ownerID,
-		HouseID:         fixture.houseID,
-		GameKey:         "shared-game",
-		ProtocolVersion: 1,
-		Mode:            gameDomain.RealtimeGame,
-		Rules: gameDomain.SessionRules{
-			MinimumPlayers:      2,
-			MaximumPlayers:      4,
-			ReadyWindowDuration: 30 * time.Second,
-			CountdownDuration:   3 * time.Second,
-		},
+	catalog, err := gameApplication.NewDefaultCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	createHandler := gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy())
+	createCommand := gameCommands.EnsureActiveGameSessionCommand{
+		CommandID: "create-idempotent",
+		UserID:    fixture.ownerID,
+		HouseID:   fixture.houseID,
+		GameKey:   gameApplication.FlappyBirdGameKey,
 	}
 	created, err := createHandler.Handle(fixture.ctx, createCommand)
 	if err != nil {

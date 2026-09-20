@@ -379,6 +379,7 @@ func (manager *RoomManager) routeDelivery(
 			return err
 		}
 		if !ownership.Local {
+			envelope.SourceInstanceID = ""
 			if err := manager.coordinator.PublishCommand(ctx, ownership.OwnerInstanceID, envelope); err != nil {
 				return err
 			}
@@ -546,10 +547,17 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 				return
 			}
 		case delivery := <-room.queue:
-			updated, err := room.processCommand(delivery.Envelope())
+			envelope := delivery.Envelope()
+			updated, err := room.processCommand(envelope)
 			if err != nil {
 				room.manager.report(room.lease.RoomID, err)
 				if !isRetryableCommandError(err) {
+					if rejectionErr := room.publishCommandRejected(envelope, err); rejectionErr != nil {
+						room.manager.report(room.lease.RoomID, rejectionErr)
+						if errors.Is(rejectionErr, coordinationAbstract.ErrLeaseLost) {
+							return
+						}
+					}
 					_ = delivery.Ack(room.ctx)
 				}
 				continue
@@ -645,6 +653,23 @@ func (room *managedRoom) publishSnapshot(messageID string, snapshot gameDomain.S
 	})
 }
 
+func (room *managedRoom) publishCommandRejected(
+	envelope coordinationAbstract.MessageEnvelope,
+	commandErr error,
+) error {
+	payload, err := json.Marshal(protocolErrorFrom(commandErr))
+	if err != nil {
+		return err
+	}
+	return room.manager.coordinator.PublishRoomEvent(room.ctx, room.lease, coordinationAbstract.MessageEnvelope{
+		MessageID:    envelope.MessageID,
+		RoomID:       room.lease.RoomID,
+		Type:         CommandRejectedMessageType,
+		ConnectionID: envelope.ConnectionID,
+		Payload:      payload,
+	})
+}
+
 func sessionDeadline(snapshot gameDomain.SessionSnapshot) (time.Time, bool) {
 	switch snapshot.State {
 	case gameDomain.SessionReadyWindow:
@@ -673,5 +698,13 @@ func isRetryableCommandError(err error) bool {
 		return applicationError.Kind == helpers.ErrorKindUnavailable ||
 			applicationError.Key == "game.error.session_conflict"
 	}
-	return false
+	if errors.Is(err, ErrUnsupportedRoomCommand) || errors.Is(err, ErrRoomCommandPayloadRequired) {
+		return false
+	}
+	var syntaxError *json.SyntaxError
+	var typeError *json.UnmarshalTypeError
+	if errors.As(err, &syntaxError) || errors.As(err, &typeError) {
+		return false
+	}
+	return true
 }

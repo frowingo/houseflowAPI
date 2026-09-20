@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -67,9 +68,14 @@ func (processor commandProcessor) Process(
 func decodePayload[T any](payload json.RawMessage) (T, error) {
 	var value T
 	if len(payload) == 0 {
-		return value, errors.New("room command payload is required")
+		return value, ErrRoomCommandPayloadRequired
 	}
-	if err := json.Unmarshal(payload, &value); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return value, err
+	}
+	if err := ensureJSONEnd(decoder); err != nil {
 		return value, err
 	}
 	return value, nil

@@ -8,8 +8,10 @@ import (
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
+	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/data/entities"
 	infrastructureCoordination "houseflowApi/internal/infrastructure/coordination"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -210,6 +212,23 @@ func newTestRoomManager(
 	coordinator *infrastructureCoordination.RedisCoordinator,
 ) *realtime.RoomManager {
 	t.Helper()
+	mediator := newGameSessionMediator(fixture)
+	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, mediator, realtime.RoomManagerOptions{
+		LeaseTTL:       5 * time.Second,
+		RenewInterval:  500 * time.Millisecond,
+		CommandTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Start(fixture.ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeRoomManager(t, manager) })
+	return manager
+}
+
+func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediator {
 	mediator := cqrs.New()
 	membershipPolicy := fixture.membershipPolicy()
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](
@@ -232,19 +251,11 @@ func newTestRoomManager(
 		mediator,
 		gameCommands.NewAdvanceGameSessionHandler(fixture.repository),
 	)
-	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, mediator, realtime.RoomManagerOptions{
-		LeaseTTL:       5 * time.Second,
-		RenewInterval:  500 * time.Millisecond,
-		CommandTimeout: time.Second,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := manager.Start(fixture.ctx); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { closeRoomManager(t, manager) })
-	return manager
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](
+		mediator,
+		gameQueries.NewGetGameSessionHandler(fixture.repository, membershipPolicy),
+	)
+	return mediator
 }
 
 func closeRoomManager(t *testing.T, manager *realtime.RoomManager) {
@@ -262,15 +273,25 @@ func createRuntimeSession(
 	rules gameDomain.SessionRules,
 ) gameDomain.SessionSnapshot {
 	t.Helper()
-	handler := gameCommands.NewCreateGameSessionHandler(fixture.repository, fixture.membershipPolicy())
-	snapshot, err := handler.Handle(fixture.ctx, gameCommands.CreateGameSessionCommand{
-		CommandID:       "runtime-create-session",
-		UserID:          fixture.ownerID,
-		HouseID:         fixture.houseID,
-		GameKey:         "shared-game",
+	catalog, err := gameApplication.NewCatalog(gameDomain.GameDefinition{
+		GameKey:         "runtimeGame",
 		ProtocolVersion: 1,
 		Mode:            gameDomain.RealtimeGame,
 		Rules:           rules,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := gameCommands.NewEnsureActiveGameSessionHandler(
+		fixture.repository,
+		catalog,
+		fixture.membershipPolicy(),
+	)
+	snapshot, err := handler.Handle(fixture.ctx, gameCommands.EnsureActiveGameSessionCommand{
+		CommandID: "runtime-create-session",
+		UserID:    fixture.ownerID,
+		HouseID:   fixture.houseID,
+		GameKey:   "runtimeGame",
 	})
 	if err != nil {
 		t.Fatal(err)
