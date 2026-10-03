@@ -48,7 +48,7 @@ func (repository *GameSessionRepository) ClaimRuntimeOwner(ctx context.Context, 
 	}
 	collection := repository.sessions.Collection().Database().Collection(RuntimeOwnerCollectionName)
 	var claimed runtimeOwnerDocument
-	err := collection.FindOneAndUpdate(ctx, bson.M{"_id": owner.SessionID, "generation": expectedGeneration}, bson.M{
+	err := collection.FindOneAndUpdate(ctx, bson.M{"_id": owner.SessionID, "generation": expectedGeneration, "completed": bson.M{"$ne": true}}, bson.M{
 		"$inc":         bson.M{"generation": int64(1)},
 		"$set":         bson.M{"ownerInstanceId": owner.OwnerInstanceID, "leaseId": owner.LeaseID},
 		"$setOnInsert": bson.M{"started": false},

@@ -737,6 +737,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/game/{sessionId}/result": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "Get the immutable House Rockets match result",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Game session ID",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Current house membership required",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Session or committed result not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/house/announcement": {
             "post": {
                 "security": [
@@ -1933,6 +1984,119 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason": {
+            "type": "string",
+            "enum": [
+                "behindCamera",
+                "forfeit",
+                "connectionExpired",
+                "membershipRevoked"
+            ],
+            "x-enum-varnames": [
+                "EliminationBehindCamera",
+                "EliminationForfeit",
+                "EliminationConnectionExpired",
+                "EliminationMembershipRevoked"
+            ]
+        },
+        "houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason": {
+            "type": "string",
+            "enum": [
+                "lastSurvivor",
+                "simultaneousElimination",
+                "insufficientPlayers",
+                "cancelledByUser",
+                "sessionExpired",
+                "recoveryFailed",
+                "coordinationUnavailable",
+                "runtimeOverloaded"
+            ],
+            "x-enum-varnames": [
+                "EndLastSurvivor",
+                "EndSimultaneousElimination",
+                "EndInsufficientPlayers",
+                "EndCancelledByUser",
+                "EndSessionExpired",
+                "EndRecoveryFailed",
+                "EndCoordinationUnavailable",
+                "EndRuntimeOverloaded"
+            ]
+        },
+        "houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel": {
+            "type": "object",
+            "properties": {
+                "distance": {
+                    "type": "number"
+                },
+                "eliminatedAtTick": {
+                    "type": "integer"
+                },
+                "eliminationReason": {
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason"
+                },
+                "playerId": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                }
+            }
+        },
+        "houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel": {
+            "type": "object",
+            "properties": {
+                "courseVersion": {
+                    "type": "integer"
+                },
+                "durationSeconds": {
+                    "type": "number"
+                },
+                "endReason": {
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason"
+                },
+                "endedAt": {
+                    "type": "string"
+                },
+                "gameKey": {
+                    "type": "string"
+                },
+                "houseId": {
+                    "type": "string"
+                },
+                "players": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel"
+                    }
+                },
+                "protocolVersion": {
+                    "type": "integer"
+                },
+                "sessionId": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus"
+                },
+                "winnerId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus": {
+            "type": "string",
+            "enum": [
+                "completed",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "ResultCompleted",
+                "ResultCancelled"
+            ]
+        },
         "houseflowApi_internal_data_entities.ChoreLevel": {
             "type": "integer",
             "enum": [
@@ -2006,6 +2170,17 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/houseflowApi_internal_models_dtos.LocalizationPlaintextResponseModel"
                     }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel"
                 },
                 "success": {
                     "type": "boolean"

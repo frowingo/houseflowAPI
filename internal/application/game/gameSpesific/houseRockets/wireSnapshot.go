@@ -6,6 +6,9 @@ func SnapshotForConnection(frame RuntimeFrame, playerID, connectionID string, gr
 	model := HouseRocketsSnapshotModel{SessionID: frame.World.SessionID, GameKey: GameKey, RuntimeEpoch: frame.RuntimeEpoch, StateSequence: frame.StateSequence, Tick: frame.World.Tick,
 		ElapsedSeconds: frame.World.ElapsedSeconds, Phase: frame.Phase, CourseVersion: CourseVersion, CameraX: frame.World.CameraX, CourseAngle: frame.World.CourseAngle,
 		Players: make([]HouseRocketsPlayerModel, 0, len(frame.World.Players)), Gates: make([]HouseRocketsGateModel, 0, len(frame.World.Gates)), SpeedFields: make([]HouseRocketsSpeedFieldModel, 0, len(frame.World.SpeedFields))}
+	if frame.CommittedResult != nil && frame.Phase == PhaseEnded {
+		model.WinnerID = cloneValue(frame.CommittedResult.WinnerID)
+	}
 	for index, player := range frame.World.Players {
 		control := RuntimePlayerControl{}
 		if index < len(frame.Controls) && frame.Controls[index].PlayerID == player.PlayerID {

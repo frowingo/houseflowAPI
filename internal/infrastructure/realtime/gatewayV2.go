@@ -193,6 +193,12 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 			return
 		}
 		client.enqueueGameFrame(frame, event.MessageID, event.ConnectionID != "", sentAt)
+	case houseRockets.ResultMessageType:
+		var result houseRockets.HouseRocketsResultModel
+		if json.Unmarshal(event.Payload, &result) != nil || result.SessionID != client.roomID {
+			return
+		}
+		client.enqueueV2(NewV2ServerMessage(event.Type, event.MessageID, nil, sentAt, result), "", 0)
 	case houseRockets.ControlGrantedMessageType:
 		if event.ConnectionID != client.id {
 			return
@@ -253,7 +259,9 @@ func (client *gatewayClient) enqueueGameFrame(frame gamePreviewFrame, messageID 
 	if err == nil {
 		if !client.active {
 			client.v2.pendingSnapshot = payload
-		} else if targeted {
+		} else if targeted || frame.Phase == houseRockets.PhaseEnded || frame.Phase == houseRockets.PhaseCancelled {
+			// Terminal snapshots are control messages, not disposable motion
+			// samples. Keep them ordered before the committed result event.
 			select {
 			case <-client.v2.snapshots:
 			default:
@@ -383,7 +391,7 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 		if controlsOwnPlayer {
 			return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputHeartbeat, RuntimeEpoch: epoch, ControlGeneration: grant.ControlGeneration}, message.MessageID)
 		}
-		if phase == houseRockets.PhasePlaying || phase == houseRockets.PhaseFinalizing {
+		if phase == houseRockets.PhasePlaying || phase == houseRockets.PhaseFinalizing || phase == houseRockets.PhaseEnded || phase == houseRockets.PhaseCancelled {
 			return nil
 		}
 		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: lobbyHeartbeatInput, RuntimeEpoch: epoch}, message.MessageID)

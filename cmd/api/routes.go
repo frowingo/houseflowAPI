@@ -10,6 +10,9 @@ import (
 	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	rocketsQueries "houseflowApi/internal/application/game/gameSpesific/houseRockets/queries"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
@@ -133,6 +136,10 @@ func SetupRoutes(
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
+	matchRepository := database.NewGameMatchRepository(client, dbName)
+	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](applicationMediator, rocketsCommands.NewCompleteMatchHandler(gameSessionRepository, matchRepository))
+	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsQueries.GetMatchResultQuery](applicationMediator, rocketsQueries.NewGetMatchResultHandler(gameSessionRepository, matchRepository, houseMembershipPolicy))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](applicationMediator, gameQueries.NewAuthorizeCancellationHandler(gameSessionRepository, houseMembershipPolicy))
 	houseRocketsEnabled := coordinator != nil && config.HouseRocketsEnabled()
 	gameCatalog, err := gameApplication.NewDefaultCatalog(gameApplication.CatalogOptions{EnableHouseRockets: houseRocketsEnabled})
 	if err != nil {
@@ -329,6 +336,7 @@ func SetupRoutes(
 		middleware.UserRateLimit(localizationCache),
 		gameController.GetActiveSession,
 	)
+	gameRoutes.Get("/:sessionId/result", middleware.UserRateLimit(localizationCache), gameController.GetResult)
 
 	if coordinator == nil {
 		gameRoutes.Get("/:sessionId/realtime", func(c *fiber.Ctx) error {
@@ -344,7 +352,7 @@ func SetupRoutes(
 		coordinator,
 		gameSessionRepository,
 		applicationMediator,
-		realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, dbName)},
+		realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, dbName), MatchRepository: matchRepository},
 		realtime.GatewayOptions{
 			EnableHouseRockets: houseRocketsEnabled,
 			AllowedOrigins:     webSocketAllowedOrigins(),

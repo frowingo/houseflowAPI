@@ -17,6 +17,8 @@ import (
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	rocketsQueries "houseflowApi/internal/application/game/gameSpesific/houseRockets/queries"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -61,11 +63,15 @@ func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabl
 	}
 	for index := 0; index < 2; index++ {
 		mediator := newGameSessionMediator(fixture.gameSessionApplicationFixture)
+		matches := database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name())
+		cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](mediator, rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches))
+		cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsQueries.GetMatchResultQuery](mediator, rocketsQueries.NewGetMatchResultHandler(fixture.repository, matches, fixture.membershipPolicy()))
+		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](mediator, gameQueries.NewAuthorizeCancellationHandler(fixture.repository, fixture.membershipPolicy()))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](mediator, gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](mediator, gameQueries.NewGetActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
 		coordinator := newTestCoordinator(t, redisURL, fmt.Sprintf("rockets-gateway-%d", index))
 		service, err := realtime.NewService(coordinator, fixture.repository, mediator,
-			realtime.RoomManagerOptions{LeaseTTL: 10 * time.Second, RenewInterval: 500 * time.Millisecond, CommandTimeout: 2 * time.Second, ReconcileInterval: 100 * time.Millisecond, ParticipantDirectory: database.NewGameParticipantDirectory(fixture.db.Client(), fixture.db.Name())},
+			realtime.RoomManagerOptions{LeaseTTL: 10 * time.Second, RenewInterval: 500 * time.Millisecond, CommandTimeout: 2 * time.Second, ReconcileInterval: 100 * time.Millisecond, ParticipantDirectory: database.NewGameParticipantDirectory(fixture.db.Client(), fixture.db.Name()), MatchRepository: matches},
 			realtime.GatewayOptions{EnableHouseRockets: enabled, AllowedOrigins: []string{"*"}, PingInterval: 100 * time.Millisecond, IdleTimeout: 3 * time.Second, WriteTimeout: time.Second, PresenceTTL: time.Second, PresenceRefresh: 200 * time.Millisecond})
 		if err != nil {
 			t.Fatal(err)
@@ -78,6 +84,7 @@ func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabl
 		controller := controllers.NewGameController(mediator, nil)
 		routes.Put("/:gameKey/session", controller.EnsureActiveSession)
 		routes.Get("/:gameKey/session", controller.GetActiveSession)
+		routes.Get("/:sessionId/result", controller.GetResult)
 		routes.Get("/:sessionId/realtime", service.UpgradeMiddleware(), service.Handler())
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -298,9 +305,35 @@ func TestHouseRocketsGatewayTwoInstancesHTTPCountdownSteeringAndForfeit(t *testi
 	if final.WinnerID != nil || final.Players[0].IsAlive || final.Players[0].EliminationReason == nil || *final.Players[0].EliminationReason != houseRockets.EliminationForfeit {
 		t.Fatalf("authoritative forfeit: %+v", final)
 	}
+	ended := second.snapshot(t, func(model houseRockets.HouseRocketsSnapshotModel) bool { return model.Phase == houseRockets.PhaseEnded })
+	if ended.WinnerID == nil || *ended.WinnerID != fixture.memberID {
+		t.Fatalf("ended winner: %+v", ended)
+	}
+	resultMessage := second.await(t, func(message realtime.ServerMessage) bool { return message.Type == houseRockets.ResultMessageType })
+	var result houseRockets.HouseRocketsResultModel
+	if err := json.Unmarshal(resultMessage.Payload, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != houseRockets.ResultCompleted || result.WinnerID == nil || *result.WinnerID != fixture.memberID {
+		t.Fatalf("result: %+v", result)
+	}
 	stored, err := fixture.repository.FindByID(fixture.ctx, session.SessionId)
-	if err != nil || stored.Snapshot().State != gameDomain.SessionRunning {
-		t.Fatalf("P4 must not fake result completion: %v", err)
+	if err != nil || stored.Snapshot().State != gameDomain.SessionFinished {
+		t.Fatalf("completion not persisted: %v", err)
+	}
+	for index := range fixture.urls {
+		status, read := fixture.resultHTTP(t, index, session.SessionId, fixture.ownerID)
+		if status != 200 || !bytes.Equal(resultMessage.Payload, mustJSON(t, read)) {
+			t.Fatalf("HTTP/socket canonical mismatch: %d %+v", status, read)
+		}
+	}
+	status, _ := fixture.resultHTTP(t, 0, session.SessionId, fixture.outsiderID)
+	if status != 403 {
+		t.Fatalf("outsider result status: %d", status)
+	}
+	rematch := fixture.ensureHTTP(t)
+	if rematch.SessionId == session.SessionId || rematch.State != string(gameDomain.SessionLobby) || len(rematch.Players) != 0 {
+		t.Fatalf("rematch reset old game: %+v", rematch)
 	}
 }
 

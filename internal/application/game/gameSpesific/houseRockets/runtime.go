@@ -52,11 +52,12 @@ type RuntimePlayerControl struct {
 // RuntimeFrame is internal fanout data, not a public wire snapshot. Private
 // controller generations are only sent in connection-targeted grants.
 type RuntimeFrame struct {
-	RuntimeEpoch  int64                  `json:"runtimeEpoch"`
-	StateSequence int64                  `json:"stateSequence"`
-	Phase         Phase                  `json:"phase"`
-	World         WorldSnapshot          `json:"world"`
-	Controls      []RuntimePlayerControl `json:"controls"`
+	RuntimeEpoch    int64                    `json:"runtimeEpoch"`
+	StateSequence   int64                    `json:"stateSequence"`
+	Phase           Phase                    `json:"phase"`
+	World           WorldSnapshot            `json:"world"`
+	Controls        []RuntimePlayerControl   `json:"controls"`
+	CommittedResult *HouseRocketsResultModel `json:"committedResult,omitempty"`
 }
 
 type RuntimeEvent struct {
@@ -87,22 +88,25 @@ type queuedInput struct {
 // advancement; Submit only writes bounded mailboxes. Advance is also exposed for
 // deterministic scheduler tests. No external callback is invoked under mutex.
 type Runtime struct {
-	mutex        sync.Mutex
-	simulation   *Simulation
-	epoch        int64
-	controls     map[string]*controller
-	pending      map[string]queuedInput
-	eliminations map[string]EliminationReason
-	commands     chan queuedInput
-	frames       chan RuntimeFrame
-	events       chan RuntimeEvent
-	lastAdvance  time.Time
-	nextFrame    time.Time
-	remainder    int64
-	sequence     int64
-	terminal     bool
-	stopped      bool
-	runOnce      sync.Once
+	mutex           sync.Mutex
+	simulation      *Simulation
+	epoch           int64
+	controls        map[string]*controller
+	pending         map[string]queuedInput
+	eliminations    map[string]EliminationReason
+	commands        chan queuedInput
+	frames          chan RuntimeFrame
+	events          chan RuntimeEvent
+	results         chan HouseRocketsResultModel
+	resultProposed  bool
+	committedResult *HouseRocketsResultModel
+	lastAdvance     time.Time
+	nextFrame       time.Time
+	remainder       int64
+	sequence        int64
+	terminal        bool
+	stopped         bool
+	runOnce         sync.Once
 }
 
 func NewRuntime(params NewSimulationParams, epoch int64, now time.Time, initialSequences ...int64) (*Runtime, error) {
@@ -121,7 +125,7 @@ func NewRuntime(params NewSimulationParams, epoch int64, now time.Time, initialS
 		}
 	}
 	runtime := &Runtime{simulation: simulation, epoch: epoch, controls: make(map[string]*controller), pending: make(map[string]queuedInput), eliminations: make(map[string]EliminationReason), sequence: baseSequence,
-		commands: make(chan queuedInput, RuntimeQueueSize), frames: make(chan RuntimeFrame, 1), events: make(chan RuntimeEvent, RuntimeQueueSize), lastAdvance: now, nextFrame: now.Add(time.Second / SnapshotRateHz)}
+		commands: make(chan queuedInput, RuntimeQueueSize), frames: make(chan RuntimeFrame, 1), events: make(chan RuntimeEvent, RuntimeQueueSize), results: make(chan HouseRocketsResultModel, 1), lastAdvance: now, nextFrame: now.Add(time.Second / SnapshotRateHz)}
 	for _, player := range params.Players {
 		runtime.controls[player.PlayerID] = &controller{graceEndsAt: now.Add(ControlTimeout + ReconnectGraceDuration)}
 	}
@@ -129,8 +133,17 @@ func NewRuntime(params NewSimulationParams, epoch int64, now time.Time, initialS
 	return runtime, nil
 }
 
-func (runtime *Runtime) Frames() <-chan RuntimeFrame { return runtime.frames }
-func (runtime *Runtime) Events() <-chan RuntimeEvent { return runtime.events }
+func (runtime *Runtime) Frames() <-chan RuntimeFrame             { return runtime.frames }
+func (runtime *Runtime) Events() <-chan RuntimeEvent             { return runtime.events }
+func (runtime *Runtime) Results() <-chan HouseRocketsResultModel { return runtime.results }
+
+// The application calls this only after the immutable result transaction commits.
+func (runtime *Runtime) CommittedFrame(result HouseRocketsResultModel) RuntimeFrame {
+	runtime.mutex.Lock()
+	defer runtime.mutex.Unlock()
+	runtime.committedResult = &result
+	return runtime.buildFrame()
+}
 
 // Submit confirms mailbox acceptance only. Control grants and snapshot ACKs
 // confirm actual processing. Gaps are expected when newer headings coalesce.
@@ -254,6 +267,9 @@ func (runtime *Runtime) Advance(now time.Time) error {
 		return ErrInvalidAdvance
 	}
 	if runtime.terminal {
+		if !runtime.resultProposed {
+			runtime.publishFrame()
+		}
 		return nil
 	}
 	elapsed := now.Sub(runtime.lastAdvance)
@@ -372,6 +388,18 @@ func (runtime *Runtime) Cancel(reason EndReason) error {
 }
 
 func (runtime *Runtime) publishFrame() {
+	if runtime.terminal && !runtime.resultProposed {
+		world := runtime.simulation.Snapshot()
+		endedAt := time.Now().UTC()
+		minimumEnd := runtime.simulation.startedAt.Add(time.Duration(world.Tick) * time.Second / PhysicsRateHz)
+		if endedAt.Before(minimumEnd) {
+			endedAt = minimumEnd
+		}
+		if result, err := runtime.simulation.ProposeResult(endedAt); err == nil {
+			runtime.results <- result
+			runtime.resultProposed = true
+		}
+	}
 	frame := runtime.buildFrame()
 	select {
 	case <-runtime.frames:
@@ -385,6 +413,13 @@ func (runtime *Runtime) buildFrame() RuntimeFrame {
 	frame := RuntimeFrame{RuntimeEpoch: runtime.epoch, StateSequence: runtime.sequence, Phase: PhasePlaying, World: runtime.simulation.Snapshot(), Controls: make([]RuntimePlayerControl, 0, len(runtime.controls))}
 	if runtime.terminal {
 		frame.Phase = PhaseFinalizing
+	}
+	if runtime.committedResult != nil {
+		frame.CommittedResult = runtime.committedResult
+		frame.Phase = PhaseEnded
+		if runtime.committedResult.Status == ResultCancelled {
+			frame.Phase = PhaseCancelled
+		}
 	}
 	for _, player := range frame.World.Players {
 		control := runtime.controls[player.PlayerID]
@@ -418,6 +453,7 @@ func (runtime *Runtime) emit(event RuntimeEvent) {
 	default:
 		_ = runtime.simulation.Cancel(EndRuntimeOverloaded)
 		runtime.terminal = true
+		runtime.publishFrame()
 	}
 }
 

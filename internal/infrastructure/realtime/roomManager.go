@@ -14,6 +14,7 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 )
@@ -45,6 +46,7 @@ type RoomManagerOptions struct {
 	RetryDelay           time.Duration
 	ParticipantDirectory gameAbstract.GameParticipantDirectory
 	ReconcileInterval    time.Duration
+	MatchRepository      gameAbstract.GameMatchRepository
 }
 
 type RoomOwnership struct {
@@ -563,22 +565,24 @@ func ownershipFromLease(lease coordinationAbstract.RoomLease, local bool) RoomOw
 }
 
 type managedRoom struct {
-	manager         *RoomManager
-	ctx             context.Context
-	cancel          context.CancelFunc
-	lease           coordinationAbstract.RoomLease
-	queue           chan coordinationAbstract.CommandDelivery
-	stopOnce        sync.Once
-	leaseDeadline   atomic.Pointer[time.Time]
-	runtimeOwner    gameAbstract.RuntimeOwner
-	gameMutex       sync.RWMutex
-	game            *gameRuntime
-	snapshot        atomic.Pointer[gameDomain.SessionSnapshot]
-	lobbyMutex      sync.Mutex
-	lobbyLastSeen   map[string]time.Time
-	members         map[string]string
-	frozenPlayers   []gameParticipant
-	previewSequence int64
+	manager              *RoomManager
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	lease                coordinationAbstract.RoomLease
+	queue                chan coordinationAbstract.CommandDelivery
+	stopOnce             sync.Once
+	leaseDeadline        atomic.Pointer[time.Time]
+	runtimeOwner         gameAbstract.RuntimeOwner
+	gameMutex            sync.RWMutex
+	game                 *gameRuntime
+	snapshot             atomic.Pointer[gameDomain.SessionSnapshot]
+	lobbyMutex           sync.Mutex
+	lobbyLastSeen        map[string]time.Time
+	members              map[string]string
+	frozenPlayers        []gameParticipant
+	previewSequence      int64
+	pendingResult        *houseRockets.HouseRocketsResultModel
+	pendingCancellations []coordinationAbstract.CommandDelivery
 }
 
 type roomActivation struct {
@@ -625,6 +629,12 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 		deadlineChannel = deadlineTimer.C
 	}
 	resetDeadline(snapshot)
+	var completionChannel <-chan time.Time
+	if room.manager.options.MatchRepository != nil && supportsGameRuntime(snapshot.GameKey) {
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+		completionChannel = ticker.C
+	}
 	var reconcileChannel <-chan time.Time
 	if room.manager.options.ParticipantDirectory != nil && supportsGameRuntime(snapshot.GameKey) {
 		interval := room.manager.options.ReconcileInterval
@@ -642,10 +652,20 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 	}()
 
 	for {
+		room.captureResult()
 		select {
 		case <-room.ctx.Done():
 			return
+		case <-completionChannel:
+			room.captureResult()
+			if room.pendingResult != nil && room.completeMatch() {
+				return
+			}
 		case <-reconcileChannel:
+			room.captureResult()
+			if room.pendingResult != nil {
+				continue
+			}
 			updated, err := room.reconcilePlayers(snapshot, time.Now().UTC())
 			if err != nil {
 				room.manager.report(room.lease.RoomID, err)
@@ -670,6 +690,33 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 			}
 		case delivery := <-room.queue:
 			envelope := delivery.Envelope()
+			room.captureResult()
+			if room.pendingResult != nil {
+				if len(room.pendingCancellations) > 0 {
+					first := room.pendingCancellations[0].Envelope()
+					if envelope.MessageID == first.MessageID && envelope.ActorID == first.ActorID && envelope.Type == first.Type {
+						if len(room.pendingCancellations) < room.manager.options.CommandQueueSize {
+							room.pendingCancellations = append(room.pendingCancellations, delivery)
+						}
+						continue
+					}
+				}
+				_ = room.publishCommandRejected(envelope, helpers.NewConflictError("houseRockets.error.finalizing"))
+				_ = delivery.Ack(room.ctx)
+				continue
+			}
+			if snapshot.GameKey == houseRockets.GameKey && snapshot.State == gameDomain.SessionRunning && envelope.Type == gameCommands.CancelGameSessionCommandType && room.manager.options.MatchRepository != nil {
+				if err := room.requestMatchCancellation(envelope); err != nil {
+					_ = room.publishCommandRejected(envelope, err)
+					if !isRetryableCommandError(err) {
+						_ = delivery.Ack(room.ctx)
+					}
+				} else {
+					room.pendingCancellations = append(room.pendingCancellations, delivery)
+					room.captureResult()
+				}
+				continue
+			}
 			updated, err := room.processCommand(envelope)
 			if err != nil {
 				room.manager.report(room.lease.RoomID, err)

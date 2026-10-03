@@ -58,6 +58,9 @@ func (handler *CancelGameSessionHandler) Handle(
 	if processed, found, err := processedSnapshot(ctx, handler.repository, descriptor); err != nil || found {
 		return processed, err
 	}
+	if snapshot.GameKey == "houseRockets" && snapshot.State == gameDomain.SessionRunning {
+		return gameDomain.SessionSnapshot{}, helpers.NewConflictError("houseRockets.error.runtime_completion_required")
+	}
 
 	expectedVersion := session.Version()
 	if err := session.Cancel(gameDomain.EndReasonCancelledByUser, time.Now().UTC()); err != nil {

@@ -20,10 +20,12 @@ const GameRuntimeSnapshotEventType = "gameRuntime.snapshot"
 // The shared room lifecycle knows only these adapter operations, not rocket
 // physics, controls or snapshots. Additional games get their own factory case.
 type gameRuntime struct {
-	submit    func(coordinationAbstract.MessageEnvelope) error
-	cancel    func()
-	reconcile func(gameDomain.SessionSnapshot)
-	reject    func(string, string, error)
+	submit         func(coordinationAbstract.MessageEnvelope) error
+	cancel         func() error
+	results        <-chan houseRockets.HouseRocketsResultModel
+	committedFrame func(houseRockets.HouseRocketsResultModel) houseRockets.RuntimeFrame
+	reconcile      func(gameDomain.SessionSnapshot)
+	reject         func(string, string, error)
 }
 
 func supportsGameRuntime(gameKey string) bool { return gameKey == houseRockets.GameKey }
@@ -247,8 +249,10 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, re
 	room.manager.workers.Add(2)
 	room.manager.mutex.Unlock()
 	room.game = &gameRuntime{
-		reject: runtime.NotifyRejected,
-		cancel: func() { _ = runtime.Cancel(houseRockets.EndCancelledByUser) },
+		results:        runtime.Results(),
+		committedFrame: runtime.CommittedFrame,
+		reject:         runtime.NotifyRejected,
+		cancel:         func() error { return runtime.Cancel(houseRockets.EndCancelledByUser) },
 		reconcile: func(current gameDomain.SessionSnapshot) {
 			playing, members := room.rosterIDs(current)
 			runtime.Reconcile(playing, members)

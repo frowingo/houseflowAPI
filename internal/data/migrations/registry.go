@@ -68,5 +68,6 @@ func AllMigrations() []Migration {
 		// --- Game Catalog And Active Session Slot ---
 		&gameCatalogActiveSession{},
 		&gameRuntimeOwner{},
+		&gameMatchResult{},
 	}
 }

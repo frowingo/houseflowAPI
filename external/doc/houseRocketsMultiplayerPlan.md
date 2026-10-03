@@ -1,14 +1,14 @@
 # House Rockets — Backend ve iOS ortak geliştirme planı
 
-Tarih: 3 Ekim 2026.
+Tarih: 4 Ekim 2026.
 
-Durum: **Paket 1–4 backend geliştirmeleri ve testleri tamamlandı.** Sözleşme
+Durum: **Paket 1–5 backend geliştirmeleri ve testleri tamamlandı.** Sözleşme
 revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
 courseVersion `1`. Go tanımı, wire DTO'ları, bağımsız v2 decoder ve ortak JSON
 fixture'ları, deterministik simülasyon, iki instance arasında girdi yönlendiren runtime
-ve gerçek v2 HTTP/socket entegrasyonu mevcut.
+ve gerçek v2 HTTP/socket entegrasyonu, kalıcı sonuç ve yeni oturumla rematch mevcut.
 **House Rockets yalnız açıkça etkinleştirilen local/staging ortamında kullanılabilir.**
-Production kapalıdır; kalıcı sonuç/rematch Paket 5, checkpoint recovery Paket 6 teslimidir.
+Production kapalıdır; checkpoint/owner recovery Paket 6 teslimidir.
 Mobil implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
 
 ## 1. Amaç ve onaylanmış ürün sınırı
@@ -49,7 +49,7 @@ eder. Aşağıdaki bulgular bu HEAD'lerdeki koda aittir; testler bu planlama
 ### 2.1. İlk incelemedeki backend parçaları (Paket 1 öncesi)
 
 Bu alt bölüm ilk incelemenin tarihsel kaydıdır; güncel aktivasyon ve teslim
-durumu Paket 4 teslim notunda ve belgenin başında belirtilir.
+durumu Paket 5 teslim notunda ve belgenin başında belirtilir.
 
 | Mevcut dosya | İşlevi ve plan açısından önemi |
 | --- | --- |
@@ -247,7 +247,7 @@ yapısına eklenir; gerçek isimler translation key olarak kullanılmaz.
 
 Bu bölüm Paket 1'de sabitlendi. Go modelleri ve decoder fixture'larla test
 ediliyor. Paket 4 ile v2 gateway ve HTTP/socket aktivasyonu local/staging için
-uygulandı; sonuç endpoint'i hâlâ Paket 5 teslimidir.
+uygulandı; Paket 5 ile kalıcı sonuç endpoint'i de eklendi.
 
 Ortak referanslar:
 
@@ -266,8 +266,8 @@ Ortak referanslar:
 - `internal/application/game/gameSpesific/houseRockets/models.go`: House Rockets wire modelleri.
 - `internal/application/game/gameSpesific/houseRockets/protocol.go`: Oyuna özgü mesaj/hata tanımları.
   Ortak ready/ping/pong modelleri `internal/models/dtos/realtimeModels.go` içinde.
-- `internal/infrastructure/realtime/protocolV2.go`: Bağımsız v2 validation ve
-  server envelope'ları; mevcut gateway henüz bu decoder'ı çağırmıyor.
+- `internal/infrastructure/realtime/protocolV2.go`: Gateway'in kullandığı v2 validation ve
+  server envelope'ları.
 - `tests/houseRocketsContract_test.go`: JSON round-trip, kurallar, input
   sınırları, typed rejection ve mevcut v1/katalog izolasyonu testleri.
 - `tests/houseRocketsSimulation_test.go`: Swift golden karşılaştırmaları,
@@ -291,15 +291,16 @@ GET /api/v1/game/houseRockets/session?houseId=<houseId>
 `PUT` retry'sı aynı house/game için aktif session'a döner. Oluşturma sonrasında
 join ayrıca yapılır. Mobil, keychain'den güncel token ile HTTP ve socket açar.
 
-Paket 5'te uygulanacak kalıcı read yolu:
+Paket 5 ile eklenen kalıcı read yolu (Swagger'da da bulunur):
 
 ```text
 GET /api/v1/game/:sessionId/result
 ```
 
-Bu endpoint henüz mevcut değil. Terminal oturum socket upgrade'ında şu an
-reddedildiği ve aktif-session GET terminal maçı döndürmediği için kayıp sonuç
-event'i bu HTTP endpoint ile telafi edilecek. Sonuç henüz yoksa typed 404;
+Terminal oturum socket upgrade'ında reddedildiği ve aktif-session GET terminal
+maçı döndürmediği için kayıp sonuç event'i bu HTTP endpoint ile telafi edilir.
+JWT ve güncel ev üyeliği gerekir; ev dışındaki kullanıcıya 403, token yoksa 401.
+Sonuç henüz yoksa `houseRockets.error.result_not_found` ile typed 404;
 transient finalization sırasında UI bunu kısa aralıklı sınırlı retry ile ele alır.
 
 HTTP error body'sindeki metin parse edilerek auth/forbidden/not-found ayrımı
@@ -666,7 +667,7 @@ ile conflict/retry sonunda yalnız geçerli generation commit edebilir.
 Checkpoint script'i Redis lease identity/fence ile epoch/stateSequence'i
 birlikte doğrular. Redis counter reset'i tek başına eski Mongo generation'a
 yetki vermez. Owner adapter/CAS ve Redis counter reset testi Paket 3'te uygulandı;
-completion transaction ve checkpoint koruması Paket 5/6'da tamamlanacak.
+Completion transaction Paket 5'te uygulandı; checkpoint koruması Paket 6'da tamamlanacak.
 
 Geçici Redis checkpoint başlangıç önerisi 1 s aralık ve kritik elenme/forfeit
 geçişlerinde, valid lease'i aynı script içinde doğrulayarak yazmaktır.
@@ -704,12 +705,12 @@ tutmak veya her fizik tick'ini Mongo'ya yazmak gerekli değildir.
 Bu bölüm 3 Ekim 2026'da backend teslimlerine göre yeniden düzenlendi. Önceki
 Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
 aşağıdaki başlangıç tablosunda ayrıca gösterilir. Diğer bölümler bu paketlere
-referans verir. Paket 1–4 ve iki-instance gerçek socket senaryoları doğrulandı; sonraki backend paketleri
+referans verir. Paket 1–5 ve iki-instance gerçek socket senaryoları doğrulandı; sonraki backend paketleri
 ve mobil teslimler henüz doğrulanmadı.
 
-**Sıradaki backend işi Paket 5 — Kalıcı maç sonucu, oturum tamamlama ve rematch.**
-Mobil agent local/staging HTTP/socket entegrasyonuna başlayabilir; tam maç
-sonucu ve yayın kabulü için sonraki kapılar beklenir.
+**Sıradaki backend işi Paket 6 — Reconnect, owner recovery ve maç lifecycle dayanıklılığı.**
+Mobil agent local/staging ortamında tam maç, sonuç ve rematch entegrasyonunu
+tamamlayabilir; owner recovery ve production kabulü için sonraki kapılar beklenir.
 
 Bağımlılık sırası:
 
@@ -886,7 +887,7 @@ Paket 3 uygulanan API ve sınırlar:
   Fanout ayrı worker: snapshot buffer 1, control-event ve lifecycle mailbox 64.
   Yavaş snapshot consumer en güncel frame'i alır; kontrol olayları sessizce
   kaybolursa devam etmek yerine event overflow runtimeOverloaded üretir.
-- `GameRuntimeOwner` collection ve `0041GameRuntimeOwner.go` migration'ı:
+- `GameRuntimeOwner` collection ve `0041_gameRuntimeOwner.go` migration'ı:
   session ID unique `_id`; kalıcı generation, ownerInstanceId, leaseId, started.
   Generation lease alınmadan önce okunur, lease alındıktan sonra tek CAS ile
   artırılır; CAS başarısızsa aynı lease altında generation yeniden okunup denenmez.
@@ -1023,6 +1024,90 @@ geçer. Commit/publish yarışı çifte kazanan üretmez.
 Mobil teslim kapısı: Sonuç/finalizing/iptal ekranı ve rematch canlı backend'le
 birlikte tamamlanır. Paket 1–5 tamamlanınca kontrollü ortamda baştan sona
 multiplayer maçı oynanabilir; bağlantı/owner kaybı ve yayın kapıları hâlâ bekler.
+
+#### Paket 5 teslim notu — Backend ve mobil entegrasyon davranışı
+
+- Ortak application port `internal/application/game/abstract/gameMatchRepository.go`,
+  Mongo adapter `internal/data/database/gameMatchRepository.go` altındadır.
+  `internal/application/game/domain/matchResult.go` yalnız ortak kimlik, payload
+  şema sürümü, status, bitiş nedeni ve zamanları içerir. Repository House Rockets
+  DTO'suna veya kurallarına bağımlı değildir; diğer oyunlar aynı transaction'ı
+  kendi JSON payload'ları ve result event type'larıyla kullanabilir.
+- Henüz uygulanmamış `0042_gameMatchResult.go` migration'ı doğrudan ortak
+  `GameMatchResult` koleksiyonunu, validator'ünü ve sonuç akışının hata çevirilerini
+  hazırlar. Tekrarlanabilir; mevcut sonuçlara veya outbox kayıtlarına dokunmaz.
+  Oyuna özgü ayrı bir sonuç koleksiyonu veya eski kayıt taşıma adımı oluşturulmaz.
+  `_id = sessionId` unique primary index'tir; aynı session'a ikinci sonuç eklenmez.
+- Kimlik/schemaVersion/status/zaman/epoch alanları BSON, kanonik wire payload JSON binary'dir.
+  JSON null'ları, integer tick ve tarih hassasiyetini korur. Payload hash replay'de
+  değiştirilmiş sonucu reddeder; ortak metadata veya event type değişimi de conflict'tir.
+  Kazanan, rank, oyuncu kimlikleri, süre/tick ve mesafe House Rockets application
+  handler'ında doğrulanır. `gameSpesific/houseRockets/resultPersistence.go` wire DTO ile
+  ortak envelope dönüşümünü ve okunan payload'ın oyun metadata uyumunu sağlar.
+  House Rockets payload schemaVersion `1`, courseVersion `1` ve protocolVersion `2`
+  birbirinden bağımsız kavramlardır; ortak schemaVersion mobil response'a eklenmez.
+- Engine terminal kararı bir kez önerir; bu sırada `phase: finalizing`,
+  `winnerId: null`, bütün `controlGeneration` değerleri null'dır. Fizik ilerlemez.
+  Owner aynı öneriyi saklama hatalarında yeniden dener; lease yenileme DB
+  döngüsünden bağımsızdır. Commit'e kadar aktif session slot'u korunur.
+- `CompleteMatchCommand` yalnız system/runtime yolundadır; client sonuç/puan/
+  kazanan gönderemez. Transaction ownership kaydına generation + instance + lease
+  + started + completed koşullarıyla **write** yapar. Sonuç, session terminal
+  durumu, yalnız o session'ın aktif slot'unun silinmesi, system receipt, varsa
+  kullanıcı cancel receipt'i ve outbox birlikte commit olur. Claim/completion aynı
+  ownership kaydına yazar; eski generation commit edemez. Aynı sonucu tekrar
+  tamamlama kanonik kaydı döndürür, yeni maçın slot'unu silmez.
+- Session bitiş olayı kendi version'ında; sonuç event'i outbox'ta
+  `aggregateType: gameMatch`, `aggregateId: sessionId`, version `1` ile
+  tutulur. Böylece session'ın unique aggregate/version indeksine çakışmaz.
+  Mobil mesaj tipi, `houseRockets.result:<sessionId>` event ID'si ve HTTP payload'ı değişmez.
+- Commit sonrası session terminal snapshot'ı, `ended`/`cancelled` oyun snapshot'ı
+  ve `houseRockets.result` yayımlanır. Terminal oyun snapshot'ı hareket
+  snapshot'ları gibi coalesce edilmez; sonuçla birlikte bounded control queue'ya
+  alınır. `houseRockets.result:<sessionId>` event ID'si dedup anahtarıdır.
+  Redis publish kabulü bütün cihazların mesajı aldığının ACK'i değildir.
+- Publish kaybında sonuç DB'de kalır; result HTTP aynı payload'ı döndürür.
+  Yayın başarısızsa outbox satırı unpublished kalır. Bu paket otomatik outbox
+  replay worker'ı eklemez; mobil HTTP fallback kullanır. Process/lease kaybında
+  RAM'deki henüz commit edilmemiş öneriyi kurtarmak ve finalizing süresini
+  sınırlamak Paket 6 checkpoint/recovery işidir.
+- Running `gameSession.cancel` önce güncel üyelik + creator/house owner yetkisi
+  ve command ID reuse kontrolünden geçer. Engine iptal önerisi ve kullanıcı
+  receipt'i aynı result transaction'ına girer; DB command ACK'i commit'ten sonra
+  verilir. Terminal `gameSession.snapshot` iptal isteğinin `messageId` değerini
+  korur; mobil pending cancel'ı bu yanıtla kapatabilir. Lobby/countdown iptali
+  sonuç üretmez; başlamamış maç için HTTP 404 normaldir.
+- Completed maçta kazanan veya aynı tick'te herkes elendiyse beraberlik ve tied
+  rank'lar korunur. Cancelled maçta `winnerId: null` ve bütün `rank: null`;
+  mobil distance'tan kazanan üretmez. Beş dakikalık physics sınırı da cancelled'dır.
+
+Mobil agent şimdi finalizing, leaderboard/beraberlik, iptal ve rematch ekranlarını
+canlı local/staging backend'e bağlayabilir:
+
+1. `finalizing` geldiğinde kesin kazanan göstermeden kayıt bekleme ekranı aç.
+2. `houseRockets.result` payload'ını session ID ile sakla; aynı event tekrarını
+   yeni sonuç sayma. Socket event kaybolursa bilinen **eski session ID** ile
+   `GET /api/v1/game/:sessionId/result` çağır. Henüz commit yoksa 404 için kısa,
+   sınırlı backoff uygula; 401/403'ü kayıt beklemesi sayma.
+3. Finished/cancelled session için yeni WebSocket upgrade veya steering gönderme.
+   Rematch'te eski socket/controls/sequences temizlenir; mevcut
+   `PUT /api/v1/game/houseRockets/session` house body ile çağrılır.
+4. Başka kullanıcı yeni aktif lobby açtıysa PUT o lobby'yi döndürür; eski session
+   asla resetlenmez. Yeni session ID üzerinde join + hazır onayı yeniden gerekir.
+   Eski session sonucu HTTP'den okunmaya devam eder.
+
+`tests/houseRocketsResultIntegration_test.go` transaction rollback/retry,
+duplicate completion, stale owner, takeover/finish yarışı, yayın kaybı,
+yetkili iptal ve migration tekrarını doğrular. İki instance gateway testi HTTP ve
+socket sonuç eşitliğini ve rematch'i doğrular. `tests/gameMatchResult_test.go`
+ortak envelope ve House Rockets codec kontrollerini kapsar.
+`tests/gameMatchPersistenceIntegration_test.go` House Rockets alanları olmayan
+sıra tabanlı örnek payload'la ortak repository kullanımını, immutable replay'i,
+metadata/payload bozulmasını ve mevcut sonuç/outbox'a dokunmayan migration tekrarını doğrular.
+Bu test yeni bir oyun feature'ı veya catalog kaydı eklemez.
+`go vet ./...` ve canlı Mongo/Redis
+ile `go test -race ./... -count=1` kabul kontrolleridir. Mobil repository
+değiştirilmedi/build alınmadı; gerçek iki iOS cihazı ve Paket 6/7 kapıları bekler.
 
 ### Paket 6 — Reconnect, owner recovery ve maç lifecycle dayanıklılığı
 
