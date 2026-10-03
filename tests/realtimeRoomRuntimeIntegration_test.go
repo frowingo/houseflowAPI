@@ -230,6 +230,7 @@ func newTestRoomManager(
 
 func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediator {
 	mediator := cqrs.New()
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](mediator, gameCommands.NewReconcileGameSessionPlayersHandler(fixture.repository))
 	membershipPolicy := fixture.membershipPolicy()
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](
 		mediator,

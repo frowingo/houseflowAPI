@@ -65,10 +65,7 @@ func NewV2ErrorMessage(messageID string, sentAt time.Time, protocolError V2Proto
 }
 
 func V2ProtocolErrorFrom(err error) V2ProtocolError {
-	if errors.Is(err, houseRockets.ErrInvalidInput) {
-		return V2ProtocolError{Code: houseRockets.InvalidInputErrorCode, Args: []string{}}
-	}
-	result := protocolErrorFrom(err)
+	result := protocolErrorFromV2(err)
 	if result.Args == nil {
 		result.Args = []string{}
 	}

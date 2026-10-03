@@ -133,7 +133,8 @@ func SetupRoutes(
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
-	gameCatalog, err := gameApplication.NewDefaultCatalog()
+	houseRocketsEnabled := coordinator != nil && config.HouseRocketsEnabled()
+	gameCatalog, err := gameApplication.NewDefaultCatalog(gameApplication.CatalogOptions{EnableHouseRockets: houseRocketsEnabled})
 	if err != nil {
 		return nil, err
 	}
@@ -181,6 +182,7 @@ func SetupRoutes(
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](applicationMediator, leaveGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](applicationMediator, cancelGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](applicationMediator, advanceGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](applicationMediator, gameCommands.NewReconcileGameSessionPlayersHandler(gameSessionRepository))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](applicationMediator, getGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](applicationMediator, getActiveGameSessionHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)
@@ -342,10 +344,11 @@ func SetupRoutes(
 		coordinator,
 		gameSessionRepository,
 		applicationMediator,
-		realtime.RoomManagerOptions{},
+		realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, dbName)},
 		realtime.GatewayOptions{
-			AllowedOrigins: webSocketAllowedOrigins(),
-			Localizer:      localizationCache,
+			EnableHouseRockets: houseRocketsEnabled,
+			AllowedOrigins:     webSocketAllowedOrigins(),
+			Localizer:          localizationCache,
 		},
 	)
 	if err != nil {

@@ -185,12 +185,32 @@ func (simulation *Simulation) step() {
 
 // EliminatePlayers applies a system transition as one batch, resolving ties after the whole batch.
 func (simulation *Simulation) EliminatePlayers(playerIDs []string, reason EliminationReason) error {
-	if len(playerIDs) == 0 || len(playerIDs) > len(simulation.players) ||
-		(reason != EliminationForfeit && reason != EliminationConnectionExpired && reason != EliminationMembershipRevoked) {
+	if reason != EliminationForfeit && reason != EliminationConnectionExpired && reason != EliminationMembershipRevoked {
 		return ErrInvalidInput
 	}
-	seen := make(map[string]bool, len(playerIDs))
+	requests := make([]PlayerElimination, 0, len(playerIDs))
 	for _, id := range playerIDs {
+		requests = append(requests, PlayerElimination{id, reason})
+	}
+	return simulation.EliminateBatch(requests)
+}
+
+type PlayerElimination struct {
+	PlayerID string
+	Reason   EliminationReason
+}
+
+// Mixed causes still resolve as one tick, never as sequential artificial wins.
+func (simulation *Simulation) EliminateBatch(requests []PlayerElimination) error {
+	if len(requests) == 0 || len(requests) > len(simulation.players) {
+		return ErrInvalidInput
+	}
+	seen := make(map[string]bool, len(requests))
+	for _, request := range requests {
+		id := request.PlayerID
+		if request.Reason != EliminationForfeit && request.Reason != EliminationConnectionExpired && request.Reason != EliminationMembershipRevoked {
+			return ErrInvalidInput
+		}
 		player := simulation.player(id)
 		if player == nil {
 			return ErrPlayerNotFound
@@ -203,10 +223,10 @@ func (simulation *Simulation) EliminatePlayers(playerIDs []string, reason Elimin
 			return ErrSimulationFinished
 		}
 	}
-	for _, id := range playerIDs {
-		player := simulation.player(id)
+	for _, request := range requests {
+		player := simulation.player(request.PlayerID)
 		if player.state.IsAlive {
-			simulation.eliminate(player, reason)
+			simulation.eliminate(player, request.Reason)
 		}
 	}
 	simulation.resolveOutcome()

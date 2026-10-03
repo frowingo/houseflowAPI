@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -41,6 +43,7 @@ var (
 )
 
 type GatewayOptions struct {
+	EnableHouseRockets  bool
 	MaximumMessageBytes int64
 	OutboundQueueSize   int
 	PingInterval        time.Duration
@@ -89,6 +92,9 @@ func NewGateway(
 		return nil, errors.New("CQRS sender is required")
 	}
 	options = normalizeGatewayOptions(options)
+	if options.EnableHouseRockets && manager.options.ParticipantDirectory == nil {
+		return nil, errors.New("House Rockets requires a participant directory")
+	}
 	if options.PingInterval >= options.IdleTimeout {
 		return nil, errors.New("ping interval must be shorter than idle timeout")
 	}
@@ -150,13 +156,34 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		}
 		requestCtx, cancel := context.WithTimeout(c.UserContext(), gateway.options.UpgradeTimeout)
 		defer cancel()
-		if _, err := cqrs.Send[gameDomain.SessionSnapshot](requestCtx, gateway.sender, gameQueries.GetGameSessionQuery{
+		snapshot, err := cqrs.Send[gameDomain.SessionSnapshot](requestCtx, gateway.sender, gameQueries.GetGameSessionQuery{
 			SessionID: roomID,
 			UserID:    userID,
-		}); err != nil {
+		})
+		if err != nil {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
-		if _, err := gateway.manager.EnsureRoom(requestCtx, roomID); err != nil {
+		version := ProtocolVersion
+		if query := c.Query("protocolVersion"); query != "" {
+			parsed, parseErr := strconv.Atoi(query)
+			if parseErr != nil {
+				parsed = 0
+			}
+			version = parsed
+		}
+		if version != snapshot.ProtocolVersion || (version != 1 && version != 2) || (version == 2 && snapshot.GameKey != houseRockets.GameKey) {
+			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewLocalizedError("realtime.error.unsupported_protocol"))
+		}
+		if snapshot.GameKey == houseRockets.GameKey {
+			if !gateway.options.EnableHouseRockets {
+				return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewNotFoundError("game.error.definition_not_found"))
+			}
+			if err := gateway.requireActiveMember(requestCtx, snapshot.HouseID, userID); err != nil {
+				return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
+			}
+		}
+		ownership, err := gateway.manager.EnsureRoom(requestCtx, roomID)
+		if err != nil {
 			if errors.Is(err, ErrTerminalRoom) {
 				err = helpers.NewConflictError("game.error.invalid_state")
 			} else {
@@ -164,6 +191,8 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 			}
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
+		c.Locals("realtimeProtocolVersion", version)
+		c.Locals("realtimeEpoch", ownership.RuntimeEpoch)
 		return c.Next()
 	}
 }
@@ -231,6 +260,9 @@ func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
 	presenceActive := false
 	writerStarted := false
 	defer func() {
+		if connection.v2 != nil {
+			connection.disconnectController()
+		}
 		connection.stop(fasthttpWebsocket.CloseNormalClosure, "connection closed")
 		if writerStarted {
 			<-connection.writerDone
@@ -279,7 +311,13 @@ func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
 		connection.stop(fasthttpWebsocket.ClosePolicyViolation, "session unavailable")
 		return
 	}
-	if !connection.activate(snapshotMessage(snapshot)) {
+	activated := false
+	if connection.v2 != nil {
+		activated = connection.activateV2(snapshot)
+	} else {
+		activated = connection.activate(snapshotMessage(snapshot))
+	}
+	if !activated {
 		connection.stop(fasthttpWebsocket.ClosePolicyViolation, "outbound queue unavailable")
 		return
 	}
@@ -289,6 +327,9 @@ func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
 	}
 	writerStarted = true
 	go connection.writeLoop(presence)
+	if connection.v2 != nil && gateway.startWorker() {
+		go connection.controlLoop(presence)
+	}
 	connection.readLoop()
 }
 
@@ -458,6 +499,8 @@ func normalizeGatewayOptions(options GatewayOptions) GatewayOptions {
 }
 
 type gatewayClient struct {
+	v2         *v2ClientState
+	expiresAt  time.Time
 	id         string
 	roomID     string
 	userID     string
@@ -482,7 +525,7 @@ func newGatewayClient(
 	userID string,
 ) *gatewayClient {
 	ctx, cancel := context.WithCancel(gateway.ctx)
-	return &gatewayClient{
+	client := &gatewayClient{
 		id:         uuid.NewString(),
 		roomID:     roomID,
 		userID:     userID,
@@ -497,6 +540,12 @@ func newGatewayClient(
 			maximum: gateway.options.MaximumMessages,
 		},
 	}
+	client.expiresAt, _ = socket.Locals("tokenExpiresAt").(time.Time)
+	if version, _ := socket.Locals("realtimeProtocolVersion").(int); version == 2 {
+		epoch, _ := socket.Locals("realtimeEpoch").(int64)
+		client.v2 = newV2ClientState(epoch)
+	}
+	return client
 }
 
 func (client *gatewayClient) activate(initial ServerMessage) bool {
@@ -559,6 +608,10 @@ func (client *gatewayClient) readLoop() {
 	client.socket.SetPongHandler(func(string) error {
 		return client.socket.SetReadDeadline(time.Now().Add(client.gateway.options.IdleTimeout))
 	})
+	if client.v2 != nil {
+		client.readV2Loop()
+		return
+	}
 	for {
 		messageType, payload, err := client.socket.ReadMessage()
 		if err != nil {
@@ -623,8 +676,43 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 	presenceTicker := time.NewTicker(client.gateway.options.PresenceRefresh)
 	defer pingTicker.Stop()
 	defer presenceTicker.Stop()
+	var snapshots <-chan []byte
+	if client.v2 != nil {
+		snapshots = client.v2.snapshots
+	}
+	var expiration <-chan time.Time
+	if !client.expiresAt.IsZero() {
+		timer := time.NewTimer(time.Until(client.expiresAt))
+		defer timer.Stop()
+		expiration = timer.C
+	}
+	write := func(payload []byte) bool {
+		_ = client.socket.SetWriteDeadline(time.Now().Add(client.gateway.options.WriteTimeout))
+		if err := client.socket.WriteMessage(fasthttpWebsocket.TextMessage, payload); err != nil {
+			client.stop(fasthttpWebsocket.CloseAbnormalClosure, "write failed")
+			return false
+		}
+		return true
+	}
 	for {
+		if client.v2 != nil {
+			select {
+			case payload := <-client.outbound:
+				if !write(payload) {
+					return
+				}
+				continue
+			default:
+			}
+		}
 		select {
+		case <-expiration:
+			client.stop(fasthttpWebsocket.ClosePolicyViolation, "authentication expired")
+			return
+		case payload := <-snapshots:
+			if !write(payload) {
+				return
+			}
 		case <-client.ctx.Done():
 			client.stop(fasthttpWebsocket.CloseGoingAway, "realtime gateway stopping")
 			return
@@ -641,6 +729,9 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 				return
 			}
 		case <-presenceTicker.C:
+			if client.v2 != nil {
+				continue
+			}
 			presenceCtx, cancel := context.WithTimeout(client.ctx, client.gateway.options.WriteTimeout)
 			err := client.gateway.coordinator.TouchPresence(
 				presenceCtx,
@@ -658,6 +749,10 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 }
 
 func (client *gatewayClient) reject(messageID string, protocolError ProtocolError) {
+	if client.v2 != nil {
+		client.enqueueV2(NewV2ErrorMessage(messageID, time.Now(), V2ProtocolError{Code: protocolError.Code, Args: protocolError.Args, Retryable: protocolError.Retryable}), "", 0)
+		return
+	}
 	message := newServerMessage(CommandRejectedMessageType, messageID)
 	message.Error = &protocolError
 	client.enqueue(message)
@@ -666,6 +761,14 @@ func (client *gatewayClient) reject(messageID string, protocolError ProtocolErro
 func (client *gatewayClient) stop(code int, reason string) {
 	client.stopOnce.Do(func() {
 		client.cancel()
+		if client.v2 != nil {
+			// fasthttp's hijacked Conn.Close may defer closing until the handler
+			// returns. A net.Conn deadline interrupts the concurrent reader/writer
+			// immediately, without a blocking close-frame write in room fanout.
+			_ = client.socket.NetConn().SetDeadline(time.Now())
+			_ = client.socket.Close()
+			return
+		}
 		deadline := time.Now().Add(client.gateway.options.WriteTimeout)
 		_ = client.socket.WriteControl(
 			fasthttpWebsocket.CloseMessage,
@@ -719,7 +822,7 @@ func (hub *roomHub) run() {
 			if !open {
 				return
 			}
-			hub.broadcast(serverMessageFromEvent(event), event.ConnectionID)
+			hub.broadcastEvent(event)
 		case err, open := <-hub.subscription.Errors():
 			if !open {
 				return
@@ -730,20 +833,6 @@ func (hub *roomHub) run() {
 				return
 			}
 		}
-	}
-}
-
-func (hub *roomHub) broadcast(message ServerMessage, targetConnectionID string) {
-	hub.mutex.RLock()
-	defer hub.mutex.RUnlock()
-	if targetConnectionID != "" {
-		if client := hub.clients[targetConnectionID]; client != nil {
-			client.enqueue(message)
-		}
-		return
-	}
-	for _, client := range hub.clients {
-		client.enqueue(message)
 	}
 }
 

@@ -14,6 +14,7 @@ const (
 	InputSteer       = "steer"
 	InputHeartbeat   = "heartbeat"
 	InputDisconnect  = "disconnect"
+	InputSnapshot    = "snapshot"
 	InputLifetime    = time.Second
 	RuntimeQueueSize = 64
 	maximumCatchUp   = 250 * time.Millisecond
@@ -30,6 +31,7 @@ var (
 // RuntimeInput comes from a trusted authenticated transport, never directly from
 // client-supplied player/connection identities. Epoch and generation are opaque.
 type RuntimeInput struct {
+	MessageID         string    `json:"messageId,omitempty"`
 	Kind              string    `json:"kind"`
 	PlayerID          string    `json:"playerId"`
 	ConnectionID      string    `json:"connectionId"`
@@ -41,6 +43,7 @@ type RuntimeInput struct {
 }
 
 type RuntimePlayerControl struct {
+	ConnectionID               string `json:"connectionId"`
 	PlayerID                   string `json:"playerId"`
 	Connected                  bool   `json:"connected"`
 	LastProcessedInputSequence int64  `json:"lastProcessedInputSequence"`
@@ -57,6 +60,8 @@ type RuntimeFrame struct {
 }
 
 type RuntimeEvent struct {
+	MessageID    string
+	Frame        *RuntimeFrame
 	ConnectionID string
 	Grant        *HouseRocketsControlGrantedModel
 	Err          error
@@ -82,24 +87,25 @@ type queuedInput struct {
 // advancement; Submit only writes bounded mailboxes. Advance is also exposed for
 // deterministic scheduler tests. No external callback is invoked under mutex.
 type Runtime struct {
-	mutex       sync.Mutex
-	simulation  *Simulation
-	epoch       int64
-	controls    map[string]*controller
-	pending     map[string]queuedInput
-	commands    chan queuedInput
-	frames      chan RuntimeFrame
-	events      chan RuntimeEvent
-	lastAdvance time.Time
-	nextFrame   time.Time
-	remainder   int64
-	sequence    int64
-	terminal    bool
-	stopped     bool
-	runOnce     sync.Once
+	mutex        sync.Mutex
+	simulation   *Simulation
+	epoch        int64
+	controls     map[string]*controller
+	pending      map[string]queuedInput
+	eliminations map[string]EliminationReason
+	commands     chan queuedInput
+	frames       chan RuntimeFrame
+	events       chan RuntimeEvent
+	lastAdvance  time.Time
+	nextFrame    time.Time
+	remainder    int64
+	sequence     int64
+	terminal     bool
+	stopped      bool
+	runOnce      sync.Once
 }
 
-func NewRuntime(params NewSimulationParams, epoch int64, now time.Time) (*Runtime, error) {
+func NewRuntime(params NewSimulationParams, epoch int64, now time.Time, initialSequences ...int64) (*Runtime, error) {
 	if epoch <= 0 || now.IsZero() {
 		return nil, ErrInvalidSimulation
 	}
@@ -107,7 +113,14 @@ func NewRuntime(params NewSimulationParams, epoch int64, now time.Time) (*Runtim
 	if err != nil {
 		return nil, err
 	}
-	runtime := &Runtime{simulation: simulation, epoch: epoch, controls: make(map[string]*controller), pending: make(map[string]queuedInput),
+	baseSequence := int64(0)
+	if len(initialSequences) > 0 {
+		baseSequence = initialSequences[0]
+		if baseSequence < 0 {
+			return nil, ErrInvalidSimulation
+		}
+	}
+	runtime := &Runtime{simulation: simulation, epoch: epoch, controls: make(map[string]*controller), pending: make(map[string]queuedInput), eliminations: make(map[string]EliminationReason), sequence: baseSequence,
 		commands: make(chan queuedInput, RuntimeQueueSize), frames: make(chan RuntimeFrame, 1), events: make(chan RuntimeEvent, RuntimeQueueSize), lastAdvance: now, nextFrame: now.Add(time.Second / SnapshotRateHz)}
 	for _, player := range params.Players {
 		runtime.controls[player.PlayerID] = &controller{graceEndsAt: now.Add(ControlTimeout + ReconnectGraceDuration)}
@@ -124,15 +137,8 @@ func (runtime *Runtime) Events() <-chan RuntimeEvent { return runtime.events }
 func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 	runtime.mutex.Lock()
 	defer runtime.mutex.Unlock()
-	if runtime.stopped || runtime.terminal {
+	if runtime.stopped {
 		return ErrSimulationFinished
-	}
-	control, exists := runtime.controls[input.PlayerID]
-	if !exists {
-		return ErrPlayerNotFound
-	}
-	if !runtime.simulation.player(input.PlayerID).state.IsAlive {
-		return ErrPlayerEliminated
 	}
 	if !validID(input.ConnectionID) {
 		return ErrInvalidInput
@@ -142,6 +148,24 @@ func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 	}
 	if input.CreatedAt.IsZero() || now.Sub(input.CreatedAt) > InputLifetime || input.CreatedAt.Sub(now) > maximumCatchUp {
 		return ErrInputExpired
+	}
+	if input.Kind == InputSnapshot {
+		frame := runtime.buildFrame()
+		runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Frame: &frame})
+		return nil
+	}
+	if runtime.terminal {
+		return ErrSimulationFinished
+	}
+	control, exists := runtime.controls[input.PlayerID]
+	if !exists {
+		return ErrPlayerNotFound
+	}
+	if !runtime.simulation.player(input.PlayerID).state.IsAlive {
+		return ErrPlayerEliminated
+	}
+	if _, pending := runtime.eliminations[input.PlayerID]; pending {
+		return ErrPlayerEliminated
 	}
 	if input.Kind == InputBind {
 		select {
@@ -239,33 +263,48 @@ func (runtime *Runtime) Advance(now time.Time) error {
 		runtime.publishFrame()
 		return ErrInvalidAdvance
 	}
+	changed := false
+	requests := make([]PlayerElimination, 0, MaximumPlayers)
+	if len(runtime.eliminations) > 0 {
+		for id, reason := range runtime.eliminations {
+			if runtime.simulation.player(id).state.IsAlive {
+				requests = append(requests, PlayerElimination{id, reason})
+			}
+			control := runtime.controls[id]
+			control.connectionID, control.generation = "", ""
+			delete(runtime.pending, id)
+		}
+	}
 	for range RuntimeQueueSize {
 		select {
 		case queued := <-runtime.commands:
 			input := queued.input
 			if now.Sub(queued.receivedAt) > InputLifetime {
-				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, Err: ErrInputExpired})
+				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Err: ErrInputExpired})
 				continue
 			}
 			control := runtime.controls[input.PlayerID]
-			if !runtime.simulation.player(input.PlayerID).state.IsAlive {
-				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, Err: ErrPlayerEliminated})
+			_, excluded := runtime.eliminations[input.PlayerID]
+			if excluded || !runtime.simulation.player(input.PlayerID).state.IsAlive {
+				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Err: ErrPlayerEliminated})
 				continue
 			}
 			if input.Kind == InputBind {
 				if (!control.graceEndsAt.IsZero() && !now.Before(control.graceEndsAt)) || (control.graceEndsAt.IsZero() && !now.Before(control.lastSeen.Add(ControlTimeout+ReconnectGraceDuration))) {
-					runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, Err: ErrControlRequired})
+					runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Err: ErrControlRequired})
 					continue
 				}
 				if control.connectionID != input.ConnectionID || control.generation == "" {
+					changed = true
 					control.connectionID, control.generation = input.ConnectionID, uuid.NewString()
 					control.highestInput, control.processedInput = 0, 0
 					delete(runtime.pending, input.PlayerID)
 				}
 				control.lastSeen, control.graceEndsAt = queued.receivedAt, time.Time{}
 				grant := &HouseRocketsControlGrantedModel{SessionID: runtime.simulation.sessionID, PlayerID: input.PlayerID, RuntimeEpoch: runtime.epoch, ControlGeneration: control.generation}
-				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, Grant: grant})
+				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Grant: grant})
 			} else if control.connectionID == input.ConnectionID && control.generation == input.ControlGeneration {
+				changed = true
 				control.connectionID, control.generation = "", ""
 				control.graceEndsAt = queued.receivedAt.Add(ReconnectGraceDuration)
 				delete(runtime.pending, input.PlayerID)
@@ -275,20 +314,23 @@ func (runtime *Runtime) Advance(now time.Time) error {
 		}
 	}
 commandsDrained:
-	expired := make([]string, 0, MaximumPlayers)
 	for id, control := range runtime.controls {
 		if control.graceEndsAt.IsZero() && now.Sub(control.lastSeen) >= ControlTimeout {
 			control.graceEndsAt = control.lastSeen.Add(ControlTimeout + ReconnectGraceDuration)
 			control.connectionID, control.generation = "", ""
+			changed = true
 			delete(runtime.pending, id)
 		}
-		if !control.graceEndsAt.IsZero() && !now.Before(control.graceEndsAt) && runtime.simulation.player(id).state.IsAlive {
-			expired = append(expired, id)
+		_, excluded := runtime.eliminations[id]
+		if !excluded && !control.graceEndsAt.IsZero() && !now.Before(control.graceEndsAt) && runtime.simulation.player(id).state.IsAlive {
+			requests = append(requests, PlayerElimination{id, EliminationConnectionExpired})
 		}
 	}
-	if len(expired) != 0 {
-		_ = runtime.simulation.EliminatePlayers(expired, EliminationConnectionExpired)
+	if len(requests) != 0 {
+		_ = runtime.simulation.EliminateBatch(requests)
+		changed = true
 	}
+	clear(runtime.eliminations)
 	for id, queued := range runtime.pending {
 		control := runtime.controls[id]
 		if now.Sub(queued.receivedAt) <= InputLifetime && control.connectionID == queued.input.ConnectionID && control.generation == queued.input.ControlGeneration {
@@ -308,7 +350,7 @@ commandsDrained:
 	if runtime.simulation.outcome != nil {
 		runtime.terminal = true
 	}
-	if runtime.terminal || !now.Before(runtime.nextFrame) {
+	if changed || runtime.terminal || !now.Before(runtime.nextFrame) {
 		interval := time.Second / SnapshotRateHz
 		if !now.Before(runtime.nextFrame) {
 			runtime.nextFrame = runtime.nextFrame.Add((now.Sub(runtime.nextFrame)/interval + 1) * interval)
@@ -330,6 +372,15 @@ func (runtime *Runtime) Cancel(reason EndReason) error {
 }
 
 func (runtime *Runtime) publishFrame() {
+	frame := runtime.buildFrame()
+	select {
+	case <-runtime.frames:
+	default:
+	}
+	runtime.frames <- frame
+}
+
+func (runtime *Runtime) buildFrame() RuntimeFrame {
 	runtime.sequence++
 	frame := RuntimeFrame{RuntimeEpoch: runtime.epoch, StateSequence: runtime.sequence, Phase: PhasePlaying, World: runtime.simulation.Snapshot(), Controls: make([]RuntimePlayerControl, 0, len(runtime.controls))}
 	if runtime.terminal {
@@ -337,13 +388,28 @@ func (runtime *Runtime) publishFrame() {
 	}
 	for _, player := range frame.World.Players {
 		control := runtime.controls[player.PlayerID]
-		frame.Controls = append(frame.Controls, RuntimePlayerControl{PlayerID: player.PlayerID, Connected: control.connectionID != "", LastProcessedInputSequence: control.processedInput})
+		frame.Controls = append(frame.Controls, RuntimePlayerControl{PlayerID: player.PlayerID, ConnectionID: control.connectionID, Connected: control.connectionID != "", LastProcessedInputSequence: control.processedInput})
 	}
-	select {
-	case <-runtime.frames:
-	default:
+	return frame
+}
+
+func (runtime *Runtime) Reconcile(playingIDs, memberIDs []string) {
+	runtime.mutex.Lock()
+	defer runtime.mutex.Unlock()
+	playing, members := make(map[string]bool, len(playingIDs)), make(map[string]bool, len(memberIDs))
+	for _, id := range playingIDs {
+		playing[id] = true
 	}
-	runtime.frames <- frame
+	for _, id := range memberIDs {
+		members[id] = true
+	}
+	for id := range runtime.controls {
+		if !members[id] {
+			runtime.eliminations[id] = EliminationMembershipRevoked
+		} else if !playing[id] {
+			runtime.eliminations[id] = EliminationForfeit
+		}
+	}
 }
 
 func (runtime *Runtime) emit(event RuntimeEvent) {
@@ -352,5 +418,14 @@ func (runtime *Runtime) emit(event RuntimeEvent) {
 	default:
 		_ = runtime.simulation.Cancel(EndRuntimeOverloaded)
 		runtime.terminal = true
+	}
+}
+
+// Invalid remote inputs receive a bounded, targeted rejection. Client misuse
+// must not fill the control mailbox and cancel an otherwise healthy game.
+func (runtime *Runtime) NotifyRejected(connectionID, messageID string, err error) {
+	select {
+	case runtime.events <- RuntimeEvent{ConnectionID: connectionID, MessageID: messageID, Err: err}:
+	default:
 	}
 }

@@ -6,6 +6,7 @@ import (
 
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
 )
 
 const FlappyBirdGameKey = "flappyBird"
@@ -30,8 +31,10 @@ func NewCatalog(definitions ...gameDomain.GameDefinition) (*Catalog, error) {
 	return catalog, nil
 }
 
-func NewDefaultCatalog() (*Catalog, error) {
-	return NewCatalog(gameDomain.GameDefinition{
+type CatalogOptions struct{ EnableHouseRockets bool }
+
+func NewDefaultCatalog(options ...CatalogOptions) (*Catalog, error) {
+	definitions := []gameDomain.GameDefinition{{
 		GameKey:         FlappyBirdGameKey,
 		ProtocolVersion: 1,
 		Mode:            gameDomain.RealtimeGame,
@@ -41,7 +44,11 @@ func NewDefaultCatalog() (*Catalog, error) {
 			ReadyWindowDuration: 30 * time.Second,
 			CountdownDuration:   3 * time.Second,
 		},
-	})
+	}}
+	if len(options) > 0 && options[0].EnableHouseRockets {
+		definitions = append(definitions, houseRockets.Definition())
+	}
+	return NewCatalog(definitions...)
 }
 
 func (catalog *Catalog) Find(gameKey string) (gameDomain.GameDefinition, error) {

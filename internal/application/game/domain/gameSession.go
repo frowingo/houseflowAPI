@@ -266,6 +266,39 @@ func (session *GameSession) Advance(now time.Time) error {
 	return nil
 }
 
+// ExcludePlayers reconciles unavailable players before advancing deadlines.
+// It batches changes so intermediate ready counts cannot start an invalid match.
+func (session *GameSession) ExcludePlayers(playerIDs []string, reason string, now time.Time) error {
+	if reason == "" {
+		return ErrEndReasonRequired
+	}
+	if err := session.requireOperationTime(now); err != nil {
+		return err
+	}
+	if isTerminalState(session.state) {
+		return nil
+	}
+	now = now.UTC()
+	for _, id := range playerIDs {
+		index := session.playerIndex(id)
+		if index < 0 || session.players[index].State == PlayerLeft {
+			continue
+		}
+		session.players[index].State = PlayerLeft
+		session.players[index].LeftAt = now
+		session.recordEvent(PlayerExcluded, id, reason, time.Time{}, now)
+	}
+	if session.ReadyPlayerCount() < session.rules.MinimumPlayers {
+		if session.state == SessionReadyWindow {
+			session.cancelReadyWindow(now)
+		}
+		if session.state == SessionCountdown {
+			session.cancel(EndReasonInsufficientPlayers, now)
+		}
+	}
+	return nil
+}
+
 func (session *GameSession) Finish(reason string, now time.Time) error {
 	if reason == "" {
 		return ErrEndReasonRequired

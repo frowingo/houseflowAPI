@@ -2,12 +2,13 @@
 
 Tarih: 3 Ekim 2026.
 
-Durum: **Paket 1 sözleşmesi, Paket 2 Go oyun motoru ve Paket 3 runtime/coordination geliştirildi ve test edildi.** Sözleşme
+Durum: **Paket 1–4 backend geliştirmeleri ve testleri tamamlandı.** Sözleşme
 revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
 courseVersion `1`. Go tanımı, wire DTO'ları, bağımsız v2 decoder ve ortak JSON
-fixture'ları, deterministik simülasyon ve iki instance arasında girdi yönlendiren runtime mevcut.
-**House Rockets hâlâ canlı katalog/gateway'de açık değil;** endpoint aktivasyonu,
-kalıcı sonuç ve checkpoint recovery davranışı sonraki paketlerde.
+fixture'ları, deterministik simülasyon, iki instance arasında girdi yönlendiren runtime
+ve gerçek v2 HTTP/socket entegrasyonu mevcut.
+**House Rockets yalnız açıkça etkinleştirilen local/staging ortamında kullanılabilir.**
+Production kapalıdır; kalıcı sonuç/rematch Paket 5, checkpoint recovery Paket 6 teslimidir.
 Mobil implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
 
 ## 1. Amaç ve onaylanmış ürün sınırı
@@ -45,7 +46,10 @@ Uygulamaya başlamadan önce agent kendi checkout'undaki değişiklikleri kontro
 eder. Aşağıdaki bulgular bu HEAD'lerdeki koda aittir; testler bu planlama
 çalışmasında çalıştırılmamıştır.
 
-### 2.1. Backend'de kullanılacak mevcut parçalar
+### 2.1. İlk incelemedeki backend parçaları (Paket 1 öncesi)
+
+Bu alt bölüm ilk incelemenin tarihsel kaydıdır; güncel aktivasyon ve teslim
+durumu Paket 4 teslim notunda ve belgenin başında belirtilir.
 
 | Mevcut dosya | İşlevi ve plan açısından önemi |
 | --- | --- |
@@ -242,8 +246,8 @@ yapısına eklenir; gerçek isimler translation key olarak kullanılmaz.
 ## 5. Ortak ağ sözleşmesi — houseRockets.v2.1
 
 Bu bölüm Paket 1'de sabitlendi. Go modelleri ve decoder fixture'larla test
-ediliyor; **bu, canlı gateway'in v2 mesajlarını kabul ettiği anlamına gelmez.**
-HTTP/socket aktivasyonu Paket 4, sonuç endpoint'i Paket 5 teslimidir.
+ediliyor. Paket 4 ile v2 gateway ve HTTP/socket aktivasyonu local/staging için
+uygulandı; sonuç endpoint'i hâlâ Paket 5 teslimidir.
 
 Ortak referanslar:
 
@@ -305,7 +309,7 @@ taraf için burada açıkça tanımlanır.
 
 ### 5.2. Socket açılışı ve envelope
 
-Paket 4'te uygulanacak v2 açılışı:
+Paket 4 ile uygulanan v2 açılışı:
 
 ```text
 GET /api/v1/game/<sessionId>/realtime?protocolVersion=2
@@ -313,7 +317,7 @@ Authorization: Bearer <JWT>
 ```
 
 Query yalnız protokol uyumluluğu için; session ve game key server tarafından
-doğrulanır. Mevcut gateway query negotiation yapmıyor; eklenecek. v1'in query'siz
+doğrulanır. Gateway query negotiation yapar. v1'in query'siz
 açılışı v1 oturumlar için korunur. Desteklenmeyen/mismatched sürümde upgrade
 öncesi açık hata döner. Native client için Origin zorunlu değildir.
 
@@ -700,12 +704,12 @@ tutmak veya her fizik tick'ini Mongo'ya yazmak gerekli değildir.
 Bu bölüm 3 Ekim 2026'da backend teslimlerine göre yeniden düzenlendi. Önceki
 Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
 aşağıdaki başlangıç tablosunda ayrıca gösterilir. Diğer bölümler bu paketlere
-referans verir. Paket 1/2 ve Paket 3'ün iki-instance runtime senaryoları doğrulandı; diğer backend paketleri
+referans verir. Paket 1–4 ve iki-instance gerçek socket senaryoları doğrulandı; sonraki backend paketleri
 ve mobil teslimler henüz doğrulanmadı.
 
-**Sıradaki backend işi Paket 4 — WebSocket gateway, katalog ve online lobby entegrasyonu.**
-Mevcut session/coordination altyapısı kullanılacak; socket endpoint'ini veya
-Mongo repository temelini baştan kurmak gerekmiyor.
+**Sıradaki backend işi Paket 5 — Kalıcı maç sonucu, oturum tamamlama ve rematch.**
+Mobil agent local/staging HTTP/socket entegrasyonuna başlayabilir; tam maç
+sonucu ve yayın kabulü için sonraki kapılar beklenir.
 
 Bağımlılık sırası:
 
@@ -896,9 +900,9 @@ Paket 3 uygulanan API ve sınırlar:
 - `RuntimeFrame` internal fanout formatıdır, public v2 snapshot DTO'su değildir.
   Private control generation sadece connection-targeted grant'te yayınlanır.
   Sonuç henüz commit edilmez; terminal frame **finalizing** olarak kalır, kesin
-  result event'i üretilmez. Running session başlangıcında isimler şimdilik ID
-  placeholder'dır; gerçek frozen isim mapping'i Paket 4 lobby tesliminde yapılır.
-  Running leave/üyelik reconciler'ı ve authenticated gateway de Paket 4 kapsamıdır.
+  result event'i üretilmez. Paket 3'teki isim placeholder'ları Paket 4 ile gerçek,
+  countdown başında dondurulan kullanıcı isimlerine dönüştürüldü. Running
+  leave/üyelik reconciler'ı ve authenticated gateway Paket 4 ile bağlandı.
 - Ortak session finished/cancelled olduğunda oda worker'ları durur ve lease bırakılır.
   Testler `tests/houseRocketsRuntime_test.go` ve
   `tests/houseRocketsRuntimeIntegration_test.go` altında; mevcut room runtime
@@ -931,6 +935,70 @@ bu ara teslim production-ready veya tamamlanmış multiplayer sayılmaz.
 Mobil teslim kapısı: Bu paketin test ortamı hazır olunca gerçek HTTP/socket
 entegrasyonu ve iki cihazlı hareket/kontrol denemesi başlar. UI/DTO/transport
 implementasyonu daha önce mock fixture'larla hazırlanmış olabilir.
+
+Paket 4 teslim notu:
+
+- `HOUSE_ROCKETS_ENABLED=true` açıkça verilmelidir. `APP_ENV` `local`,
+  `development` veya `staging` olmalıdır; boş, `production`, `prod` ve bilinmeyen
+  environment'larda flag verilse bile katalog ve gateway kapalı kalır.
+  Redis coordinator yoksa HTTP kataloğuna da eklenmez. Production deploy veya
+  secret değişikliği yapılmadı. Compose API'yi açarken flag ayrıca environment
+  olarak geçirilmelidir; mevcut Compose varsayılanı oyunu açmaz.
+- Mevcut `PUT /api/v1/game/houseRockets/session` oturum oluşturur/bulur;
+  `GET /api/v1/game/houseRockets/session?houseId=...` başka instance'tan aynı
+  oturumu keşfeder. Oluşturma otomatik join/ready yapmaz. House kapasitesiyle
+  sınırlandırılan 2–8 oyuncu, 30 s hazır katılım ve 3 s countdown kuralları korunur.
+  Mevcut ortak domain, tüm slotlar hazırsa ready window'u erken kapatabilir.
+- Socket `?protocolVersion=2` ile açılır. İlk mesaj `realtime.welcome`, ikinci
+  mesaj camelCase `gameSession.snapshot` olur. Session süreleri milisaniyedir;
+  v1'in eski session wire formatı değiştirilmedi. İşlem kabulü uygulandığı
+  anlamına gelmez; uygulanan lifecycle değişikliği session snapshot ile izlenir.
+- Mobil landscape'e geçişini tamamladıktan sonra `{ "ready": true }` yollar.
+  Backend cihazın fiziksel yönelimini ölçemez; ready mobilin bu önkoşulu
+  tamamladığı beyanıdır. Ready penceresinden itibaren uygulama seviyesinde
+  `realtime.ping` 2 s aralıklarla gönderilir; WebSocket control pong ve server
+  presence yenilemesi uygulamanın aktif olduğu yerine kullanılmaz.
+- Owner, aktif House üyelerini ve User.isActive durumunu varsayılan 2 s
+  aralıklarla ve countdown/start öncesinde okur. Üyelik kaldırma/inaktivasyon
+  bu poll + I/O sınırında uygulanır; transaction seviyesinde anlık revocation
+  iddiası yoktur. Lobby/countdown'da 6 s heartbeat kaybı ready oyuncuyu çıkarır;
+  yetersiz kalan ready window lobby'ye döner, countdown iptal edilir.
+- Countdown başladığında gerçek firstName/lastName, oyuncu sırası ve renkleri
+  dondurulur. Profilin sonra değişmesi maç isimlerini değiştirmez. Online'da
+  bot oluşturulmaz. Oyun başlayınca yalnız frozen roster'daki canlı oyuncu
+  kontrol alır; evin roster dışındaki geç katılan üyesi seyirci olarak snapshot
+  alabilir, fakat steer veya geç join ile maça giremez.
+- Normal steer 20 Hz client hedefi / 30 mesaj/s server tavanıyla ayrı sınırlanır;
+  lifecycle varsayılanı 30 mesaj/10 s, uygulama ping'i 5 mesaj/s'dir. Steering
+  accepted mesajı üretmez; processed ACK snapshot'tadır. Remote owner rejection
+  aynı client messageId ile geri gelir. Player/connection kimliği JWT/gateway'den
+  bağlanır; client payload'ı actorId/connectionId belirleyemez.
+- Control grant yalnız kontrol bağlantısına gider. Diğer oyuncu/seyirci snapshot'ında
+  private controlGeneration `null` olur. Aynı kullanıcının yeni bağlantısı
+  generation'ı döndürür; eski bağlantı steer yapamaz. Runtime epoch ve game state
+  sequence ile eski frame'ler elenir. Control değişiminde tick ilerlemese de
+  state sequence artar. Lobby session version ile game state sequence farklıdır.
+- `houseRockets.resync` güncel session ve varsa tam game snapshot'ı ister;
+  yaşayan roster oyuncusu yeniden kontrol isteyebilir. Eski steering replay
+  edilmez. Yalnız öldürülen oyuncu snapshot alarak seyredebilir, yeniden canlanmaz.
+  Snapshot kuyruğu en güncel bir frame'i tutar; welcome/control/session/resync
+  mesajları sınırlı ayrı kuyruktadır. Dolu control kuyruğu/yazma timeout'u bağlantıyı
+  kapatır; bir client'ın socket yazımı oda event fanout'unda yapılmaz.
+- `leave` running oyuncuda forfeit, üyelik kaybı membershipRevoked üretir.
+  Ani bağlantı kapanması business leave değildir; 10 s reconnect grace akışı
+  kullanılır. Aynı Advance'taki mixed elenmeler birlikte değerlendirilir.
+  Token süresi dolan veya üyeliği kaldırılan socket kesilir. Kapanışta her zaman
+  okunabilir WebSocket close frame gelmesi garanti edilmez; mobil HTTP status ve
+  token yenileme/üyelik kontrolüyle sınırlı retry yapmalıdır.
+- Engine terminal olduğunda snapshot `finalizing` kalır, `winnerId: null` olur;
+  kalıcı sonuç/event/result HTTP ve otomatik rematch bu pakette **yoktur**.
+  Aktif session bu yüzden yeni maç için resetlenmemelidir. Test maçını kapatmak
+  için yetkili lifecycle cancel kullanılabilir. Running owner kaybında checkpoint
+  recovery henüz yoktur; mevcut started bariyeri yanlış yeniden spawn'ı engeller.
+
+Mobil agent şimdi gerçek local/staging HTTP/socket, lobby ve karşı oyuncu hareketi
+entegrasyonuna başlayabilir. Gerçek iki iOS cihazındaki gecikme/UX kabulü ayrı
+olarak yapılmalıdır; backend testleri bu cihaz kabulünün yerine geçmez.
 
 ### Paket 5 — Kalıcı maç sonucu, oturum tamamlama ve rematch
 
@@ -1107,8 +1175,8 @@ elenme sınırları tolerans ve server authority ile ayrıca doğrulanır.
 | --- | --- | --- | --- |
 | 1 — Sözleşme | Doğrulandı (Go contract) | Planlandı; mock/DTO başlayabilir | Mobil kabul bekleniyor |
 | 2 — Oyun motoru | Doğrulandı (Go/Swift golden + restore) | Prediction/render fixture kontrolü başlayabilir | Mobil kabul bekleniyor |
-| 3 — Runtime / coordination | İki gerçek instance ile doğrulandı | ACK/epoch/mock transport geliştirilebilir | Backend runtime kapısı geçti; canlı socket Paket 4 |
-| 4 — Gateway / online lobi | Planlandı | Planlandı | Geçilmedi |
+| 3 — Runtime / coordination | İki gerçek instance ile doğrulandı | ACK/epoch/mock transport geliştirilebilir | Backend runtime kapısı geçti |
+| 4 — Gateway / online lobi | İki instance / gerçek HTTP-WebSocket testleri geçti | Canlı local/staging entegrasyonu başlayabilir | Backend kapısı geçti; iki cihazlı mobil kabul bekleniyor |
 | 5 — Sonuç / rematch | Planlandı | Planlandı | Geçilmedi |
 | 6 — Dayanıklılık | Planlandı | Planlandı | Geçilmedi |
 | 7 — Yayın kabulü | Planlandı | Planlandı | Geçilmedi |
@@ -1159,3 +1227,19 @@ Bu canlı mobil socket entegrasyonu veya production yük testi değildir; bu
 kapılar Paket 4/7'de kalır. iOS repo değiştirilmedi ve build edilmedi.
 Test için başlatılan Mongo/Redis/init container'ları durduruldu; çalışan container
 kalmadığı kontrol edildi. Volume'lar korundu, kod commit edilmedi.
+
+Paket 4 doğrulama: Host `go test ./...`, `go vet ./...` ve `git diff --check`
+başarılı. Compose üzerinde gerçek Mongo replica set + Redis ile tüm proje
+`go test -race ./... -count=1` geçti. Son düzenlemelerden sonra game/session,
+runtime ve v1/v2 gateway regresyonları ayrıca race detector ile tekrar geçti;
+resync yarış düzeltmesi ve exclusion testi de son gateway koşusunda doğrulandı.
+İki ayrı Service/RedisCoordinator instance'ı ve gerçek HTTP/WebSocket bağlantıları
+ile aynı oturumun HTTP keşfi, welcome/initial ordering, join/ready/countdown,
+gerçek frozen isimler, 20 Hz steer ve karşı oyuncu ACK/konumları, private generation,
+remote rejection correlation, resync, forfeit/finalizing, membership revocation,
+seyirci ve controller takeover doğrulandı. Upgrade 401/403/400, devre dışı gateway,
+token expiry ve transport pong sürerken application heartbeat'i kesilen ready
+oyuncunun çıkarılması testleri geçti. Mobil repo değiştirilmedi/build edilmedi;
+iki fiziksel iOS cihazı veya production yük/failover kabulü yapılmadı.
+Test için açılan Mongo/Redis/init container'ları durduruldu; çalışan container
+kalmadığı doğrulandı. Volume'lar korundu, deploy ve commit yapılmadı.

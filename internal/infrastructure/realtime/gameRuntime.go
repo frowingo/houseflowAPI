@@ -20,8 +20,10 @@ const GameRuntimeSnapshotEventType = "gameRuntime.snapshot"
 // The shared room lifecycle knows only these adapter operations, not rocket
 // physics, controls or snapshots. Additional games get their own factory case.
 type gameRuntime struct {
-	submit func(coordinationAbstract.MessageEnvelope) error
-	cancel func()
+	submit    func(coordinationAbstract.MessageEnvelope) error
+	cancel    func()
+	reconcile func(gameDomain.SessionSnapshot)
+	reject    func(string, string, error)
 }
 
 func supportsGameRuntime(gameKey string) bool { return gameKey == houseRockets.GameKey }
@@ -29,7 +31,7 @@ func supportsGameRuntime(gameKey string) bool { return gameKey == houseRockets.G
 // DispatchGameplay uses memory for a local owner and an ephemeral channel for a
 // remote owner. It never creates/restarts a running game or replays old steering.
 // actorID/connectionID must be supplied by the authenticated gateway (Paket 4).
-func (manager *RoomManager) DispatchGameplay(ctx context.Context, roomID, actorID, connectionID string, input houseRockets.RuntimeInput) error {
+func (manager *RoomManager) DispatchGameplay(ctx context.Context, roomID, actorID, connectionID string, input houseRockets.RuntimeInput, messageIDs ...string) error {
 	if _, err := manager.runningContext(); err != nil {
 		return err
 	}
@@ -38,6 +40,9 @@ func (manager *RoomManager) DispatchGameplay(ctx context.Context, roomID, actorI
 	}
 	input.PlayerID, input.ConnectionID = actorID, connectionID
 	input.CreatedAt = time.Now().UTC()
+	if len(messageIDs) > 0 {
+		input.MessageID = messageIDs[0]
+	}
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return err
@@ -84,6 +89,14 @@ func (manager *RoomManager) gameplayLoop(ctx context.Context, subscription coord
 			}
 			if err := room.submitGameplay(envelope); err != nil {
 				manager.report(envelope.RoomID, err)
+				var input houseRockets.RuntimeInput
+				if json.Unmarshal(envelope.Payload, &input) == nil {
+					room.gameMutex.RLock()
+					if room.game != nil {
+						room.game.reject(envelope.ConnectionID, input.MessageID, err)
+					}
+					room.gameMutex.RUnlock()
+				}
 			}
 		}
 	}
@@ -131,10 +144,44 @@ func (room *managedRoom) submitGameplay(envelope coordinationAbstract.MessageEnv
 	if !room.leaseValid() {
 		return coordinationAbstract.ErrLeaseLost
 	}
+	var input houseRockets.RuntimeInput
+	if json.Unmarshal(envelope.Payload, &input) != nil || input.PlayerID != envelope.ActorID || input.ConnectionID != envelope.ConnectionID || !input.CreatedAt.Equal(envelope.CreatedAt) {
+		return houseRockets.ErrInvalidInput
+	}
+	if input.Kind == lobbyHeartbeatInput {
+		if input.RuntimeEpoch != room.runtimeOwner.Generation {
+			return houseRockets.ErrStaleInput
+		}
+		if time.Since(input.CreatedAt) > houseRockets.InputLifetime {
+			return houseRockets.ErrInputExpired
+		}
+		room.lobbyMutex.Lock()
+		defer room.lobbyMutex.Unlock()
+		if room.lobbyLastSeen == nil {
+			room.lobbyLastSeen = make(map[string]time.Time)
+		}
+		if room.manager.options.ParticipantDirectory != nil {
+			if _, member := room.members[input.PlayerID]; !member {
+				return houseRockets.ErrControlRequired
+			}
+		}
+		if snapshot := room.snapshot.Load(); snapshot != nil {
+			for _, player := range snapshot.Players {
+				if player.PlayerID == input.PlayerID {
+					room.lobbyLastSeen[input.PlayerID] = time.Now()
+					return nil
+				}
+			}
+		}
+		return nil
+	}
 	room.gameMutex.RLock()
 	runtime := room.game
 	room.gameMutex.RUnlock()
 	if runtime == nil {
+		if input.Kind == houseRockets.InputSnapshot {
+			return room.publishPreviewSnapshot(input.ConnectionID, input.MessageID)
+		}
 		return ErrRoomRuntimeNotStarted
 	}
 	return runtime.submit(envelope)
@@ -142,9 +189,15 @@ func (room *managedRoom) submitGameplay(envelope coordinationAbstract.MessageEnv
 
 // Small factory/lifecycle boundary: no game catalog activation or wire mapping
 // happens here. Other game kinds keep their existing session-only runtime.
-func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot) error {
+func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, refreshDirectory bool) error {
 	if snapshot.GameKey != houseRockets.GameKey {
 		return nil
+	}
+	room.snapshot.Store(&snapshot)
+	if refreshDirectory {
+		if err := room.refreshParticipants(snapshot); err != nil {
+			return err
+		}
 	}
 	room.gameMutex.Lock()
 	defer room.gameMutex.Unlock()
@@ -154,20 +207,26 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot) er
 		}
 		return nil
 	}
-	if snapshot.State != gameDomain.SessionRunning || room.game != nil {
+	if room.game != nil {
+		room.game.reconcile(snapshot)
+		return nil
+	}
+	if snapshot.State == gameDomain.SessionCountdown {
+		if len(room.frozenPlayers) == 0 {
+			room.freezePlayers(snapshot)
+		}
+		return room.publishPreviewLocked("", "")
+	}
+	if snapshot.State != gameDomain.SessionRunning {
 		return nil
 	}
 	if !room.leaseValid() {
 		return coordinationAbstract.ErrLeaseLost
 	}
-	players := make([]houseRockets.PlayerIdentity, 0, len(snapshot.Players))
-	for _, player := range snapshot.Players {
-		if player.State == gameDomain.PlayerPlaying {
-			// Frozen display names will be resolved by the lobby integration in P4.
-			players = append(players, houseRockets.PlayerIdentity{PlayerID: player.PlayerID, DisplayName: player.PlayerID})
-		}
+	if len(room.frozenPlayers) == 0 {
+		room.freezePlayers(snapshot)
 	}
-	runtime, err := houseRockets.NewRuntime(houseRockets.NewSimulationParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: players}, room.runtimeOwner.Generation, time.Now())
+	runtime, err := houseRockets.NewRuntime(houseRockets.NewSimulationParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.frozenPlayers}, room.runtimeOwner.Generation, time.Now(), room.previewSequence)
 	if err != nil {
 		return err
 	}
@@ -188,7 +247,12 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot) er
 	room.manager.workers.Add(2)
 	room.manager.mutex.Unlock()
 	room.game = &gameRuntime{
+		reject: runtime.NotifyRejected,
 		cancel: func() { _ = runtime.Cancel(houseRockets.EndCancelledByUser) },
+		reconcile: func(current gameDomain.SessionSnapshot) {
+			playing, members := room.rosterIDs(current)
+			runtime.Reconcile(playing, members)
+		},
 		submit: func(envelope coordinationAbstract.MessageEnvelope) error {
 			var input houseRockets.RuntimeInput
 			if len(envelope.Payload) > 2048 || json.Unmarshal(envelope.Payload, &input) != nil {
@@ -200,6 +264,7 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot) er
 			return runtime.Submit(input, time.Now())
 		},
 	}
+	room.game.reconcile(snapshot)
 	go func() { defer room.manager.workers.Done(); runtime.Run(room.ctx, room.leaseValid) }()
 	go room.publishGameUpdates(runtime)
 	return nil
@@ -221,27 +286,27 @@ func (room *managedRoom) publishGameUpdates(runtime *houseRockets.Runtime) {
 			}
 			event = coordinationAbstract.MessageEnvelope{Type: GameRuntimeSnapshotEventType, Sequence: frame.StateSequence, Payload: payload}
 		case update := <-runtime.Events():
+			event.MessageID = update.MessageID
 			event.ConnectionID = update.ConnectionID
-			if update.Grant != nil {
+			if update.Frame != nil {
+				event.Type = GameRuntimeSnapshotEventType
+				event.Sequence = update.Frame.StateSequence
+				event.Payload, _ = json.Marshal(update.Frame)
+			} else if update.Grant != nil {
 				event.Type = houseRockets.ControlGrantedMessageType
 				event.Payload, _ = json.Marshal(update.Grant)
 			} else {
 				event.Type = CommandRejectedMessageType
-				code := houseRockets.InvalidInputErrorCode
-				if errors.Is(update.Err, houseRockets.ErrControlRequired) {
-					code = houseRockets.ControlUnavailableErrorCode
-				}
-				if errors.Is(update.Err, houseRockets.ErrPlayerEliminated) {
-					code = houseRockets.PlayerEliminatedErrorCode
-				}
-				event.Payload, _ = json.Marshal(ProtocolError{Code: code})
+				event.Payload, _ = json.Marshal(protocolErrorFromV2(update.Err))
 			}
 		}
 		if !room.leaseValid() {
 			room.stop()
 			return
 		}
-		event.MessageID = uuid.NewString()
+		if event.MessageID == "" {
+			event.MessageID = uuid.NewString()
+		}
 		ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
 		err := room.manager.coordinator.PublishRoomEvent(ctx, room.lease, event)
 		cancel()
