@@ -2,12 +2,12 @@
 
 Tarih: 3 Ekim 2026.
 
-Durum: **Paket 1 sözleşmesi ve Paket 2 Go oyun motoru geliştirildi ve test edildi.** Sözleşme
+Durum: **Paket 1 sözleşmesi, Paket 2 Go oyun motoru ve Paket 3 runtime/coordination geliştirildi ve test edildi.** Sözleşme
 revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
 courseVersion `1`. Go tanımı, wire DTO'ları, bağımsız v2 decoder ve ortak JSON
-fixture'ları ve ağdan bağımsız deterministik simülasyon mevcut.
-**House Rockets hâlâ canlı katalog/gateway'de açık değil;** runtime/coordination,
-endpoint aktivasyonu ve kalıcı sonuç davranışı sonraki paketlerde.
+fixture'ları, deterministik simülasyon ve iki instance arasında girdi yönlendiren runtime mevcut.
+**House Rockets hâlâ canlı katalog/gateway'de açık değil;** endpoint aktivasyonu,
+kalıcı sonuç ve checkpoint recovery davranışı sonraki paketlerde.
 Mobil implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
 
 ## 1. Amaç ve onaylanmış ürün sınırı
@@ -661,8 +661,8 @@ generation ve ownership kaydına conditional mutation yapar; Mongo takeover
 ile conflict/retry sonunda yalnız geçerli generation commit edebilir.
 Checkpoint script'i Redis lease identity/fence ile epoch/stateSequence'i
 birlikte doğrular. Redis counter reset'i tek başına eski Mongo generation'a
-yetki vermez. Bunlar tasarım kararlarıdır; adapter/CAS implementasyonu ve
-takeover testleri Paket 3/5/6 teslimlerinde yapılacak.
+yetki vermez. Owner adapter/CAS ve Redis counter reset testi Paket 3'te uygulandı;
+completion transaction ve checkpoint koruması Paket 5/6'da tamamlanacak.
 
 Geçici Redis checkpoint başlangıç önerisi 1 s aralık ve kritik elenme/forfeit
 geçişlerinde, valid lease'i aynı script içinde doğrulayarak yazmaktır.
@@ -700,10 +700,10 @@ tutmak veya her fizik tick'ini Mongo'ya yazmak gerekli değildir.
 Bu bölüm 3 Ekim 2026'da backend teslimlerine göre yeniden düzenlendi. Önceki
 Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
 aşağıdaki başlangıç tablosunda ayrıca gösterilir. Diğer bölümler bu paketlere
-referans verir. Paket 1 sözleşmesi ve Paket 2 Go motoru doğrulandı; diğer backend paketleri
+referans verir. Paket 1/2 ve Paket 3'ün iki-instance runtime senaryoları doğrulandı; diğer backend paketleri
 ve mobil teslimler henüz doğrulanmadı.
 
-**Sıradaki backend işi Paket 3 — Oyun runtime'ı ve çoklu instance girdi koordinasyonu.**
+**Sıradaki backend işi Paket 4 — WebSocket gateway, katalog ve online lobby entegrasyonu.**
 Mevcut session/coordination altyapısı kullanılacak; socket endpoint'ini veya
 Mongo repository temelini baştan kurmak gerekmiyor.
 
@@ -848,6 +848,63 @@ diğer oyuncuları bekletmiyor. Bu kapı test client'larıyla doğrulanabilir.
 Mobil eşzamanlı iş: Fixture/mock transport üzerinden input ACK/coalescing,
 epoch/stateSequence filtresi ve prediction reconciliation. Canlı endpoint'i
 bu paket bitince hazır kabul etmeyin; gateway teslimi Paket 4'tedir.
+
+Paket 3 uygulanan API ve sınırlar:
+
+- Oyun kuralları ve kontrol state'i `internal/application/game/gameSpesific/houseRockets/runtime.go`
+  altında. Ortak room manager fizik bilmez; `internal/infrastructure/realtime/gameRuntime.go`
+  küçük factory/adapter ile start, cancel ve fanout bağlar. Üretimde bot yoktur.
+- `Runtime.Run`: 60 Hz scheduling, 120 Hz tam fizik tick'i. Fractional süre
+  biriktirilir, snapshot deadline'ı 20 Hz ilerler; gecikme bir sonraki snapshot
+  deadline'ını kaydırmaz. En fazla 250 ms / 30 tick catch-up yapılır; daha büyük
+  boşluk `runtimeOverloaded` ile finalizing üretir, sessiz zaman atlama olmaz.
+- `RoomManager.DispatchGameplay`: Kimlikler authenticated transport tarafından
+  verilir; input içindeki player/connection değerleri caller kimliğiyle değiştirilir.
+  Local owner'a memory mailbox yolu, remote owner'a Redis Pub/Sub gameplay kanalı
+  kullanılır. Gameplay kalıcı command stream'e yazılmaz, başka owner'a yeniden
+  yönlendirilmez/replay edilmez. Remote publish başarısı yalnız aktarımı gösterir;
+  gerçek işlem onayı control grant ve snapshot ACK'sidir.
+- Gameplay subscriber'ı Redis subscription confirmation'ından sonra hazır sayılır.
+  Subscriber yoksa publish unavailable döner. Gameplay payload/envelope boyutu
+  sınırlıdır; dolu ephemeral receive buffer mesaj düşürür. Girdiler 1 s TTL,
+  runtime epoch, lease fence, actor/connection ve control generation ile doğrulanır.
+  Kayıp bind için grant gelmediyse yeniden bind gerekir; steer/heartbeat güncel
+  değerlerle devam eder. Transport retry/resync davranışı Paket 4'te bağlanacak.
+- Tek controller binding: Yeni connection bind olduğunda generation yenilenir,
+  input sequence/ACK sıfırlanır ve eski pending heading temizlenir. Aynı connection
+  bind'i idempotent grant verir. Eski generation/epoch, duplicate sequence,
+  roster dışı veya elenmiş oyuncu girdileri uygulanmaz. Oyuncu başına en yeni
+  steer saklanır; ACK yalnız motora uygulanan sequence'i taşır. 30 mesaj/s sınırı
+  ayrıca uygulanır; mobil gönderim hedefi 20 Hz olarak kalır.
+- Physics loop'ta DB/Redis/socket I/O yoktur. Lease yenileme ayrı worker'dadır;
+  konservatif request-start deadline'ı monotonic clock ile tutulur. Kaybedilen
+  lease runtime'ı durdurur; snapshot yayını ayrıca Redis lease CAS ile fenced'dır.
+  Fanout ayrı worker: snapshot buffer 1, control-event ve lifecycle mailbox 64.
+  Yavaş snapshot consumer en güncel frame'i alır; kontrol olayları sessizce
+  kaybolursa devam etmek yerine event overflow runtimeOverloaded üretir.
+- `GameRuntimeOwner` collection ve `0041GameRuntimeOwner.go` migration'ı:
+  session ID unique `_id`; kalıcı generation, ownerInstanceId, leaseId, started.
+  Generation lease alınmadan önce okunur, lease alındıktan sonra tek CAS ile
+  artırılır; CAS başarısızsa aynı lease altında generation yeniden okunup denenmez.
+  Runtime epoch Redis sayacı değil bu Mongo generation'dır. Claim sonrası lease
+  yeniden doğrulanmadan engine/control yayını başlamaz. Mongo/Redis arasında
+  atomik transaction olduğu iddia edilmez.
+- `MarkRuntimeStarted`: generation + owner + lease conditional write ile spawn'dan
+  yalnız bir kez başlatır. Lease kaybı sonrası started maç checkpoint olmadan
+  yeniden spawn edilmez; `ErrRuntimeRecoveryRequired` döner. Bu, Paket 6 recovery
+  implementasyonu yerine geçmez. Sonuç/checkpoint transaction'ı henüz yoktur.
+- `RuntimeFrame` internal fanout formatıdır, public v2 snapshot DTO'su değildir.
+  Private control generation sadece connection-targeted grant'te yayınlanır.
+  Sonuç henüz commit edilmez; terminal frame **finalizing** olarak kalır, kesin
+  result event'i üretilmez. Running session başlangıcında isimler şimdilik ID
+  placeholder'dır; gerçek frozen isim mapping'i Paket 4 lobby tesliminde yapılır.
+  Running leave/üyelik reconciler'ı ve authenticated gateway de Paket 4 kapsamıdır.
+- Ortak session finished/cancelled olduğunda oda worker'ları durur ve lease bırakılır.
+  Testler `tests/houseRocketsRuntime_test.go` ve
+  `tests/houseRocketsRuntimeIntegration_test.go` altında; mevcut room runtime
+  deadline/handoff regresyonları da aynı test kapısına dahildir. Ephemeral bus
+  subscriber hazırlığı/no-replay kontrolü `tests/gameplayCoordinationIntegration_test.go`
+  içindedir.
 
 ### Paket 4 — WebSocket gateway, katalog ve online lobby entegrasyonu
 
@@ -1050,7 +1107,7 @@ elenme sınırları tolerans ve server authority ile ayrıca doğrulanır.
 | --- | --- | --- | --- |
 | 1 — Sözleşme | Doğrulandı (Go contract) | Planlandı; mock/DTO başlayabilir | Mobil kabul bekleniyor |
 | 2 — Oyun motoru | Doğrulandı (Go/Swift golden + restore) | Prediction/render fixture kontrolü başlayabilir | Mobil kabul bekleniyor |
-| 3 — Runtime / coordination | Planlandı | Planlandı | Geçilmedi |
+| 3 — Runtime / coordination | İki gerçek instance ile doğrulandı | ACK/epoch/mock transport geliştirilebilir | Backend runtime kapısı geçti; canlı socket Paket 4 |
 | 4 — Gateway / online lobi | Planlandı | Planlandı | Geçilmedi |
 | 5 — Sonuç / rematch | Planlandı | Planlandı | Geçilmedi |
 | 6 — Dayanıklılık | Planlandı | Planlandı | Geçilmedi |
@@ -1085,3 +1142,20 @@ Sekiz sabit konumlu oyuncuyla iki tick'lik mikro benchmark Apple M2'de yaklaşı
 veya production garantisi değildir. Gerçek çoklu instance/yük kabulü Paket 7'dir.
 Mongo/Redis environment'ı olmadığı için mevcut integration testleri skip edildi;
 bu pakette canlı socket/DB/compose testi yapılmadı, server/container açılmadı.
+
+Paket 3 doğrulama: Host üzerinde `go test ./...`, House Rockets race testleri
+ve `go vet ./...` başarılı. Docker Compose'un izole test ortamında gerçek Mongo
+replica set ve Redis ile tüm `go test -race ./tests -count=1` başarılı (115 s).
+Son adapter/ownership mapping düzenlemesinden sonra runtime/owner/gameplay bus
+ve mevcut room runtime testleri tekrar race detector ile geçti (19 s).
+İki gerçek RoomManager/RedisCoordinator instance'ı ile local/remote steering,
+grant/ACK, stale epoch ve duplicate input, lease kaybında durma, spawn restart
+bariyeri, Mongo CAS yarışı, Redis fencing counter reset ve yavaş fanout sırasında
+physics/lease yenileme doğrulandı. Subscriber yokken aktarım unavailable döndü;
+abonelikten önce gönderilen input sonradan replay edilmedi. 30/60/120/144 frame
+gruplamasında 120 fizik tick'i ve 20 snapshot cadence, bounded catch-up/queue,
+control timeout/grace/reconnect ve concurrent input testleri geçti.
+Bu canlı mobil socket entegrasyonu veya production yük testi değildir; bu
+kapılar Paket 4/7'de kalır. iOS repo değiştirilmedi ve build edilmedi.
+Test için başlatılan Mongo/Redis/init container'ları durduruldu; çalışan container
+kalmadığı kontrol edildi. Volume'lar korundu, kod commit edilmedi.

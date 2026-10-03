@@ -201,6 +201,7 @@ func (subscription *redisCommandSubscription) sendError(err error) {
 }
 
 type redisEventSubscription struct {
+	ephemeral   bool
 	coordinator *RedisCoordinator
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -285,6 +286,13 @@ func (subscription *redisEventSubscription) readLoop() {
 			continue
 		}
 		subscription.coordinator.available.Store(true)
+		if subscription.ephemeral {
+			select {
+			case subscription.messages <- envelope:
+			default:
+			}
+			continue
+		}
 		select {
 		case subscription.messages <- envelope:
 		case <-subscription.ctx.Done():

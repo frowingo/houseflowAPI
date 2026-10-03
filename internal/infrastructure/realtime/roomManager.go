@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
@@ -31,6 +32,7 @@ var (
 	ErrRoomRuntimeNotStarted = errors.New("room runtime is not started")
 	ErrRoomRuntimeStopped    = errors.New("room runtime is stopped")
 	ErrTerminalRoom          = errors.New("terminal game session cannot own a realtime room")
+	ErrRoomCommandQueueFull  = errors.New("room command queue is full")
 )
 
 type RoomManagerOptions struct {
@@ -47,6 +49,7 @@ type RoomOwnership struct {
 	OwnerInstanceID string
 	FencingToken    int64
 	Local           bool
+	RuntimeEpoch    int64
 }
 
 type RuntimeError struct {
@@ -61,16 +64,17 @@ type RoomManager struct {
 	processor   commandProcessor
 	options     RoomManagerOptions
 
-	mutex        sync.RWMutex
-	rooms        map[string]*managedRoom
-	activations  map[string]*roomActivation
-	started      bool
-	closed       bool
-	ctx          context.Context
-	cancel       context.CancelFunc
-	subscription coordinationAbstract.CommandSubscription
-	errors       chan RuntimeError
-	workers      sync.WaitGroup
+	mutex                sync.RWMutex
+	rooms                map[string]*managedRoom
+	activations          map[string]*roomActivation
+	started              bool
+	closed               bool
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	subscription         coordinationAbstract.CommandSubscription
+	gameplaySubscription coordinationAbstract.RoomEventSubscription
+	errors               chan RuntimeError
+	workers              sync.WaitGroup
 }
 
 func NewRoomManager(
@@ -111,33 +115,42 @@ func NewRoomManager(
 
 func (manager *RoomManager) Start(ctx context.Context) error {
 	manager.mutex.Lock()
+	defer manager.mutex.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if manager.closed {
-		manager.mutex.Unlock()
 		return ErrRoomRuntimeStopped
 	}
 	if manager.started {
-		manager.mutex.Unlock()
 		return nil
 	}
 	rootCtx, cancel := context.WithCancel(ctx)
 	manager.ctx = rootCtx
 	manager.cancel = cancel
-	manager.started = true
-	manager.mutex.Unlock()
 
 	subscription, err := manager.coordinator.SubscribeCommands(rootCtx)
 	if err != nil {
-		manager.mutex.Lock()
 		manager.started = false
 		manager.ctx = nil
 		manager.cancel = nil
-		manager.mutex.Unlock()
 		cancel()
 		return err
 	}
-	manager.mutex.Lock()
+	if gameplay, ok := manager.coordinator.(coordinationAbstract.GameplayCoordinator); ok {
+		gameplaySubscription, err := gameplay.SubscribeGameplay(rootCtx)
+		if err != nil {
+			_ = subscription.Close()
+			cancel()
+			manager.started = false
+			return err
+		}
+		manager.gameplaySubscription = gameplaySubscription
+		manager.workers.Add(1)
+		go manager.gameplayLoop(rootCtx, gameplaySubscription)
+	}
 	manager.subscription = subscription
-	manager.mutex.Unlock()
+	manager.started = true
 	manager.workers.Add(1)
 	go manager.commandLoop(rootCtx, subscription)
 	return nil
@@ -162,6 +175,10 @@ func (manager *RoomManager) EnsureRoom(
 		manager.mutex.Lock()
 		if room := manager.rooms[roomID]; room != nil {
 			manager.mutex.Unlock()
+			if !room.leaseValid() {
+				room.stop()
+				return RoomOwnership{}, coordinationAbstract.ErrLeaseLost
+			}
 			return room.ownership(), nil
 		}
 		if activation := manager.activations[roomID]; activation != nil {
@@ -193,7 +210,29 @@ func (manager *RoomManager) activateRoom(
 	rootCtx context.Context,
 	roomID string,
 ) (RoomOwnership, error) {
+	// Capture durable generation before requesting a lease. A delayed claimant
+	// must never reload this value and retry CAS against a newer owner.
+	session, err := manager.repository.FindByID(ctx, roomID)
+	if err != nil {
+		return RoomOwnership{}, err
+	}
+	var expectedOwner gameAbstract.RuntimeOwner
+	if supportsGameRuntime(session.Snapshot().GameKey) {
+		owners, ok := manager.repository.(gameAbstract.RuntimeOwnerRepository)
+		if !ok {
+			return RoomOwnership{}, errors.New("durable runtime owner repository is required")
+		}
+		if _, ok := manager.coordinator.(coordinationAbstract.GameplayCoordinator); !ok {
+			return RoomOwnership{}, errors.New("gameplay coordinator is required")
+		}
+		expectedOwner, err = owners.FindRuntimeOwner(ctx, roomID)
+		if err != nil {
+			return RoomOwnership{}, err
+		}
+	}
+	acquireStartedAt := time.Now()
 	lease, acquired, err := manager.coordinator.AcquireRoom(ctx, roomID, manager.options.LeaseTTL)
+	lease.ExpiresAt = acquireStartedAt.Add(manager.options.LeaseTTL)
 	if err != nil {
 		return RoomOwnership{}, err
 	}
@@ -214,7 +253,7 @@ func (manager *RoomManager) activateRoom(
 				return RoomOwnership{}, err
 			}
 			if acquired {
-				return manager.startRoom(ctx, rootCtx, lease)
+				return manager.startRoom(ctx, rootCtx, lease, expectedOwner)
 			}
 			owner, exists, err = manager.coordinator.CurrentRoomOwner(ctx, roomID)
 			if err != nil {
@@ -224,15 +263,27 @@ func (manager *RoomManager) activateRoom(
 				return RoomOwnership{}, coordinationAbstract.ErrUnavailable
 			}
 		}
-		return ownershipFromLease(owner, false), nil
+		ownership := ownershipFromLease(owner, false)
+		if supportsGameRuntime(session.Snapshot().GameKey) {
+			current, err := manager.repository.(gameAbstract.RuntimeOwnerRepository).FindRuntimeOwner(ctx, roomID)
+			if err != nil {
+				return RoomOwnership{}, err
+			}
+			if current.LeaseID != owner.LeaseID || current.OwnerInstanceID != owner.OwnerInstanceID {
+				return RoomOwnership{}, coordinationAbstract.ErrUnavailable
+			}
+			ownership.RuntimeEpoch = current.Generation
+		}
+		return ownership, nil
 	}
-	return manager.startRoom(ctx, rootCtx, lease)
+	return manager.startRoom(ctx, rootCtx, lease, expectedOwner)
 }
 
 func (manager *RoomManager) startRoom(
 	ctx context.Context,
 	rootCtx context.Context,
 	lease coordinationAbstract.RoomLease,
+	expectedOwner gameAbstract.RuntimeOwner,
 ) (RoomOwnership, error) {
 	roomID := lease.RoomID
 	session, err := manager.repository.FindByID(ctx, roomID)
@@ -245,14 +296,42 @@ func (manager *RoomManager) startRoom(
 		manager.releaseLease(lease)
 		return RoomOwnership{}, ErrTerminalRoom
 	}
+	var runtimeOwner gameAbstract.RuntimeOwner
+	if supportsGameRuntime(snapshot.GameKey) {
+		runtimeOwner, err = manager.repository.(gameAbstract.RuntimeOwnerRepository).ClaimRuntimeOwner(ctx, expectedOwner.Generation, gameAbstract.RuntimeOwner{
+			SessionID: roomID, OwnerInstanceID: lease.OwnerInstanceID, LeaseID: lease.LeaseID,
+		})
+		if err != nil {
+			manager.releaseLease(lease)
+			return RoomOwnership{}, err
+		}
+		if runtimeOwner.Started {
+			manager.releaseLease(lease)
+			return RoomOwnership{}, gameAbstract.ErrRuntimeRecoveryRequired
+		}
+	}
+	renewStartedAt := time.Now()
+	renewed, err := manager.coordinator.RenewRoom(ctx, lease, manager.options.LeaseTTL)
+	if err != nil || !renewed {
+		manager.releaseLease(lease)
+		return RoomOwnership{}, errors.Join(coordinationAbstract.ErrLeaseLost, err)
+	}
+	lease.ExpiresAt = renewStartedAt.Add(manager.options.LeaseTTL)
 
 	roomCtx, roomCancel := context.WithCancel(rootCtx)
 	room := &managedRoom{
-		manager: manager,
-		ctx:     roomCtx,
-		cancel:  roomCancel,
-		lease:   lease,
-		queue:   make(chan coordinationAbstract.CommandDelivery, manager.options.CommandQueueSize),
+		manager:      manager,
+		ctx:          roomCtx,
+		cancel:       roomCancel,
+		lease:        lease,
+		queue:        make(chan coordinationAbstract.CommandDelivery, manager.options.CommandQueueSize),
+		runtimeOwner: runtimeOwner,
+	}
+	room.leaseDeadline.Store(&lease.ExpiresAt)
+	if err := room.syncGameRuntime(snapshot); err != nil {
+		roomCancel()
+		manager.releaseLease(lease)
+		return RoomOwnership{}, err
 	}
 	manager.mutex.Lock()
 	if manager.closed || !manager.started {
@@ -268,8 +347,9 @@ func (manager *RoomManager) startRoom(
 		return existing.ownership(), nil
 	}
 	manager.rooms[roomID] = room
-	manager.workers.Add(1)
+	manager.workers.Add(2)
 	manager.mutex.Unlock()
+	go room.renewLoop()
 	go room.run(snapshot)
 	return room.ownership(), nil
 }
@@ -311,6 +391,7 @@ func (manager *RoomManager) Close(ctx context.Context) error {
 	manager.started = false
 	cancel := manager.cancel
 	subscription := manager.subscription
+	gameplaySubscription := manager.gameplaySubscription
 	rooms := make([]*managedRoom, 0, len(manager.rooms))
 	for _, room := range manager.rooms {
 		rooms = append(rooms, room)
@@ -322,6 +403,9 @@ func (manager *RoomManager) Close(ctx context.Context) error {
 	}
 	if subscription != nil {
 		_ = subscription.Close()
+	}
+	if gameplaySubscription != nil {
+		_ = gameplaySubscription.Close()
 	}
 	for _, room := range rooms {
 		room.stop()
@@ -397,6 +481,8 @@ func (manager *RoomManager) routeDelivery(
 		return coordinationAbstract.ErrLeaseLost
 	case <-ctx.Done():
 		return ctx.Err()
+	default:
+		return ErrRoomCommandQueueFull
 	}
 }
 
@@ -408,6 +494,9 @@ func (manager *RoomManager) runningContext() (context.Context, error) {
 	}
 	if !manager.started || manager.ctx == nil {
 		return nil, ErrRoomRuntimeNotStarted
+	}
+	if manager.ctx.Err() != nil {
+		return nil, ErrRoomRuntimeStopped
 	}
 	return manager.ctx, nil
 }
@@ -471,12 +560,16 @@ func ownershipFromLease(lease coordinationAbstract.RoomLease, local bool) RoomOw
 }
 
 type managedRoom struct {
-	manager  *RoomManager
-	ctx      context.Context
-	cancel   context.CancelFunc
-	lease    coordinationAbstract.RoomLease
-	queue    chan coordinationAbstract.CommandDelivery
-	stopOnce sync.Once
+	manager       *RoomManager
+	ctx           context.Context
+	cancel        context.CancelFunc
+	lease         coordinationAbstract.RoomLease
+	queue         chan coordinationAbstract.CommandDelivery
+	stopOnce      sync.Once
+	leaseDeadline atomic.Pointer[time.Time]
+	runtimeOwner  gameAbstract.RuntimeOwner
+	gameMutex     sync.RWMutex
+	game          *gameRuntime
 }
 
 type roomActivation struct {
@@ -484,7 +577,9 @@ type roomActivation struct {
 }
 
 func (room *managedRoom) ownership() RoomOwnership {
-	return ownershipFromLease(room.lease, true)
+	ownership := ownershipFromLease(room.lease, true)
+	ownership.RuntimeEpoch = room.runtimeOwner.Generation
+	return ownership
 }
 
 func (room *managedRoom) stop() {
@@ -495,9 +590,7 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 	defer room.manager.workers.Done()
 	defer room.manager.removeRoom(room)
 	defer room.manager.releaseLease(room.lease)
-
-	renewTicker := time.NewTicker(room.manager.options.RenewInterval)
-	defer renewTicker.Stop()
+	defer room.stop()
 	var deadlineTimer *time.Timer
 	var deadlineChannel <-chan time.Time
 	resetDeadline := func(current gameDomain.SessionSnapshot) {
@@ -533,19 +626,6 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 		select {
 		case <-room.ctx.Done():
 			return
-		case <-renewTicker.C:
-			renewed, err := room.manager.coordinator.RenewRoom(
-				room.ctx,
-				room.lease,
-				room.manager.options.LeaseTTL,
-			)
-			if err != nil || !renewed {
-				if err == nil {
-					err = coordinationAbstract.ErrLeaseLost
-				}
-				room.manager.report(room.lease.RoomID, err)
-				return
-			}
 		case delivery := <-room.queue:
 			envelope := delivery.Envelope()
 			updated, err := room.processCommand(envelope)
@@ -563,6 +643,10 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 				continue
 			}
 			snapshot = updated
+			if err := room.syncGameRuntime(snapshot); err != nil {
+				room.manager.report(room.lease.RoomID, err)
+				return
+			}
 			resetDeadline(snapshot)
 			publishErr := room.publishSnapshot(delivery.Envelope().MessageID, updated)
 			if publishErr != nil {
@@ -573,6 +657,9 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 			}
 			if errors.Is(publishErr, coordinationAbstract.ErrLeaseLost) ||
 				errors.Is(publishErr, coordinationAbstract.ErrUnavailable) {
+				return
+			}
+			if snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled {
 				return
 			}
 		case <-deadlineChannel:
@@ -590,11 +677,19 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 					return
 				}
 				snapshot = stored.Snapshot()
+				if err := room.syncGameRuntime(snapshot); err != nil {
+					room.manager.report(room.lease.RoomID, err)
+					return
+				}
 				resetDeadline(snapshot)
 				continue
 			}
 			messageID := advanceCommandID(snapshot, deadline)
 			snapshot = updated
+			if err := room.syncGameRuntime(snapshot); err != nil {
+				room.manager.report(room.lease.RoomID, err)
+				return
+			}
 			resetDeadline(snapshot)
 			if err := room.publishSnapshot(messageID, updated); err != nil {
 				room.manager.report(room.lease.RoomID, err)
@@ -602,6 +697,9 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 					errors.Is(err, coordinationAbstract.ErrUnavailable) {
 					return
 				}
+			}
+			if snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled {
+				return
 			}
 		}
 	}

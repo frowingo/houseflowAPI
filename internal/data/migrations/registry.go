@@ -67,5 +67,6 @@ func AllMigrations() []Migration {
 		&realtimeGateway{},
 		// --- Game Catalog And Active Session Slot ---
 		&gameCatalogActiveSession{},
+		&gameRuntimeOwner{},
 	}
 }
