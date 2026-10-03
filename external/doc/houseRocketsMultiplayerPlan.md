@@ -2,11 +2,12 @@
 
 Tarih: 3 Ekim 2026.
 
-Durum: **Paket 1 backend sözleşmesi geliştirildi ve test edildi.** Sözleşme
+Durum: **Paket 1 sözleşmesi ve Paket 2 Go oyun motoru geliştirildi ve test edildi.** Sözleşme
 revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
 courseVersion `1`. Go tanımı, wire DTO'ları, bağımsız v2 decoder ve ortak JSON
-fixture'ları mevcut. **House Rockets hâlâ canlı katalog/gateway'de açık değil;**
-oyun motoru, endpoint aktivasyonu ve kalıcı sonuç davranışı sonraki paketlerde.
+fixture'ları ve ağdan bağımsız deterministik simülasyon mevcut.
+**House Rockets hâlâ canlı katalog/gateway'de açık değil;** runtime/coordination,
+endpoint aktivasyonu ve kalıcı sonuç davranışı sonraki paketlerde.
 Mobil implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
 
 ## 1. Amaç ve onaylanmış ürün sınırı
@@ -252,8 +253,10 @@ Ortak referanslar:
 - [Fizik fixture'ı](../../internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsSimulation.json): Mevcut Swift
   kaynakları değiştirilmeden çalıştırılarak elde edilen 2/4/8 kişilik spawn,
   altı hareket senaryosu, geometri, dönüş, field salınımı ve yüzey teması.
-  Kaynak SHA-256'ları dosyada. Go motor karşılaştırması Paket 2'de yapılacak;
-  Paket 1 fizik motoru implementasyonu veya mobil test suite doğrulaması değil.
+  Paket 2'de üç navigation/effect senaryosu eklendi: 30 s parkur sürüşü,
+  boostThenHold ve slowThenHold. `absoluteTolerance: 1e-9` ile Go motoru
+  bütün referanslarla karşılaştırılıyor. Kaynak SHA-256'ları dosyada.
+  Bu bağımsız Swift referans kontrolüdür; mobil test suite/iOS build kabulü değil.
 - `internal/application/game/gameSpesific/houseRockets/definition.go`: Oyun-specific sabitler
   ve enum'lar; ortak GameSession domain'ine fizik/puan mantığı eklenmedi.
 - `internal/application/game/gameSpesific/houseRockets/models.go`: House Rockets wire modelleri.
@@ -263,6 +266,8 @@ Ortak referanslar:
   server envelope'ları; mevcut gateway henüz bu decoder'ı çağırmıyor.
 - `tests/houseRocketsContract_test.go`: JSON round-trip, kurallar, input
   sınırları, typed rejection ve mevcut v1/katalog izolasyonu testleri.
+- `tests/houseRocketsSimulation_test.go`: Swift golden karşılaştırmaları,
+  fizik/sonuç/restore sınırları, frame-rate bağımsızlığı ve state fuzz testi.
 
 ### 5.1. Sürüm ve HTTP
 
@@ -695,10 +700,10 @@ tutmak veya her fizik tick'ini Mongo'ya yazmak gerekli değildir.
 Bu bölüm 3 Ekim 2026'da backend teslimlerine göre yeniden düzenlendi. Önceki
 Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
 aşağıdaki başlangıç tablosunda ayrıca gösterilir. Diğer bölümler bu paketlere
-referans verir. Paket 1 backend sözleşmesi doğrulandı; diğer backend paketleri
+referans verir. Paket 1 sözleşmesi ve Paket 2 Go motoru doğrulandı; diğer backend paketleri
 ve mobil teslimler henüz doğrulanmadı.
 
-**Sıradaki backend işi Paket 2 — Sunucu otoriteli domain ve simülasyon.**
+**Sıradaki backend işi Paket 3 — Oyun runtime'ı ve çoklu instance girdi koordinasyonu.**
 Mevcut session/coordination altyapısı kullanılacak; socket endpoint'ini veya
 Mongo repository temelini baştan kurmak gerekmiyor.
 
@@ -765,6 +770,56 @@ roket fiziği eklenmez; production katalog kaydı henüz açılmaz.
 Mobil eşzamanlı iş: Demo regresyonları, string ID/isim mapping, fixture üzerinden
 online renderer ve interpolation buffer. Prediction aynı yön/physics
 sözleşmesiyle geliştirilir; client sonucunu otorite yapmaz.
+
+Paket 2 uygulanan API ve sınırlar:
+
+- Kodlar `internal/application/game/gameSpesific/houseRockets` altında:
+  `course.go`, `simulation.go`, `simulationState.go`, `simulationResult.go`.
+  Ortak GameSession domain'i, katalog ve gateway değiştirilmedi.
+- `NewSimulation(NewSimulationParams)`: Authoritative session/house kimliği,
+  injected UTC başlangıç zamanı ve sıralı 2–8 gerçek oyuncu roster'ı alır.
+  Engine oynanış başında oluşturulur; lobby/countdown, üyelik/auth ve bot
+  oluşturma işi yapmaz. Online backend'e bot AI eklenmedi.
+- `Steer(playerId, courseHeading)`: Parkur koordinatında finite radyan;
+  normalize edilir, ekran açısı tekrar çıkarılmaz. Engine control generation /
+  inputSequence bilmez; bu yetki ve ACK kontrolü Paket 3 runtime sorumluluğudur.
+- `AdvanceTicks(n)`: 0–30 tam fizik tick'i, her biri tam 1/120 s. Negatif/büyük
+  batch reddedilir; gizlice delta clamp veya fractional step uygulanmaz.
+  Scheduler, fractional süre birikimi ve bounded catch-up Paket 3'e aittir.
+  Motor saat/ticker/socket/Redis/Mongo çalıştırmaz; mutable motor tek runtime
+  loop'una aittir. Concurrent erişim için mutex'li ortak engine kullanılmaz;
+  owner snapshot/state kopyasını aldıktan sonra diğer akışlara verir.
+- `EliminatePlayers(ids, reason)`: Forfeit, connectionExpired veya
+  membershipRevoked system geçişini atomic batch uygular. Önce bütün batch
+  doğrulanır, sonra eleme ve survivor/draw hesabı yapılır; tekrar eleme yeni
+  sonuç üretmez. Fizik arka-sınır elenmesini engine hesaplar.
+- `Cancel(reason)` ve `ProposeResult(endedAt)`: Pure terminal outcome ve henüz
+  commit edilmemiş result proposal. Son tick'teki survivor/draw expiry'den
+  önce çözülür; devam eden oyun tick 36.000'de cancelled olur. Result sırası
+  frozen roster'dır, eşit elimination tick'leri eşit competition rank alır.
+  Proposal'ın endedAt'i UTC'ye çevrilir ve oynanan süreden önce olamaz.
+  Result transaction/outbox/HTTP veya kesin sonuç yayını **Paket 5'te** yapılacak.
+- `Snapshot()`: World positions, authoritative kamera/açı, bounded aktif
+  geometri ve copied player/outcome state'i. Bu `WorldSnapshot` internal
+  engine çıktısıdır, v2 wire DTO'su değildir; Paket 3/4 runtime metadata,
+  bağlantı/ACK bilgisi ve alıcıya özel control generation ile wire'a map eder.
+- `State()` / `RestoreSimulation(state)`: Internal checkpoint schema `1`,
+  courseVersion `1`. Fizik tick'i, kamera, roster, heading, efekt kalan süresi,
+  field temas geçmişi ve next gate index korunur. Geometri stabil indekslerden
+  yeniden üretilir; cihaz/UUID/random state saklanmaz. Corrupt/NaN/infinite,
+  uyumsuz sürüm, invalid outcome ve imkânsız geometri/alan bilgisi reddedilir.
+  Snapshot, state ve result proposal caller-owned deep copy'dir. Checkpoint'in
+  Redis'e yazılması, ownership fencing, control bindings ve eski checkpoint'in
+  oyuncu diriltmesini önleme bariyeri Paket 3/6'da tamamlanacak.
+
+Navigation fixture driver'ları yalnız test/reference içindir: İki oyuncu lane
+offset 0 ile her 14 tick'te ilk geçide yönlendirilir. Boost senaryosu 294 tick
+düz sürüşten; slow senaryosu iki oyuncu X > 1730 olduktan sonra alana yönelir.
+Temas hedefi field'ın `elapsedSeconds + 0.05` konumu, temas sonrası heading π/2
+ve 240 tick bekleme. Bu controller production online bot değildir.
+Navigation referans değerleri iOS simülasyonundan üretilmiş JSON fixture'larında
+saklanır. Backend reposunda Swift üreticisi bulunmaz; Go testleri Swift compiler'a
+bağımlı değildir ve repoda tutulan JSON fixture'larını kullanır.
 
 ### Paket 3 — Oyun runtime'ı ve çoklu instance girdi koordinasyonu
 
@@ -994,7 +1049,7 @@ elenme sınırları tolerans ve server authority ile ayrıca doğrulanır.
 | Backend paketi | Backend | İlgili mobil doğrulama | Ortak kapı |
 | --- | --- | --- | --- |
 | 1 — Sözleşme | Doğrulandı (Go contract) | Planlandı; mock/DTO başlayabilir | Mobil kabul bekleniyor |
-| 2 — Oyun motoru | Planlandı | Planlandı | Geçilmedi |
+| 2 — Oyun motoru | Doğrulandı (Go/Swift golden + restore) | Prediction/render fixture kontrolü başlayabilir | Mobil kabul bekleniyor |
 | 3 — Runtime / coordination | Planlandı | Planlandı | Geçilmedi |
 | 4 — Gateway / online lobi | Planlandı | Planlandı | Geçilmedi |
 | 5 — Sonuç / rematch | Planlandı | Planlandı | Geçilmedi |
@@ -1014,3 +1069,19 @@ mobil kaynak değiştirilmedi. Test için server/container açılmadı.
 Mobil agent şimdi fixture'larla wire DTO, mock transport, lobby ve online render
 ayrımına başlayabilir. Yerel bot modunun mevcut fiziği korunur. Canlı House
 Rockets endpoint'ine bağlanma veya production'da oyunu açma kapısı henüz geçilmedi.
+
+Paket 2 doğrulama: Go contract/engine testleri, tüm `go test ./...` ve House
+Rockets race kontrolü başarılı. Fizik sabitleri, 2/4/8 spawn, altı kısa hareket,
+üç navigation/effect senaryosu ve gerçek convex yüzeyler Swift fixture'larıyla
+1e-9 toleransında eşleşti. 30/60/120/144 FPS batching aynı state'i üretiyor;
+expiry, son-tick survivor/draw önceliği, effect replacement/expiry, terminal
+state değişmezliği, state/result copy isolation, corrupt restore ve bounded
+geometry/contact geçmişi testleri mevcut.
+State restore fuzz testi 5 s / 2 worker'da 10.231 girdiyi başarıyla çalıştırdı.
+Contract/engine unit testleriyle House Rockets Go package statement coverage'ı
+%97,4 ölçüldü; bu tüm backend veya canlı entegrasyon coverage'ı değildir.
+Sekiz sabit konumlu oyuncuyla iki tick'lik mikro benchmark Apple M2'de yaklaşık
+9,5 µs/op, 0 B/op ve 0 allocs/op ölçtü; bu network/Redis yüklü oda kapasitesi
+veya production garantisi değildir. Gerçek çoklu instance/yük kabulü Paket 7'dir.
+Mongo/Redis environment'ı olmadığı için mevcut integration testleri skip edildi;
+bu pakette canlı socket/DB/compose testi yapılmadı, server/container açılmadı.
