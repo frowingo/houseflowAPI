@@ -300,18 +300,50 @@ func (manager *RoomManager) activateRoom(
 		}
 		ownership := ownershipFromLease(owner, false)
 		if supportsGameRuntime(session.Snapshot().GameKey) {
-			current, err := manager.repository.(gameAbstract.RuntimeOwnerRepository).FindRuntimeOwner(ctx, roomID)
+			current, err := manager.waitForRuntimeOwner(ctx, owner)
 			if err != nil {
 				return RoomOwnership{}, err
-			}
-			if current.LeaseID != owner.LeaseID || current.OwnerInstanceID != owner.OwnerInstanceID {
-				return RoomOwnership{}, coordinationAbstract.ErrUnavailable
 			}
 			ownership.RuntimeEpoch = current.Generation
 		}
 		return ownership, nil
 	}
 	return manager.startRoom(ctx, rootCtx, lease, expectedOwner)
+}
+
+// Redis ownership becomes visible before the owner publishes its durable Mongo
+// generation. A concurrent gateway may observe that gap; wait for publication
+// under the same live lease without claiming or retrying another owner's CAS.
+func (manager *RoomManager) waitForRuntimeOwner(ctx context.Context, lease coordinationAbstract.RoomLease) (gameAbstract.RuntimeOwner, error) {
+	ctx, cancel := context.WithTimeout(ctx, manager.options.CommandTimeout)
+	defer cancel()
+	ticker := time.NewTicker(defaultRetryDelay)
+	defer ticker.Stop()
+	owners := manager.repository.(gameAbstract.RuntimeOwnerRepository)
+	for {
+		if err := ctx.Err(); err != nil {
+			return gameAbstract.RuntimeOwner{}, err
+		}
+		current, err := owners.FindRuntimeOwner(ctx, lease.RoomID)
+		if err != nil {
+			return gameAbstract.RuntimeOwner{}, err
+		}
+		activeLease, exists, err := manager.coordinator.CurrentRoomOwner(ctx, lease.RoomID)
+		if err != nil {
+			return gameAbstract.RuntimeOwner{}, err
+		}
+		if !exists || activeLease.LeaseID != lease.LeaseID || activeLease.OwnerInstanceID != lease.OwnerInstanceID {
+			return gameAbstract.RuntimeOwner{}, coordinationAbstract.ErrLeaseLost
+		}
+		if current.Generation > 0 && current.LeaseID == lease.LeaseID && current.OwnerInstanceID == lease.OwnerInstanceID {
+			return current, nil
+		}
+		select {
+		case <-ctx.Done():
+			return gameAbstract.RuntimeOwner{}, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func (manager *RoomManager) startRoom(

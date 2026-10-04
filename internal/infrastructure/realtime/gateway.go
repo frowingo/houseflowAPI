@@ -202,6 +202,7 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		ownership, err := gateway.manager.EnsureRoom(requestCtx, roomID)
 		if err != nil {
 			reservation.release()
+			gateway.report(roomID, err)
 			if errors.Is(err, ErrRealtimeCapacity) {
 				c.Set(fiber.HeaderRetryAfter, "1")
 			}
