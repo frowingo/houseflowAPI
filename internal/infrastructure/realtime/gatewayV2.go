@@ -212,6 +212,11 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 			client.mutex.Unlock()
 			return
 		}
+		if grant.RuntimeEpoch > client.v2.epoch {
+			client.v2.sequence = 0
+			client.v2.frame = nil
+			client.v2.needSnapshot = true
+		}
 		client.v2.epoch = grant.RuntimeEpoch
 		client.v2.grant = &grant
 		client.v2.needBind = false
@@ -439,6 +444,24 @@ func (client *gatewayClient) controlLoop(presence coordinationAbstract.Presence)
 				client.stop(websocket.CloseTryAgainLater, "presence unavailable")
 				return
 			}
+			ctx, cancel = context.WithTimeout(client.ctx, client.gateway.options.CommandTimeout)
+			_, exists, ownerErr := client.gateway.coordinator.CurrentRoomOwner(ctx, client.roomID)
+			if ownerErr == nil && !exists {
+				ownership, err := client.gateway.manager.EnsureRoom(ctx, client.roomID)
+				if err == nil {
+					client.mutex.Lock()
+					if ownership.RuntimeEpoch > client.v2.epoch {
+						client.v2.epoch, client.v2.sequence = ownership.RuntimeEpoch, 0
+						client.v2.grant, client.v2.frame = nil, nil
+						client.v2.phase = houseRockets.PhaseRecovering
+						client.v2.needSnapshot, client.v2.needBind = true, true
+						client.v2.lastBind = time.Time{}
+					}
+					client.mutex.Unlock()
+				}
+			}
+			cancel()
+			client.signalControl()
 		case <-client.v2.controlSignal:
 			client.mutex.Lock()
 			epoch := client.v2.epoch

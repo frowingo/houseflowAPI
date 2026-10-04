@@ -58,6 +58,7 @@ type RuntimeFrame struct {
 	World           WorldSnapshot            `json:"world"`
 	Controls        []RuntimePlayerControl   `json:"controls"`
 	CommittedResult *HouseRocketsResultModel `json:"committedResult,omitempty"`
+	Checkpoint      *RuntimeCheckpoint       `json:"-"`
 }
 
 type RuntimeEvent struct {
@@ -66,6 +67,7 @@ type RuntimeEvent struct {
 	ConnectionID string
 	Grant        *HouseRocketsControlGrantedModel
 	Err          error
+	Checkpoint   *RuntimeCheckpoint
 }
 
 type controller struct {
@@ -100,6 +102,8 @@ type Runtime struct {
 	results         chan HouseRocketsResultModel
 	resultProposed  bool
 	committedResult *HouseRocketsResultModel
+	proposedResult  *HouseRocketsResultModel
+	restored        bool
 	lastAdvance     time.Time
 	nextFrame       time.Time
 	remainder       int64
@@ -236,7 +240,7 @@ func (runtime *Runtime) Run(ctx context.Context, leaseValid func() bool) {
 		runtime.lastAdvance = time.Now()
 		runtime.nextFrame = runtime.lastAdvance.Add(time.Second / SnapshotRateHz)
 		for _, control := range runtime.controls {
-			if control.lastSeen.IsZero() {
+			if control.lastSeen.IsZero() && !runtime.restored {
 				control.graceEndsAt = runtime.lastAdvance.Add(ControlTimeout + ReconnectGraceDuration)
 			}
 		}
@@ -318,7 +322,9 @@ func (runtime *Runtime) Advance(now time.Time) error {
 				}
 				control.lastSeen, control.graceEndsAt = queued.receivedAt, time.Time{}
 				grant := &HouseRocketsControlGrantedModel{SessionID: runtime.simulation.sessionID, PlayerID: input.PlayerID, RuntimeEpoch: runtime.epoch, ControlGeneration: control.generation}
-				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Grant: grant})
+				runtime.sequence++
+				checkpoint := runtime.checkpointLocked()
+				runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Grant: grant, Checkpoint: &checkpoint})
 			} else if control.connectionID == input.ConnectionID && control.generation == input.ControlGeneration {
 				changed = true
 				control.connectionID, control.generation = "", ""
@@ -396,7 +402,10 @@ func (runtime *Runtime) publishFrame() {
 			endedAt = minimumEnd
 		}
 		if result, err := runtime.simulation.ProposeResult(endedAt); err == nil {
-			runtime.results <- result
+			if runtime.proposedResult == nil {
+				runtime.proposedResult = &result
+			}
+			runtime.results <- *runtime.proposedResult
 			runtime.resultProposed = true
 		}
 	}
@@ -425,6 +434,8 @@ func (runtime *Runtime) buildFrame() RuntimeFrame {
 		control := runtime.controls[player.PlayerID]
 		frame.Controls = append(frame.Controls, RuntimePlayerControl{PlayerID: player.PlayerID, ConnectionID: control.connectionID, Connected: control.connectionID != "", LastProcessedInputSequence: control.processedInput})
 	}
+	checkpoint := runtime.checkpointLocked()
+	frame.Checkpoint = &checkpoint
 	return frame
 }
 

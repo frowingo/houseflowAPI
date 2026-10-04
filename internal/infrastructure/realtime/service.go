@@ -23,6 +23,9 @@ func NewService(
 	roomOptions RoomManagerOptions,
 	gatewayOptions GatewayOptions,
 ) (*Service, error) {
+	if !gatewayOptions.EnableHouseRockets {
+		roomOptions.RecoveryScanInterval = -1
+	}
 	manager, err := NewRoomManager(coordinator, repository, sender, roomOptions)
 	if err != nil {
 		return nil, err

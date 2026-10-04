@@ -2,13 +2,15 @@
 
 Tarih: 4 Ekim 2026.
 
-Durum: **Paket 1–5 backend geliştirmeleri ve testleri tamamlandı.** Sözleşme
+Durum: **Paket 1–6 backend geliştirmeleri ve backend testleri tamamlandı.** Paket 6 doğrulama özeti
+aşağıdaki teslim bölümünde tutulur. Sözleşme
 revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
 courseVersion `1`. Go tanımı, wire DTO'ları, bağımsız v2 decoder ve ortak JSON
 fixture'ları, deterministik simülasyon, iki instance arasında girdi yönlendiren runtime
-ve gerçek v2 HTTP/socket entegrasyonu, kalıcı sonuç ve yeni oturumla rematch mevcut.
+ve gerçek v2 HTTP/socket entegrasyonu, kalıcı sonuç, yeni oturumla rematch,
+checkpoint ve owner recovery mevcut.
 **House Rockets yalnız açıkça etkinleştirilen local/staging ortamında kullanılabilir.**
-Production kapalıdır; checkpoint/owner recovery Paket 6 teslimidir.
+Production kapalıdır; yayın kararı Paket 7 yük/gecikme ve mobil kabulüne bağlıdır.
 Mobil implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
 
 ## 1. Amaç ve onaylanmış ürün sınırı
@@ -75,7 +77,8 @@ GET /api/v1/game/:sessionId/realtime
 `{ "success": true, "data": ... }`, hatalar `{ "success": false, "error": ... }`.
 `houseRockets` henüz katalogda bulunmadığı için bu game key şu an çalışmaz.
 
-Backend'deki önemli boşluklar:
+Başlangıç taramasında backend'deki önemli boşluklar (tarihsel tespitler;
+güncel teslim durumu bölüm 8'deki Paket 1–6 kayıtlarıdır):
 
 - WebSocket session snapshot'ı HTTP DTO'su yerine doğrudan Go domain struct'ını
   JSON'a çeviriyor. `SessionID`, `PlayerID`, `Rules` gibi alanlar PascalCase;
@@ -638,7 +641,7 @@ Paket 1 sonuç politikası:
   `sessionExpired`, `recoveryFailed`, `coordinationUnavailable`, `runtimeOverloaded`.
 
 Completed, beraberlik, 5 dakika expiry ve başlamadan iptal fixture'ları mevcut.
-Result persistence/HTTP endpoint henüz uygulanmadı; bu bölüm sözleşme sınırıdır.
+Result persistence ve HTTP endpoint Paket 5'te uygulandı.
 
 Result unique `sessionId` ile tekilleştirilir. Game result, ortak session finish,
 aktif-session pointer temizliği, command receipt ve ilgili outbox event'leri
@@ -667,9 +670,9 @@ ile conflict/retry sonunda yalnız geçerli generation commit edebilir.
 Checkpoint script'i Redis lease identity/fence ile epoch/stateSequence'i
 birlikte doğrular. Redis counter reset'i tek başına eski Mongo generation'a
 yetki vermez. Owner adapter/CAS ve Redis counter reset testi Paket 3'te uygulandı;
-Completion transaction Paket 5'te uygulandı; checkpoint koruması Paket 6'da tamamlanacak.
+Completion transaction Paket 5'te, checkpoint koruması Paket 6'da uygulandı.
 
-Geçici Redis checkpoint başlangıç önerisi 1 s aralık ve kritik elenme/forfeit
+Geçici Redis checkpoint varsayılanı 1 s aralık ve kritik elenme/forfeit
 geçişlerinde, valid lease'i aynı script içinde doğrulayarak yazmaktır.
 Script ayrıca checkpoint epoch/stateSequence sırasını doğrular; geç biten eski
 periyodik write daha yeni kritik checkpoint'in üzerine yazamaz.
@@ -705,12 +708,12 @@ tutmak veya her fizik tick'ini Mongo'ya yazmak gerekli değildir.
 Bu bölüm 3 Ekim 2026'da backend teslimlerine göre yeniden düzenlendi. Önceki
 Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
 aşağıdaki başlangıç tablosunda ayrıca gösterilir. Diğer bölümler bu paketlere
-referans verir. Paket 1–5 ve iki-instance gerçek socket senaryoları doğrulandı; sonraki backend paketleri
-ve mobil teslimler henüz doğrulanmadı.
+referans verir. Paket 1–6 teslimleri ve iki-instance gerçek socket senaryoları
+mevcut; Paket 7 kapasite kabulü ve mobil teslimler henüz doğrulanmadı.
 
-**Sıradaki backend işi Paket 6 — Reconnect, owner recovery ve maç lifecycle dayanıklılığı.**
+**Sıradaki backend işi Paket 7 — Yük, gecikme ve production kabulü.**
 Mobil agent local/staging ortamında tam maç, sonuç ve rematch entegrasyonunu
-tamamlayabilir; owner recovery ve production kabulü için sonraki kapılar beklenir.
+ve recovery entegrasyonunu tamamlayabilir; production kabulü için Paket 7 beklenir.
 
 Bağımlılık sırası:
 
@@ -897,7 +900,8 @@ Paket 3 uygulanan API ve sınırlar:
 - `MarkRuntimeStarted`: generation + owner + lease conditional write ile spawn'dan
   yalnız bir kez başlatır. Lease kaybı sonrası started maç checkpoint olmadan
   yeniden spawn edilmez; `ErrRuntimeRecoveryRequired` döner. Bu, Paket 6 recovery
-  implementasyonu yerine geçmez. Sonuç/checkpoint transaction'ı henüz yoktur.
+  implementasyonu yerine geçmez. Bu Paket 3 teslimindeki sınırdır; güncel
+  recovery/cancellation davranışı Paket 6 bölümünde açıklanır.
 - `RuntimeFrame` internal fanout formatıdır, public v2 snapshot DTO'su değildir.
   Private control generation sadece connection-targeted grant'te yayınlanır.
   Sonuç henüz commit edilmez; terminal frame **finalizing** olarak kalır, kesin
@@ -995,7 +999,8 @@ Paket 4 teslim notu:
   kalıcı sonuç/event/result HTTP ve otomatik rematch bu pakette **yoktur**.
   Aktif session bu yüzden yeni maç için resetlenmemelidir. Test maçını kapatmak
   için yetkili lifecycle cancel kullanılabilir. Running owner kaybında checkpoint
-  recovery henüz yoktur; mevcut started bariyeri yanlış yeniden spawn'ı engeller.
+  recovery bu Paket 4 tesliminde yoktur; mevcut started bariyeri yanlış yeniden
+  spawn'ı engeller. Güncel sonuç/recovery davranışı Paket 5/6 bölümlerindedir.
 
 Mobil agent şimdi gerçek local/staging HTTP/socket, lobby ve karşı oyuncu hareketi
 entegrasyonuna başlayabilir. Gerçek iki iOS cihazındaki gecikme/UX kabulü ayrı
@@ -1070,7 +1075,7 @@ multiplayer maçı oynanabilir; bağlantı/owner kaybı ve yayın kapıları hâ
   Yayın başarısızsa outbox satırı unpublished kalır. Bu paket otomatik outbox
   replay worker'ı eklemez; mobil HTTP fallback kullanır. Process/lease kaybında
   RAM'deki henüz commit edilmemiş öneriyi kurtarmak ve finalizing süresini
-  sınırlamak Paket 6 checkpoint/recovery işidir.
+  sınırlamak Paket 6 checkpoint/recovery tesliminde tamamlandı.
 - Running `gameSession.cancel` önce güncel üyelik + creator/house owner yetkisi
   ve command ID reuse kontrolünden geçer. Engine iptal önerisi ve kullanıcı
   receipt'i aynı result transaction'ına girer; DB command ACK'i commit'ten sonra
@@ -1107,7 +1112,7 @@ metadata/payload bozulmasını ve mevcut sonuç/outbox'a dokunmayan migration te
 Bu test yeni bir oyun feature'ı veya catalog kaydı eklemez.
 `go vet ./...` ve canlı Mongo/Redis
 ile `go test -race ./... -count=1` kabul kontrolleridir. Mobil repository
-değiştirilmedi/build alınmadı; gerçek iki iOS cihazı ve Paket 6/7 kapıları bekler.
+değiştirilmedi/build alınmadı; gerçek iki iOS cihazı ve Paket 7 kapısı bekler.
 
 ### Paket 6 — Reconnect, owner recovery ve maç lifecycle dayanıklılığı
 
@@ -1134,6 +1139,109 @@ kalıcı ve ortak cancelled sonuç üretir.
 Mobil teslim kapısı: Foreground tam sync, reconnect backoff, control generation
 yenileme, recovery ekranı ve logout/ev değişimi cleanup canlı senaryolarda
 doğrulanır. Bu davranışlar daha önce mock state'lerle kodlanabilir.
+
+#### Paket 6 backend teslimi — 4 Ekim 2026
+
+Wire sözleşmesi `houseRockets.v2.1` / protocol `2` / course `1` değişmedi.
+Yeni migration açılmadı; aktif oturum taraması mevcut unique `sessionId`
+index'ini kullanır. Mongo owner kaydındaki opsiyonel `completionTrigger` alanı,
+yetkilendirilmiş cancel niyetini runtime değişmeden önce saklar; mevcut
+validator ile uyumludur. Cancellation receipt'i yine sonuç transaction'ında
+üretilir; niyet kaydı tek başına başarılı cancel ACK'i değildir.
+
+Uygulanan akış:
+
+1. Oda sahibi başlangıç checkpoint'ini Redis'e yazar, sonra Mongo'daki
+   `started` bariyerini geçirir. Çalışan maç yeniden spawn edilmez.
+2. Normal hareket checkpoint'i aralıklı kaydedilir. Control generation devri,
+   elenme/forfeit ve terminal öneri kritik geçiştir: önce checkpoint korunur,
+   sonra ilgili grant/state yayınlanır. Yazma hatasında oda durur.
+3. Yeni owner geçerli Redis lease'i ve Mongo CAS ile daha yüksek epoch alır.
+   Geçerli checkpoint'ten fizik, kalan efektler, gate temasları, kamera ve
+   fractional tick birikimi kurulur. DB'deki leave/üyelik değişimi ilk recovered
+   state yayınından önce uygulanır. Duyurulmuş elenme geri alınmaz.
+4. Eski bağlantı/generation, input sequence ve bekleyen steering taşınmaz.
+   Oyuncular yeni epoch için yeniden kontrol alır. Recovery sırasında geçen
+   kesinti süresi physics tick'lerine veya kalan reconnect grace'e eklenmez;
+   maçın 5 dakika sınırı simülasyon süresidir.
+5. Checkpoint yoksa, bozuksa veya hareket state'i çok eskiyse maç açık şekilde
+   `cancelled/recoveryFailed` olur; kazanan/rank üretilmez. State tamamen
+   kayıpsa süre/distance `0` ve bilinmeyen elenme alanları `null` olur; bunlar
+   gerçek oynanmış skor iddiası değildir. Sahte `playing` frame'i yayınlanmaz.
+6. Terminal öneri recovery yaş sınırından bağımsız korunur; kayıt retry'ı
+   `endedAt`, kazanan veya sıralamayı yeniden hesaplamaz. Mongo commit'i
+   olmadan kesin sonuç/leaderboard yayınlanmaz. Yetkili cancel niyeti owner
+   crash'inden sonra da aynı command receipt'iyle tamamlanır.
+7. Socket/komut gelmese bile tek seçilmiş recovery scanner, aktif pointer
+   index'ini sayfalar; owner'ı olmayan readyWindow/countdown/running oturumları
+   devralır. Boş lobby'yi sürekli ayağa kaldırmaz. İstemcisi kalmayan lobby'nin
+   RAM runtime ve lease'i serbest bırakılır; DB lobby keşfedilebilir kalır ve
+   sonraki bağlantı yeniden aktive eder. Terminal commit aktif pointer'ı siler;
+   checkpoint temizlenir veya TTL ile düşer.
+
+Operasyon varsayılanları `RoomManagerOptions` içindedir; yeni ürün kuralı veya
+client'ın seçebildiği değer değildir:
+
+| Ayar | Varsayılan | Anlamı |
+| --- | --- | --- |
+| `CheckpointInterval` | 1 saniye | Normal hareket kaydı; kritik geçiş bunu beklemez. |
+| `CheckpointTTL` | 10 dakika | Geçici state saklama; kalıcı sonuç Mongo'dadır. |
+| `RecoveryMaxAge` | 30 saniye | Nonterminal state daha eskiyse devam yerine iptal. Başlangıcı çok gecikmiş, hiç spawn olmamış running maç da iptal edilir. |
+| `RecoveryScanInterval` / `RecoveryScanBatch` | 5 saniye / 100 | Tek seçilmiş scanner için indeksli sayfa; bütün oturumların 5 saniyede taranacağı garantisi değildir. `-1` scanner'ı kapatır. |
+| `FinalizationTimeout` | 30 saniye | Bir owner'ın kayıt retry bütçesi. Aşılınca lease/RAM bırakılır, güvenli öneri sonraki owner tarafından tekrar denenir. |
+| `IdleRoomTimeout` | 1 dakika | Presence'sız lobby'nin owner runtime'ını bırakma eşiği; tarama tick'i/lease temizliği ek gecikme yaratabilir. |
+
+Redis ulaşılamıyorsa sahiplik/checkpoint doğrulanamaz: güvensiz yayın durur,
+geçici erişim hatası state'in kesin kaybolduğu şeklinde yorumlanmaz. Redis
+geri gelir ve state bulunamazsa tutarlı cancellation kaydedilir. Mongo
+ulaşılamıyorken kalıcı sonuç/iptal veya ACK garanti edilemez; storage düzelince
+scanner/finalization retry tamamlar. Per-owner retry bütçesi bu gerçeği
+değiştirmez; DB kesintisini gizleyerek başarılı sonuç üretilmez.
+
+#### Paket 6 mobil agent uygulama sırası
+
+Backend teslimi mobil implementasyonun yapıldığı anlamına gelmez. Agent bu
+doküman ve JSON fixture'larıyla local/staging üzerinde şu akışı doğrulamalı:
+
+1. Socket kesilince online ekranı koru; sınırlı backoff ile reconnect yap.
+   Bot moduna otomatik geçme. Foreground dönüşünde tam snapshot/resync al.
+2. Daha yüksek `runtimeEpoch` gözlenince eski prediction/interpolation state,
+   pending input'lar, ACK ve `controlGeneration` temizlenir. Yeni epoch'taki
+   authoritative snapshot başlangıç state'i olur; düşük epoch mesajları atılır.
+3. `phase: recovering` varsa bekleme/toparlanma durumunu göster. Bu frame
+   coalescing yüzünden atlanabilir; toparlanmayı yalnız bu mesajın gelmesine
+   bağlama. Aynı socket üzerinden daha yüksek epoch'la doğrudan `playing`
+   gelebilir. Küçük hareket geri düzeltmesi normaldir, kusursuz failover yoktur.
+4. Yeni `houseRockets.controlGranted` gelmeden steering gönderme. Yeni
+   generation için input sequence `1`'den başlar; eski input'lar replay edilmez.
+   Grant ile ilk snapshot'ın geliş sırasına bağımlı olma. Elenmiş oyuncu kontrol
+   alamaz; spectator olarak kalır.
+5. Terminal `gameSession.snapshot` / `houseRockets.result` maç sonudur. State
+   kaybı iptalinde son physics frame'i gelmesi şart değildir. `cancelled` için
+   kazanan çıkarma, bilinmeyen skor alanlarını gerçek skor gibi gösterme.
+   Result event kaybolduysa eski session ID ile HTTP result fallback uygula;
+   404 henüz commit olmadığını gösterebilir, 401/403 retry edilecek kayıt değildir.
+6. Logout/ev değişiminde socket, heartbeat, input loop ve pending UI command'ları
+   temizle. Yeni kullanıcı/ev eski bağlantının kontrolünü devralmaz. Rematch
+   daima yeni session'dır; ready onayı yeniden gerekir.
+
+Doğrulama kapsamı: saf runtime restore/grace/generation testleri, iki-instance
+gateway reconnect/controller devri/üyelik/forfeit regresyonları, gerçek child
+owner process kill, checkpoint fencing ve büyük integer sırası, Redis veri
+reset'i, eksik/bozuk/eski checkpoint, kritik checkpoint yazma hatası,
+socket/komut olmadan orphan cancellation, bounded finalization sonrası aynı
+önerinin retry'ı, crash öncesi cancel receipt'i ve boş lobby cleanup.
+Tam test komutları: `go vet ./...` ve local compose Mongo/Redis ile
+`go test -race -v ./... -count=1`. Production kapasite, gerçek iOS cihazları ve
+ağ gecikmesi kabulü bu testlerin yerine geçmez; Paket 7 kapsamındadır.
+
+4 Ekim 2026 doğrulama sonucu: host `go test ./...`, `go vet ./...` ve
+`git diff --check` başarılı. Canlı compose Mongo/Redis ile bütün proje
+`go test -race -v ./... -count=1` başarılı (236 saniye). Son gözden geçirme
+değişiklikleri ve yeni uzun-süre-sahipsiz oturum/ongoing-elimination testleri,
+Paket 6 testlerinin tamamıyla ayrıca `-race -count=1` çalıştırıldı ve başarılı
+(38 saniye). Gerçek child process kill testi bu iki çalışmada da geçti.
+Testler sonrası yerel test container'ları durdurulur; production açılmaz.
 
 ### Paket 7 — Yük, gecikme ve production kabulü
 

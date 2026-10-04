@@ -47,6 +47,13 @@ type RoomManagerOptions struct {
 	ParticipantDirectory gameAbstract.GameParticipantDirectory
 	ReconcileInterval    time.Duration
 	MatchRepository      gameAbstract.GameMatchRepository
+	CheckpointInterval   time.Duration
+	CheckpointTTL        time.Duration
+	RecoveryMaxAge       time.Duration
+	RecoveryScanInterval time.Duration
+	RecoveryScanBatch    int
+	FinalizationTimeout  time.Duration
+	IdleRoomTimeout      time.Duration
 }
 
 type RoomOwnership struct {
@@ -98,6 +105,9 @@ func NewRoomManager(
 		return nil, errors.New("CQRS sender is required")
 	}
 	options = normalizeOptions(options)
+	if options.RecoveryScanBatch > 1000 || options.CheckpointTTL <= options.CheckpointInterval || options.IdleRoomTimeout < 2*time.Millisecond {
+		return nil, errors.New("invalid checkpoint TTL, recovery scan batch or idle room timeout")
+	}
 	if options.RenewInterval >= options.LeaseTTL {
 		return nil, errors.New("room renew interval must be shorter than lease TTL")
 	}
@@ -158,6 +168,10 @@ func (manager *RoomManager) Start(ctx context.Context) error {
 	manager.started = true
 	manager.workers.Add(1)
 	go manager.commandLoop(rootCtx, subscription)
+	if scanner, ok := manager.repository.(gameAbstract.ActiveGameSessionScanner); ok && manager.options.MatchRepository != nil && manager.options.RecoveryScanInterval > 0 {
+		manager.workers.Add(1)
+		go manager.recoveryLoop(rootCtx, scanner)
+	}
 	return nil
 }
 
@@ -180,6 +194,9 @@ func (manager *RoomManager) EnsureRoom(
 		manager.mutex.Lock()
 		if room := manager.rooms[roomID]; room != nil {
 			manager.mutex.Unlock()
+			if snapshot := room.snapshot.Load(); snapshot != nil && (snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled) {
+				return RoomOwnership{}, ErrTerminalRoom
+			}
 			if !room.leaseValid() {
 				room.stop()
 				return RoomOwnership{}, coordinationAbstract.ErrLeaseLost
@@ -309,10 +326,6 @@ func (manager *RoomManager) startRoom(
 		if err != nil {
 			manager.releaseLease(lease)
 			return RoomOwnership{}, err
-		}
-		if runtimeOwner.Started {
-			manager.releaseLease(lease)
-			return RoomOwnership{}, gameAbstract.ErrRuntimeRecoveryRequired
 		}
 	}
 	renewStartedAt := time.Now()
@@ -552,6 +565,27 @@ func normalizeOptions(options RoomManagerOptions) RoomManagerOptions {
 	if options.RetryDelay <= 0 {
 		options.RetryDelay = defaultRetryDelay
 	}
+	if options.CheckpointInterval <= 0 {
+		options.CheckpointInterval = defaultCheckpointInterval
+	}
+	if options.CheckpointTTL <= 0 {
+		options.CheckpointTTL = defaultCheckpointTTL
+	}
+	if options.RecoveryMaxAge <= 0 {
+		options.RecoveryMaxAge = defaultRecoveryMaxAge
+	}
+	if options.RecoveryScanInterval == 0 {
+		options.RecoveryScanInterval = defaultRecoveryScanInterval
+	}
+	if options.RecoveryScanBatch <= 0 {
+		options.RecoveryScanBatch = defaultRecoveryScanBatch
+	}
+	if options.FinalizationTimeout <= 0 {
+		options.FinalizationTimeout = defaultFinalizationTimeout
+	}
+	if options.IdleRoomTimeout <= 0 {
+		options.IdleRoomTimeout = time.Minute
+	}
 	return options
 }
 
@@ -583,6 +617,11 @@ type managedRoom struct {
 	previewSequence      int64
 	pendingResult        *houseRockets.HouseRocketsResultModel
 	pendingCancellations []coordinationAbstract.CommandDelivery
+	checkpointMutex      sync.Mutex
+	checkpointSequence   int64
+	checkpointCritical   string
+	checkpointAt         time.Time
+	completionStarted    time.Time
 }
 
 type roomActivation struct {
@@ -629,6 +668,9 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 		deadlineChannel = deadlineTimer.C
 	}
 	resetDeadline(snapshot)
+	idleTicker := time.NewTicker(min(room.manager.options.IdleRoomTimeout/2, room.manager.options.LeaseTTL))
+	defer idleTicker.Stop()
+	var idleSince time.Time
 	var completionChannel <-chan time.Time
 	if room.manager.options.MatchRepository != nil && supportsGameRuntime(snapshot.GameKey) {
 		ticker := time.NewTicker(250 * time.Millisecond)
@@ -656,6 +698,28 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 		select {
 		case <-room.ctx.Done():
 			return
+		case <-idleTicker.C:
+			if snapshot.State != gameDomain.SessionLobby || !supportsGameRuntime(snapshot.GameKey) {
+				idleSince = time.Time{}
+				continue
+			}
+			ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
+			presence, err := room.manager.coordinator.ListPresence(ctx, room.lease.RoomID)
+			cancel()
+			if err != nil {
+				room.manager.report(room.lease.RoomID, err)
+				return
+			}
+			if len(presence) > 0 {
+				idleSince = time.Time{}
+				continue
+			}
+			if idleSince.IsZero() {
+				idleSince = time.Now()
+			}
+			if time.Since(idleSince) >= room.manager.options.IdleRoomTimeout {
+				return
+			}
 		case <-completionChannel:
 			room.captureResult()
 			if room.pendingResult != nil && room.completeMatch() {
@@ -692,6 +756,10 @@ func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
 			envelope := delivery.Envelope()
 			room.captureResult()
 			if room.pendingResult != nil {
+				if trigger := room.runtimeOwner.CompletionTrigger; trigger != nil && envelope.MessageID == trigger.CommandID && envelope.ActorID == trigger.ActorID && envelope.Type == trigger.CommandType && len(room.pendingCancellations) < room.manager.options.CommandQueueSize {
+					room.pendingCancellations = append(room.pendingCancellations, delivery)
+					continue
+				}
 				if len(room.pendingCancellations) > 0 {
 					first := room.pendingCancellations[0].Envelope()
 					if envelope.MessageID == first.MessageID && envelope.ActorID == first.ActorID && envelope.Type == first.Type {

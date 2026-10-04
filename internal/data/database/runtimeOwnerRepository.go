@@ -15,15 +15,16 @@ import (
 const RuntimeOwnerCollectionName = "GameRuntimeOwner"
 
 type runtimeOwnerDocument struct {
-	SessionID       string `bson:"_id"`
-	Generation      int64  `bson:"generation"`
-	OwnerInstanceID string `bson:"ownerInstanceId"`
-	LeaseID         string `bson:"leaseId"`
-	Started         bool   `bson:"started"`
+	SessionID         string                          `bson:"_id"`
+	Generation        int64                           `bson:"generation"`
+	OwnerInstanceID   string                          `bson:"ownerInstanceId"`
+	LeaseID           string                          `bson:"leaseId"`
+	Started           bool                            `bson:"started"`
+	CompletionTrigger *gameAbstract.CommandDescriptor `bson:"completionTrigger,omitempty"`
 }
 
 func (document runtimeOwnerDocument) owner() gameAbstract.RuntimeOwner {
-	return gameAbstract.RuntimeOwner{SessionID: document.SessionID, Generation: document.Generation, OwnerInstanceID: document.OwnerInstanceID, LeaseID: document.LeaseID, Started: document.Started}
+	return gameAbstract.RuntimeOwner{SessionID: document.SessionID, Generation: document.Generation, OwnerInstanceID: document.OwnerInstanceID, LeaseID: document.LeaseID, Started: document.Started, CompletionTrigger: document.CompletionTrigger}
 }
 
 var _ gameAbstract.RuntimeOwnerRepository = (*GameSessionRepository)(nil)
@@ -60,7 +61,7 @@ func (repository *GameSessionRepository) ClaimRuntimeOwner(ctx context.Context, 
 }
 
 // A runtime may start from spawn only once, even after lease loss or Redis reset.
-// Checkpoint recovery deliberately remains closed until the recovery package.
+// Recovery preserves this barrier; a restored runtime must not mark another spawn.
 func (repository *GameSessionRepository) MarkRuntimeStarted(ctx context.Context, owner gameAbstract.RuntimeOwner) error {
 	result, err := repository.sessions.Collection().Database().Collection(RuntimeOwnerCollectionName).UpdateOne(ctx, bson.M{
 		"_id": owner.SessionID, "generation": owner.Generation, "ownerInstanceId": owner.OwnerInstanceID, "leaseId": owner.LeaseID, "started": false,
@@ -70,6 +71,25 @@ func (repository *GameSessionRepository) MarkRuntimeStarted(ctx context.Context,
 	}
 	if result.MatchedCount != 1 {
 		return gameAbstract.ErrRuntimeRecoveryRequired
+	}
+	return nil
+}
+
+// Persist authorized completion intent before mutating the game. The owner write
+// conflicts with takeover/completion, and replay never replaces another trigger.
+func (repository *GameSessionRepository) SaveCompletionTrigger(ctx context.Context, owner gameAbstract.RuntimeOwner, command gameAbstract.CommandDescriptor) error {
+	if err := validateCommandDescriptor(command); err != nil {
+		return err
+	}
+	result, err := repository.sessions.Collection().Database().Collection(RuntimeOwnerCollectionName).UpdateOne(ctx, bson.M{
+		"_id": owner.SessionID, "generation": owner.Generation, "ownerInstanceId": owner.OwnerInstanceID, "leaseId": owner.LeaseID, "started": true, "completed": bson.M{"$ne": true},
+		"$or": bson.A{bson.M{"completionTrigger": bson.M{"$exists": false}}, bson.M{"completionTrigger": command}},
+	}, bson.M{"$set": bson.M{"completionTrigger": command}})
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount != 1 {
+		return gameAbstract.ErrRuntimeOwnerConflict
 	}
 	return nil
 }

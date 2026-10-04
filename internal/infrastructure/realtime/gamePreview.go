@@ -16,7 +16,8 @@ func (room *managedRoom) freezePlayers(snapshot gameDomain.SessionSnapshot) {
 	room.lobbyMutex.Lock()
 	defer room.lobbyMutex.Unlock()
 	for _, player := range snapshot.Players {
-		if player.State != gameDomain.PlayerReady && player.State != gameDomain.PlayerPlaying {
+		eligibleRunning := snapshot.State == gameDomain.SessionRunning && !player.ReadyAt.IsZero() && (player.LeftAt.IsZero() || !player.LeftAt.Before(snapshot.StartedAt.Add(-snapshot.Rules.CountdownDuration)))
+		if !eligibleRunning && player.State != gameDomain.PlayerReady && player.State != gameDomain.PlayerPlaying {
 			continue
 		}
 		name := room.members[player.PlayerID]

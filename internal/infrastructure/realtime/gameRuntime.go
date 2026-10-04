@@ -26,6 +26,7 @@ type gameRuntime struct {
 	committedFrame func(houseRockets.HouseRocketsResultModel) houseRockets.RuntimeFrame
 	reconcile      func(gameDomain.SessionSnapshot)
 	reject         func(string, string, error)
+	checkpoint     func() houseRockets.RuntimeCheckpoint
 }
 
 func supportsGameRuntime(gameKey string) bool { return gameKey == houseRockets.GameKey }
@@ -228,12 +229,45 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, re
 	if len(room.frozenPlayers) == 0 {
 		room.freezePlayers(snapshot)
 	}
-	runtime, err := houseRockets.NewRuntime(houseRockets.NewSimulationParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.frozenPlayers}, room.runtimeOwner.Generation, time.Now(), room.previewSequence)
+	var runtime *houseRockets.Runtime
+	var err error
+	recovered := false
+	if room.runtimeOwner.Started {
+		runtime, recovered, err = room.restoreGameRuntime(snapshot)
+	} else {
+		if time.Since(snapshot.StartedAt) > room.manager.options.RecoveryMaxAge && room.manager.options.MatchRepository != nil {
+			ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
+			err := room.manager.repository.(gameAbstract.RuntimeOwnerRepository).MarkRuntimeStarted(ctx, room.runtimeOwner)
+			cancel()
+			if err != nil {
+				return err
+			}
+			result, err := houseRockets.RecoveryCancellationResult(snapshot, houseRockets.EndRecoveryFailed, time.Now())
+			if err != nil {
+				return err
+			}
+			room.pendingResult = &result
+			return nil
+		}
+		runtime, err = houseRockets.NewRuntime(houseRockets.NewSimulationParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.frozenPlayers}, room.runtimeOwner.Generation, time.Now(), room.previewSequence)
+	}
 	if err != nil {
 		return err
 	}
+	if runtime == nil {
+		return nil
+	}
+	checkpoint := runtime.Checkpoint()
+	if recovered {
+		checkpoint = *runtime.RecoveryFrame().Checkpoint
+	}
+	if err := room.protectCheckpoint(&checkpoint, true); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-	err = room.manager.repository.(gameAbstract.RuntimeOwnerRepository).MarkRuntimeStarted(ctx, room.runtimeOwner)
+	if !room.runtimeOwner.Started {
+		err = room.manager.repository.(gameAbstract.RuntimeOwnerRepository).MarkRuntimeStarted(ctx, room.runtimeOwner)
+	}
 	cancel()
 	if err != nil {
 		return err
@@ -241,16 +275,10 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, re
 	if !room.leaseValid() {
 		return coordinationAbstract.ErrLeaseLost
 	}
-	room.manager.mutex.Lock()
-	if room.manager.closed || room.ctx.Err() != nil {
-		room.manager.mutex.Unlock()
-		return ErrRoomRuntimeStopped
-	}
-	room.manager.workers.Add(2)
-	room.manager.mutex.Unlock()
 	room.game = &gameRuntime{
 		results:        runtime.Results(),
 		committedFrame: runtime.CommittedFrame,
+		checkpoint:     runtime.Checkpoint,
 		reject:         runtime.NotifyRejected,
 		cancel:         func() error { return runtime.Cancel(houseRockets.EndCancelledByUser) },
 		reconcile: func(current gameDomain.SessionSnapshot) {
@@ -269,6 +297,31 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, re
 		},
 	}
 	room.game.reconcile(snapshot)
+	if recovered {
+		// Apply durable leave/membership changes before announcing recovered
+		// physics. Do not spend ownership interruption time advancing ticks.
+		if err := runtime.Advance(runtime.Checkpoint().CapturedAt); err != nil {
+			return err
+		}
+		frame := runtime.RecoveryFrame()
+		if err := room.protectCheckpoint(frame.Checkpoint, true); err != nil {
+			return err
+		}
+		payload, _ := json.Marshal(frame)
+		ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
+		err := room.manager.coordinator.PublishRoomEvent(ctx, room.lease, coordinationAbstract.MessageEnvelope{MessageID: uuid.NewString(), Type: GameRuntimeSnapshotEventType, Sequence: frame.StateSequence, Payload: payload})
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
+	room.manager.mutex.Lock()
+	if room.manager.closed || room.ctx.Err() != nil {
+		room.manager.mutex.Unlock()
+		return ErrRoomRuntimeStopped
+	}
+	room.manager.workers.Add(2)
+	room.manager.mutex.Unlock()
 	go func() { defer room.manager.workers.Done(); runtime.Run(room.ctx, room.leaseValid) }()
 	go room.publishGameUpdates(runtime)
 	return nil
@@ -278,10 +331,12 @@ func (room *managedRoom) publishGameUpdates(runtime *houseRockets.Runtime) {
 	defer room.manager.workers.Done()
 	for {
 		var event coordinationAbstract.MessageEnvelope
+		var checkpoint *houseRockets.RuntimeCheckpoint
 		select {
 		case <-room.ctx.Done():
 			return
 		case frame := <-runtime.Frames():
+			checkpoint = frame.Checkpoint
 			payload, err := json.Marshal(frame)
 			if err != nil {
 				room.manager.report(room.lease.RoomID, err)
@@ -290,9 +345,11 @@ func (room *managedRoom) publishGameUpdates(runtime *houseRockets.Runtime) {
 			}
 			event = coordinationAbstract.MessageEnvelope{Type: GameRuntimeSnapshotEventType, Sequence: frame.StateSequence, Payload: payload}
 		case update := <-runtime.Events():
+			checkpoint = update.Checkpoint
 			event.MessageID = update.MessageID
 			event.ConnectionID = update.ConnectionID
 			if update.Frame != nil {
+				checkpoint = update.Frame.Checkpoint
 				event.Type = GameRuntimeSnapshotEventType
 				event.Sequence = update.Frame.StateSequence
 				event.Payload, _ = json.Marshal(update.Frame)
@@ -307,6 +364,16 @@ func (room *managedRoom) publishGameUpdates(runtime *houseRockets.Runtime) {
 		if !room.leaseValid() {
 			room.stop()
 			return
+		}
+		if checkpoint != nil {
+			if err := room.protectCheckpoint(checkpoint, event.Type == houseRockets.ControlGrantedMessageType); err != nil {
+				if errors.Is(err, coordinationAbstract.ErrCheckpointOrder) {
+					continue
+				}
+				room.manager.report(room.lease.RoomID, err)
+				room.stop()
+				return
+			}
 		}
 		if event.MessageID == "" {
 			event.MessageID = uuid.NewString()

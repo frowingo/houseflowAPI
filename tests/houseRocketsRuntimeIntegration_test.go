@@ -188,9 +188,9 @@ func TestHouseRocketsRuntimeRoutesAcrossTwoInstancesAndStopsOnLeaseLoss(t *testi
 	case <-deadline.C:
 		t.Fatal("lease loss was not detected")
 	}
-	_, err = remoteManager.EnsureRoom(fixture.ctx, session.SessionID)
-	if !errors.Is(err, gameAbstract.ErrRuntimeRecoveryRequired) {
-		t.Fatalf("running game restarted without checkpoint: %v", err)
+	recovered, err := remoteManager.EnsureRoom(fixture.ctx, session.SessionID)
+	if err != nil || !recovered.Local || recovered.RuntimeEpoch <= ownership.RuntimeEpoch {
+		t.Fatalf("checkpoint takeover failed: %+v %v", recovered, err)
 	}
 }
 
