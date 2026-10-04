@@ -10,13 +10,12 @@ import (
 	"houseflowApi/internal/config"
 )
 
-func TestHouseRocketsActivationIsExplicitAndNeverProduction(t *testing.T) {
+func TestHouseRocketsActivationIsExplicitAndIndependentOfAppEnvironment(t *testing.T) {
 	for _, environment := range []string{"", "local", "development", "staging", "production", "prod", "unknown"} {
 		for _, flag := range []string{"", "false", "true"} {
 			t.Setenv("APP_ENV", environment)
 			t.Setenv("HOUSE_ROCKETS_ENABLED", flag)
-			allowed := environment == "local" || environment == "development" || environment == "staging"
-			if config.HouseRocketsEnabled() != (flag == "true" && allowed) {
+			if config.HouseRocketsEnabled() != (flag == "true") {
 				t.Fatalf("env=%q flag=%q", environment, flag)
 			}
 		}

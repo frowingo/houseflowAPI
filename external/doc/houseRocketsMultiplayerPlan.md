@@ -82,6 +82,15 @@ eder, bu listeyi eksiksiz mobil audit veya test başarısı kabul etmez.
 
 ### 0.3. Canlı test ortamı — başlamadan önce kontrol et
 
+4 Ekim 2026 güncellemesi: Mevcut `https://houseflowapi.fly.dev/api/v1`
+adresi testler için kullanılıyor; uygulamanın `APP_ENV=production` ayarı ve
+önceki CORS politikası korunur. House Rockets aktivasyonu artık `APP_ENV`'den
+bağımsızdır: `HOUSE_ROCKETS_ENABLED=true`, çalışan Redis coordinator ve pozitif
+`REALTIME_MAX_OWNED_ROOMS` / `REALTIME_MAX_CONNECTIONS` gerekir. Fly test
+limitleri instance başına 1 oda / 8 bağlantıdır. Deploy workflow'u aynı oyun
+ayarlarını korur. Aşağıdaki eski teslim notlarındaki production environment
+engeli bu değişiklikle kaldırılmıştır.
+
 Backend kodunun hazır olması deploy edilmiş Fly adresinde oyunun açık olduğu
 anlamına gelmez. Mobil `AppEnvironment.development` şu an Fly adresine gidiyor;
 bu adresin House Rockets desteklediğini varsayma. Test base URL'si backend
@@ -93,7 +102,6 @@ path'ini korur, socket için HTTPS→WSS / HTTP→WS dönüşümü yapılır.
 Backend tarafında canlı deneme için:
 
 ```text
-APP_ENV=local veya development veya staging
 HOUSE_ROCKETS_ENABLED=true
 REALTIME_MAX_OWNED_ROOMS=<pozitif tamsayı>
 REALTIME_MAX_CONNECTIONS=<pozitif tamsayı>
@@ -102,7 +110,7 @@ REALTIME_MAX_CONNECTIONS=<pozitif tamsayı>
 Çalışan Redis coordinator ve migration'ları uygulanmış transaction destekli
 Mongo gerekir. Son test tesliminde local container'lar durdurulmuştur; bu belge
 çalışan server/adres/secret sağlamaz. Ortam açılması ve limit seçimi backend
-sorumluluğudur. Mobil limitleri seçmez ve production gate'i kaldırmaz.
+sorumluluğudur. Mobil limitleri seçmez ve backend aktivasyon ayarını değiştirmez.
 Base URL, geçerli test hesapları ve aynı house üyelikleri güvenli yoldan
 sağlanır; token, Redis/Mongo bağlantı bilgisi veya secret dokümana/log'a yazılmaz.
 

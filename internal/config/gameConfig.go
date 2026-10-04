@@ -12,8 +12,7 @@ type RealtimeLimits struct {
 	MaxConnections int
 }
 
-// No guessed production capacity is baked into game rules. Enabling the
-// local/staging rollout requires explicit per-instance operational limits.
+// Enabling House Rockets requires explicit per-instance operational limits.
 func LoadRealtimeLimits() (RealtimeLimits, error) {
 	var result RealtimeLimits
 	for _, setting := range []struct {
@@ -36,16 +35,7 @@ func LoadRealtimeLimits() (RealtimeLimits, error) {
 	return result, nil
 }
 
-// HouseRocketsEnabled restricts the initial online rollout to test environments.
-// Production remains gated until shared mobile and capacity acceptance.
+// HouseRocketsEnabled is controlled independently of the application's environment.
 func HouseRocketsEnabled() bool {
-	if os.Getenv("HOUSE_ROCKETS_ENABLED") != "true" {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))) {
-	case "local", "development", "staging":
-		return true
-	default:
-		return false
-	}
+	return os.Getenv("HOUSE_ROCKETS_ENABLED") == "true"
 }
