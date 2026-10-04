@@ -35,9 +35,13 @@ func TestRealtimeLimitsRequireExplicitRolloutCapacity(t *testing.T) {
 	t.Setenv("REALTIME_MAX_CONNECTIONS", "")
 	t.Setenv("REALTIME_MAX_OWNED_ROOMS", "")
 	t.Setenv("APP_ENV", "production")
-	if config.HouseRocketsEnabled() {
-		t.Fatal("production enabled before acceptance")
+	if !config.HouseRocketsEnabled() {
+		t.Fatal("explicit flag ignored in production")
 	}
+	if _, err := config.LoadRealtimeLimits(); err == nil {
+		t.Fatal("enabled production rollout has no limits")
+	}
+	t.Setenv("HOUSE_ROCKETS_ENABLED", "false")
 	if _, err := config.LoadRealtimeLimits(); err != nil {
 		t.Fatal(err)
 	}
