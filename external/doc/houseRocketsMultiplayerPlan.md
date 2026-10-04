@@ -2,16 +2,256 @@
 
 Tarih: 4 Ekim 2026.
 
-Durum: **Paket 1–6 backend geliştirmeleri ve backend testleri tamamlandı.** Paket 6 doğrulama özeti
-aşağıdaki teslim bölümünde tutulur. Sözleşme
-revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
+Doküman revizyonu: `mobileHandoff.1`. Bu, wire contract revizyonu değildir.
+
+Durum: **Paket 1–6 backend geliştirmeleri ve testleri tamamlandı; Paket 7'nin
+backend ölçüm/admission altyapısı ve yerel yük/regresyon testleri tamamlandı.**
+Paket 7'nin gerçek Fly kapasitesi ve ortak mobil yayın kabulü henüz tamamlanmadı.
+Sözleşme revision'ı `houseRockets.v2.1`, fixture schema'sı `1`, protocolVersion `2`,
 courseVersion `1`. Go tanımı, wire DTO'ları, bağımsız v2 decoder ve ortak JSON
 fixture'ları, deterministik simülasyon, iki instance arasında girdi yönlendiren runtime
 ve gerçek v2 HTTP/socket entegrasyonu, kalıcı sonuç, yeni oturumla rematch,
 checkpoint ve owner recovery mevcut.
 **House Rockets yalnız açıkça etkinleştirilen local/staging ortamında kullanılabilir.**
 Production kapalıdır; yayın kararı Paket 7 yük/gecikme ve mobil kabulüne bağlıdır.
-Mobil implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
+Mobilde mod seçimi, yerel bot modunun korunması, sahne/simülasyon ayrımı ve servis
+enjeksiyonu kullanıcı tarafından tamamlanmış olarak bildirildi. Online mobil
+implementasyonu ve gerçek iki cihaz entegrasyonu henüz doğrulanmadı.
+
+## 0. Mobil agent için güncel başlangıç rehberi
+
+Bu belge doğrudan mobil geliştirme görevi olarak verilebilir. **Önce bu bölüm,
+ardından bölüm 3–7 ve bölüm 9–10 okunur.** Bölüm 2 ilk taramanın tarihsel
+kaydıdır; bölüm 8 backend paketlerinin aşamalı teslim geçmişidir. Bu bölümlerde
+"henüz yok", "sonraki pakette" gibi ifadeler ilgili teslim anını anlatır;
+bugünkü eksik iş listesi değildir. Güncel durumun tek özeti aşağıdaki tablodur.
+
+### 0.1. Güncel teslim durumu ve korunacak temel
+
+| İş grubu | Bugünkü durum | Mobil agent'ın görevi |
+| --- | --- | --- |
+| Mobil temel: iki mod, yerel bot, render/simülasyon ayrımı, servis enjeksiyonu | Kullanıcı tamamlandığını bildirdi; 4 Ekim salt-okunur kod kontrolünde yapı mevcut. Bu kontrol mobil build/test kabulü değildir. | Mevcut değişiklikleri koru, güncel kodu ve testleri incele; yeniden implement etme. |
+| Backend Paket 1: contract/fixture | Backend testleri geçti; `houseRockets.v2.1` / protocol `2` / course `1`. | Wire DTO/decoder ve test fixture mapping'ini uygula. |
+| Backend Paket 2–4: fizik/runtime/gateway/lobi | Gerçek Redis/Mongo ve iki instance HTTP/WebSocket testleri geçti. | Local/staging üzerinde online lobby ve oynanışı bağla. |
+| Backend Paket 5: kalıcı sonuç/rematch | Transaction/result HTTP/socket/rematch testleri geçti. | Finalizing, sonuç fallback ve yeni session rematch akışını uygula. |
+| Backend Paket 6: reconnect/recovery | Checkpoint/fencing/owner crash ve lifecycle regresyonları geçti. | Epoch/grant/resync/background/exit davranışlarını uygula. |
+| Backend Paket 7: ölçüm/admission | 9 yerel yük senaryosu ve compose race regresyonları geçti. | 503/backoff'u ele al; gerçek cihaz kabulünü yürüt. Yerel ölçümü production garantisi sayma. |
+| Ortak production kabulü | Açık; production House Rockets kapalı. | Cihaz/ağ ve staging kapasite sonuçları kabul edilmeden production aktivasyonu yapma. |
+
+Mobil başlangıç kontrolünde mevcut şu yapılar görüldü:
+
+- `HouseRocketsSessionFactory.makeBotSession` ve `AppDependencies` içindeki
+  `.localOnly` enjeksiyonu; her ekran kendi session'ını oluşturur.
+- `HouseRocketsMode.localBots / housemates` ve `HouseRocketsLaunchContext`.
+- `HouseRocketsScene.applySnapshot`; sahne authoritative fizik ilerletmiyor.
+- ViewModel'in online seçeneği hâlâ `serviceUnavailable` ile kapalı;
+  start/steer/restart yalnız `localBots` için çalışıyor.
+- Presentation/player/geometri kimlikleri hâlâ UUID, palet dört renk,
+  snapshot kabulü tek revision filtresi. Bunlar online uyarlama noktalarıdır;
+  backend ID'leri UUID'ye zorlanmaz, eski demo wire DTO diye kullanılmaz.
+
+Bu notlar iOS checkout'unun değişiklikler içeren çalışma ağacından okunmuştur;
+agent mevcut staged/unstaged işleri korur. Kendi güncel kodunu tekrar kontrol
+eder, bu listeyi eksiksiz mobil audit veya test başarısı kabul etmez.
+
+### 0.2. Kaynaklar, sürümler ve çalışma sınırı
+
+- Kanonik belge: backend repo `external/doc/houseRocketsMultiplayerPlan.md`.
+  Mobil repoda görülen `HouseFlow/houseRocketsMultiplayerPlan.md` kopyası güncel
+  kabul edilmez. Kopya kullanılacaksa bu revizyonla eşitliği doğrulanır;
+  farklı planlarla iki paralel sözleşme yürütülmez.
+- Uygulama kodu için backend bölüm 5'teki modeller/decoder ve aşağıdaki JSON
+  fixture'ları esas alınır. Belge/kod/fixture arasında uyuşmazlık görülürse
+  sessizce yeni field/endpoint üretme; somut farkı backend tarafına bildir.
+- Fixture `schemaVersion=1`, contract `houseRockets.v2.1`, protocol `2`,
+  course `1` birbirinden ayrı sürümlerdir. JSON üst metadata'sı socket payload'ı
+  değildir. `liveGatewayAvailable: false`, Paket 1 fixture'ının tarihsel
+  işaretidir; bugünkü runtime feature flag'i veya mobil UI engeli **değildir**.
+  Mobil bu alanı canlı ortam erişimi kararı için kullanmaz.
+- Protocol fixture:
+  `internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsProtocol.json`.
+  Physics fixture aynı dizinde `houseRocketsSimulation.json`.
+  Agent backend checkout'una erişmeli veya aynı revizyonun JSON'larını almalı.
+  Mobilde kullanılacak JSON kopyaları test kaynaklarında tutulur; target/bundle
+  membership doğrulanır. Backend fixture klasöründe Swift üreticisi yoktur ve
+  bu iş için yeni Swift üreticisi gerekmez.
+- Mobil geliştirme yalnız House Rockets online entegrasyonunu ve gerçekten
+  gereken ortak transport/model sınırlarını kapsar. Backend/migration/wire
+  contract değişikliği, başka oyunları dönüştürme veya global oyun framework'ü
+  oluşturma bu görevin parçası değildir.
+
+### 0.3. Canlı test ortamı — başlamadan önce kontrol et
+
+Backend kodunun hazır olması deploy edilmiş Fly adresinde oyunun açık olduğu
+anlamına gelmez. Mobil `AppEnvironment.development` şu an Fly adresine gidiyor;
+bu adresin House Rockets desteklediğini varsayma. Test base URL'si backend
+tarafıyla ayrıca doğrulanır; physical device'ta `localhost` telefonun kendisidir.
+Gerekirse test ortamına özel base URL enjeksiyonu kullan; bütün uygulamanın
+production adresini sabit bir local IP'yle değiştirme. HTTP URL `/api/v1`
+path'ini korur, socket için HTTPS→WSS / HTTP→WS dönüşümü yapılır.
+
+Backend tarafında canlı deneme için:
+
+```text
+APP_ENV=local veya development veya staging
+HOUSE_ROCKETS_ENABLED=true
+REALTIME_MAX_OWNED_ROOMS=<pozitif tamsayı>
+REALTIME_MAX_CONNECTIONS=<pozitif tamsayı>
+```
+
+Çalışan Redis coordinator ve migration'ları uygulanmış transaction destekli
+Mongo gerekir. Son test tesliminde local container'lar durdurulmuştur; bu belge
+çalışan server/adres/secret sağlamaz. Ortam açılması ve limit seçimi backend
+sorumluluğudur. Mobil limitleri seçmez ve production gate'i kaldırmaz.
+Base URL, geçerli test hesapları ve aynı house üyelikleri güvenli yoldan
+sağlanır; token, Redis/Mongo bağlantı bilgisi veya secret dokümana/log'a yazılmaz.
+
+HTTP/token/status preflight için bölüm 5.1; yetkili socket yolu bölüm 5.2'dir.
+Aktif-session GET'teki 404 tek başına feature kapalı demek değildir: henüz
+aktif oda yoksa da 404 alınabilir. Aynı house ile PUT oturum oluşturur/bulur;
+otomatik join/ready yapmaz. Devre dışı oyun, yanlış URL ve auth hatasını
+örnek fixture'ın hazır olmasıyla gizleme. Canlı erişim yoksa DTO/mock testlerine
+devam et, yalnız canlı kabulü ortam engeli olarak raporla.
+
+### 0.4. Mobil geliştirme fazları ve çıkış ölçütleri
+
+Buradaki M0–M6 **mobil iş sırasıdır**, backend Paket 1–7'nin yeniden yapılması
+değildir. Her fazdan sonra değişen dosyalar, çalıştırılan testler ve sonraki
+fazın bağımlılıkları raporlanır. Temel cancellation/context isolation baştan
+kurulur; son faza kadar çalışan eski socket/task bırakılmaz.
+
+#### M0 — Mevcut temeli doğrula ve koru
+
+Güncel mode/factory/ViewModel/Scene/local simulation sınırlarını tara; mevcut
+bot testlerinin nerede olduğunu ve yeni online akışın ekleneceği noktaları
+belirle. Yerel bot fiziği, pause/resume, offline açılış, rematch, artwork ve
+localization davranışı korunur. Sadece online entegrasyon için gereken
+uyarlamayı yap; kullanıcı tarafından tamamlanan dört işi yeniden yazma.
+
+Çıkış: Mevcut yapı ve test durumu raporlandı; online adapter'in bağlanacağı
+factory/service sınırı açık; ilgisiz/staged değişiklikler korunuyor.
+
+#### M1 — Wire DTO, mapping ve HTTP/WebSocket transport
+
+Bölüm 5'in bütün mesajlarını, session/game/result DTO'larını ve hatalarını
+ayrı wire tipleriyle decode et. String ID, Int64 sıra/tick/epoch, nullable vs
+omitted alanlar, UTC tarih çeşitleri, sekiz renk ve gerçek `displayName`
+mapping'ini tamamla. Mevcut demo Codable enum'larını client JSON diye gönderme.
+HTTP status/headers korunur; localized error string'inden kod türetilmez.
+Socket `Authorization` header'ı kullanır, token query'ye yazılmaz.
+
+Mevcut network/keychain dependency grafiğini genişlet; per-screen online
+session factory ekle. Send/receive ve timer'lar iptal edilebilir, buffer'lar
+sınırlı olur. Eski snapshot'lar latest-state şeklinde değiştirilebilir; kontrol,
+rejection ve result mesajları sessizce aynı coalescing buffer'ında atılmaz.
+Mock transport ve enjekte edilebilir saat ile test edilebilir sınır kullan.
+Yeni connection/session generation eski async cevapların UI'ı değiştirmesini
+engeller. Bilinmeyen uyumsuz protocol/course desteklenmiş gibi oynatılmaz.
+
+Çıkış: Protocol JSON fixture'larındaki envelope/payload'lar decode ediliyor;
+geçerli client mesajları sözleşmeyle aynı şekli üretiyor; nil/0/false, büyük
+integer, fractional UTC, HTTP 401/403/404/409/429/503 ve cancellation testleri
+var. Test iznine uygun çalıştırılan/çalıştırılamayan kontroller ayrılır.
+
+#### M2 — Online session, lobby, ready ve countdown
+
+Context doğrula → house/game için PUT → returned session ID ile socket →
+welcome + session snapshot → roster'da yoksa join → landscape sonrası ready.
+Ev/oyun başına tek aktif oda paylaşılır; kullanıcı başına yeni oda açılmaz.
+Session version, oyun `(runtimeEpoch,stateSequence)` ve input sequence ayrı
+tutulur. Pending command `messageId` ile eşlenir; commandAccepted uygulanmış
+ready/leave/cancel kanıtı değildir. Server deadline'larından countdown çizilir;
+yerel demo countdown'u online maçı başlatmaz. Application heartbeat hazır
+katılım sırasında da sürer; transport pong onun yerine geçmez.
+
+Çıkış: Mock lobi/ready/rejection yarışı ve duplicate/out-of-order session
+snapshot testleri geçiyor. Ortam hazırsa aynı evin iki gerçek hesabı aynı
+session'da join/ready/countdown görüyor; tek hazır kişi maçı başlatmıyor.
+Canlı test yapılamadıysa fazın canlı kabulü ayrıca açık kalır.
+
+#### M3 — Authoritative render, kontrol ve prediction/reconciliation
+
+Tam game snapshot'ını mevcut render sınırına map et; online modda Scene yerel
+authoritative simulation başlatmaz. Kamera, parkur açısı, alanlar ve bütün
+oyuncular aynı render zamanını kullanır. Diğer oyuncular interpolation ile;
+local roket bounded prediction + ACK reconciliation ile gösterilir. Bölüm 6.2
+başlangıç buffer hedefleri ölçümle ayarlanır, wire/oyun kuralı değildir.
+
+Grant + tam eşleşen epoch/session/generation, playing, foreground ve alive
+koşulları olmadan steering açma. Grant ve snapshot geliş sırasına bağımlı olma.
+Joystick'i parkur koordinatına bir kez dönüştür; latest niyet en çok 20 Hz,
+yön sabitse sürekli steer yok. Input sequence generation'a göre artar; ACK
+sonrası buffer temizlenir. Snapshot kaybında bounded extrapolation/resync
+uygulanır, sınırsız Task/input backlog üretilmez. Yeni epoch ve control generation
+eski prediction/input'ları geçersiz kılar; eski steering replay edilmez.
+
+Çıkış: 2/4/8 oyunculu fixture mapping, 25 s parkur dönüşü, hız alanları,
+geciken/tekrarlanan frame, grant/snapshot sırası, ACK, bounded buffer ve
+eşzamanlı elenme testleri var. Canlı iki client birbirini ve ortak engelleri
+görüyor; elenen kişi izliyor. Mobil elenme/kazanan otoritesi üretmiyor.
+Prediction/render testleri gerçek cihaz kontrol hissi kabulü yerine geçmez.
+
+#### M4 — Kalıcı sonuç, iptal ve rematch
+
+Finalizing'de kayıt bekle; kesin sonucu `houseRockets.result` veya eski session
+ID'siyle HTTP result üzerinden al. Completed/draw/cancelled ve tied rank'ları
+ayrı göster; cancelled veya expiry için distance'tan winner/rank üretme.
+Result dedup session/event ID ile yapılır; terminal session'a socket retry yok.
+Commit bekleyen 404 bounded retry edilir, lobby/countdown cancellation'da
+result kaydı olmayabileceği korunur. Rematch PUT → yeni/başkasının açtığı aktif
+lobby → gerekiyorsa join → yeniden ready; eski session yerelde resetlenmez.
+
+Çıkış: Sonuç event'i kaybında HTTP fallback, aynı sonucun tekrar gelişi,
+iptal/beraberlik, geç sonuç ile yeni maç yarışı ve rematch isolation testleri
+var. Ortam hazırsa tam lobby→playing→result→rematch akışı canlı doğrulanır.
+
+#### M5 — Reconnect, recovery, background ve context lifecycle
+
+Bölüm 6.3 ve Paket 6 mobil sırasını uygula. Socket kapanması business leave
+değildir; kısa kopmada sınırlı jitter/backoff ile reconnect/full sync gerekir.
+Recovery frame'i kaybolabilir; daha yüksek epoch'ta doğrudan playing de
+gelebilir. Yeni grant gelmeden kontrol açma; diriltme veya yeni local spawn yok.
+Background online maçı pause etmez; heartbeat/steering durur, foreground'da
+resync alınır. Bot modu mevcut pause davranışını korur.
+
+Açık Exit ayrı leave niyetidir; logout/house değişimi/mod değişimi/eski ekran
+kapanışı idempotent cleanup üretir. Eski görev hiçbir yeni context'i etkileyemez.
+401/403/unsupported protocol/terminal conflict retry edilmez. 429 hızı düşürür;
+geçici network/503 bounded retry edilir, `Retry-After` asgari beklemedir. İkinci
+cihazın kontrol devrinde yalnız güncel grant geçerlidir; eski connection'ın
+stale-control hatası sonsuz bind/resync yarışına dönüştürülmez.
+
+Çıkış: Kopma/grace, spectator reconnect, epoch/grant değişimi, background,
+logout/house değişimi, yetki/token kaybı, kapasite 503 ve tekrar cleanup
+testleri var. Owner kaybı senaryosu backend tarafıyla koordineli staging'de
+doğrulanır; agent izinsiz production process'i öldürmez/secret değiştirmez.
+
+#### M6 — Ortak gerçek cihaz ve yayın kabulü
+
+İki gerçek cihaz/hesap ile tam maç; 100/200/400 ms RTT, jitter, kısa kopmalar,
+30/60/120 FPS desteklenen cihazlar, iPhone/iPad/orientation ve reduceMotion
+kontrolü. Yerel bot/diğer oyun regresyonları korunur. Test yöntemi, ortam,
+cihaz/FPS, ağ koşulu, sonuç ve açık sorunlar raporlanır; mock kabul diye yazılmaz.
+Production flag, global concurrent oda hedefi ve instance/maliyet limitleri
+backend ile ortak yayın kararına bağlıdır. Mobil agent tek başına açmaz.
+
+Çıkış: Bölüm 9 senaryoları ve Paket 7 ortak kapısı için kanıtlı kabul kaydı;
+çözülmemiş kontrol hissi/doğruluk/lifecycle sorunu varsa production kapalı
+kalır. Mobil yalnız M1–M5 implementasyonu bitti diye yayın kabulü tamamlandı
+sayılmaz.
+
+### 0.5. Mobil agent'a doğrudan verilecek görev
+
+> Bu belgenin güncel başlangıç rehberini ve bölüm 3–7/9–10'u oku. Mobil repo'da
+> tamamlanan mode seçimi, yerel bot, scene/simulation ayrımı ve servis enjeksiyonu
+> değişikliklerini koru; güncel codebase ve repo talimatlarını kontrol et.
+> M0 kontrolünden sonra M1 ile online House Rockets entegrasyonuna başla,
+> fazların çıkış ölçütlerini doğrulayarak M2–M6 sırasıyla ilerle. Backend hazır
+> local/staging sözleşmesini kullan; production'ı açma, wire/ürün kurallarını
+> tek taraflı değiştirme. Her teslimde kod/test/mock/canlı kabul durumlarını
+> ayrı raporla. Ortam veya hesap eksikse güvenli DTO/mock geliştirmesine devam
+> et ve yalnız canlı kapıyı engellenmiş olarak belirt. Secret'ları paylaşma;
+> commit/build/test izinleri için kullanıcı ve mobil repo talimatlarını izle.
 
 ## 1. Amaç ve onaylanmış ürün sınırı
 
@@ -35,23 +275,28 @@ Wire format, kimlikler, koordinat sistemi veya hata davranışı tek tarafta
 değiştirilmez. Değişiklik bu dosyaya, ortak fixture'lara ve iki tarafın
 uygulama/testlerine birlikte yansıtılır.
 
-## 2. İncelemenin kapsamı ve mevcut durum
+## 2. İlk codebase incelemesi — tarihsel kayıt
 
-İncelenen repository'ler:
+İlk planlama sırasında incelenen repository'ler:
 
 - Backend: `/Users/frowing/Projects/houseflowApi`.
   İnceleme HEAD'i: `985a8816b044c47a48e8009fccd8ef7a4eb9604d`.
 - iOS: `/Users/frowing/Projects/houseflowApp`.
   İnceleme HEAD'i: `18c183d0b38dbccb753ebb005ee901a8bb4eedd6`.
 
-Uygulamaya başlamadan önce agent kendi checkout'undaki değişiklikleri kontrol
-eder. Aşağıdaki bulgular bu HEAD'lerdeki koda aittir; testler bu planlama
-çalışmasında çalıştırılmamıştır.
+Aşağıdaki bulgular yalnız bu ilk HEAD'lerdeki koda aittir; "mevcut" kelimesi
+ilk inceleme anını anlatır. İlk planlama çalışmasında test çalıştırılmamıştır;
+sonraki backend paketlerinde çalıştırılan testler bölüm 8'de kayıtlıdır.
+4 Ekim mobil başlangıç kontrolü backend `9c5a3d0`, mobil `30e80f0` HEAD'leri
+ve mobildeki staged değişiklikler üzerinden salt-okunur yapılmıştır; güncel
+gözlemler bölüm 0'dadır. Mobil build/test bu doküman düzenlemesinde yapılmadı.
+Agent kendi checkout'undaki değişiklikleri kontrol eder ve tarihsel tablodaki
+eksikleri bugünkü eksik iş listesi olarak uygulamaz.
 
 ### 2.1. İlk incelemedeki backend parçaları (Paket 1 öncesi)
 
-Bu alt bölüm ilk incelemenin tarihsel kaydıdır; güncel aktivasyon ve teslim
-durumu Paket 5 teslim notunda ve belgenin başında belirtilir.
+Bu alt bölüm ilk incelemenin tarihsel kaydıdır; güncel aktivasyon, teslim
+durumu ve mobil devam işleri bölüm 0'dadır.
 
 | Mevcut dosya | İşlevi ve plan açısından önemi |
 | --- | --- |
@@ -65,7 +310,7 @@ durumu Paket 5 teslim notunda ve belgenin başında belirtilir.
 | [coordinator.go](/Users/frowing/Projects/houseflowApi/internal/application/coordination/abstract/coordinator.go) | Redis lease/fencing, kalıcı komut aktarımı ve geçici oda event dağıtımı sözleşmeleri. |
 | [gameSessionRepository.go](/Users/frowing/Projects/houseflowApi/internal/data/database/gameSessionRepository.go) | Mongo optimistic concurrency, command receipt ve transactional outbox. |
 
-Mevcut gerçek HTTP ve WebSocket yolları:
+İlk incelemede bulunan HTTP ve WebSocket yolları:
 
 ```text
 PUT /api/v1/game/:gameKey/session
@@ -75,10 +320,11 @@ GET /api/v1/game/:sessionId/realtime
 
 `PUT` body: `{ "houseId": "<houseId>" }`. Başarılı HTTP cevapları
 `{ "success": true, "data": ... }`, hatalar `{ "success": false, "error": ... }`.
-`houseRockets` henüz katalogda bulunmadığı için bu game key şu an çalışmaz.
+İlk incelemede `houseRockets` katalogda yoktu. Bu tarihsel eksik Paket 4'te
+giderildi; bugün local/staging'de bölüm 0.3 koşullarıyla kullanılabilir.
 
 Başlangıç taramasında backend'deki önemli boşluklar (tarihsel tespitler;
-güncel teslim durumu bölüm 8'deki Paket 1–6 kayıtlarıdır):
+güncel teslim durumu bölüm 0; ayrıntılı geçmiş bölüm 8'dedir):
 
 - WebSocket session snapshot'ı HTTP DTO'su yerine doğrudan Go domain struct'ını
   JSON'a çeviriyor. `SessionID`, `PlayerID`, `Rules` gibi alanlar PascalCase;
@@ -95,7 +341,11 @@ güncel teslim durumu bölüm 8'deki Paket 1–6 kayıtlarıdır):
 - Lease TTL varsayılanı 10 saniye, yenileme 3 saniye. Owner kaybından toparlanma
   süresi bu değerlerden bağımsız veya anlık kabul edilemez.
 
-### 2.2. iOS'taki mevcut oyun yapısı
+### 2.2. İlk incelemedeki iOS oyun yapısı
+
+Bu tablo mobil temel refactor'undan öncedir. Scene'in fizik sahibi olması ve
+factory/enjeksiyon eksikliği gibi eski tespitler bölüm 0'daki tamamlanan temel
+işlerle güncellenmiştir; tekrar uygulanacak görev değildir.
 
 | Mevcut dosya | Bulgu ve gerekli uyarlama |
 | --- | --- |
@@ -150,7 +400,7 @@ tek generic servis veya tek fizik motoruna dönüştürme ihtiyacı yok.
   ilan edilmez.
 
 Mevcut parkur profile'ları ve contact algoritmasının ayrıntıları Swift kaynakları
-ve ortak fixture'larla Go'ya aktarılacak. Başlangıçta rastgele parkur/seed sistemi
+ve ortak fixture'larla Go'ya aktarıldı. Başlangıçta rastgele parkur/seed sistemi
 eklemek gerekli değil; mevcut indeksli parkur için `courseVersion` yeterli.
 
 ### 3.2. Paket 1 başlangıç kuralları
@@ -159,9 +409,9 @@ eklemek gerekli değil; mevcut indeksli parkur için `courseVersion` yeterli.
 | --- | --- |
 | Online oyuncu sayısı | Kullanıcının onayıyla en az 2, ev kapasitesi kadar ve en fazla 8. Mevcut ensure-session handler house kapasitesine göre limiti daraltır. Bot eklenmez. |
 | Ready window / countdown | 30 s / 3 s; otoriter server deadline'ları. Demodaki 750 ms countdown online'a taşınmaz. |
-| Countdown sonrası katılım | Yeni yarışmacı alınmaz; ilk sürümde yalnız maç katılımcıları yeniden bağlanıp izleyebilir. Ev üyeliği socket erişimi için gerekli, yarışmacı olmak için tek başına yeterli değil. |
-| Kontrol bağlantısı | Oyuncu başına tek kontrol sahibi; ikinci cihaz aktif kontrolü sessizce devralmaz. Kopmuş bağlantı güvenle devredilebilir. |
-| Bağlantı kopması | Kısa grace boyunca son yönle ilerleme; reconnect oyuncuyu yeniden üretmez, elenmişse izleyici olarak döndürür. Önerilen grace 10 s. |
+| Countdown sonrası katılım | Yeni yarışmacı alınmaz. Güncel ev üyeliği olan roster dışı kişi snapshot alıp seyredebilir; yarışmacı olmak veya steering için frozen roster + geçerli kontrol gerekir. Maç katılımcısı yeniden bağlanabilir. |
+| Kontrol bağlantısı | Oyuncu başına tek geçerli generation/connection. Mevcut backend'de yeni başarılı control bind generation'ı döndürür; eski bağlantı input gönderemez. İkinci cihaz reddedilecek varsayımı yapılmaz, stale-control sonrası iki cihaz arasında sonsuz rebind yarışı kurulmaz. |
+| Bağlantı kopması | Kısa grace boyunca son yönle ilerleme; reconnect oyuncuyu yeniden üretmez, elenmişse izleyici olarak döndürür. Güncel grace 10 s. |
 | App background | Online maç ilerler; kontrol girdisi durur, foreground'da resync yapılır. Yerel bot modunda mevcut pause devam eder. |
 | Maçtan açıkça çıkış | Running'de forfeiture; grace beklenmez. Lobi/countdown'da mevcut lifecycle politikası. |
 | Uzayan maç | Kullanıcının onayıyla online oynanış üst sınırı 5 dakika (300 s / 36.000 physics tick). Süre sonunda hâlâ yarış devam ediyorsa `sessionExpired` ile iptal; mesafeden kazanan seçilmez. Countdown ve bounded recovery süresi fizik süresine eklenmez. Demo süre sınırı değişmez. |
@@ -179,12 +429,12 @@ session domain'inin mevcut kuralıyla countdown daha erken başlayabilir.
 ### 4.1. Backend
 
 - `internal/application/game/domain`: Ortak session lifecycle'ı.
-- `internal/application/game/gameSpesific/houseRockets`: Paket 1 tanım/enum'ları mevcut;
-  Paket 2'de game-specific state,
-  kurallar, geometri ve bağımsız simülasyon; gerekirse `domain` ve `abstract`
-  alt paketleri. Go paketi HTTP/WebSocket/SpriteKit/Redis tiplerine bağımlı olmaz.
-- `internal/application/game/commands` ve `queries`: Kalıcı başlatma/tamamlama,
-  sonuç okuma ve runtime'a ait business geçişler; mevcut CQRS kurallarını izler.
+- `internal/application/game/gameSpesific/houseRockets`: Tanım/enum, game-specific
+  state, kurallar, geometri ve bağımsız simülasyon mevcut. Oyun completion/result
+  handler'ları bu dizinin `commands`/`queries` altındadır. Saf motor
+  HTTP/WebSocket/SpriteKit/Redis tiplerine bağımlı değildir.
+- `internal/application/game/commands` ve `queries`: Ortak session oluşturma/
+  keşfetme, üyelik/lifecycle ve yetkilendirme geçişleri; mevcut CQRS kurallarını izler.
 - `internal/infrastructure/realtime`: Socket transport, oda sahibi üzerinde
   runtime çalıştırma, clock/ticker, girdi yönlendirme ve state yayını.
 - `internal/infrastructure/coordination`: Geçici instance'lar arası input yolu,
@@ -202,8 +452,10 @@ seçebilir. Yalnız start/input/snapshot/stop gibi gerçekten gereken ortak sın
 
 ### 4.2. iOS
 
-Önerilen sorumluluklar; yeni dosya adları camelCase, Swift tip adları mevcut
-PascalCase dil kuralına göre yazılır:
+Online devam için sorumluluklar aşağıdadır. Bölüm 0'da tamamlanmış temel korunur;
+mevcut factory/scene/service sırf bu liste nedeniyle tekrar oluşturulmaz.
+Dosya yolları sorumluluk önerisidir; güncel mobil dizin düzeniyle uzlaştırılır.
+Yeni dosya adları camelCase, Swift tip adları mevcut PascalCase dil kuralını izler:
 
 - `Services/Network/gameRealtimeTransport.swift`: URLSession tabanlı socket,
   auth header, send/receive, ping, bağlantı ve cancellation. Oyunu hesaplamaz.
@@ -254,10 +506,11 @@ uygulandı; Paket 5 ile kalıcı sonuç endpoint'i de eklendi.
 
 Ortak referanslar:
 
-- [Protokol fixture'ı](../../internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsProtocol.json): Geçerli/geçersiz
+- [Protokol fixture'ı](/Users/frowing/Projects/houseflowApi/internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsProtocol.json): Geçerli/geçersiz
   client mesajları, welcome/session/countdown/playing/recovering/result/error
-  örnekleri ve HTTP response'ları. `liveGatewayAvailable: false` kapısı bilinçli.
-- [Fizik fixture'ı](../../internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsSimulation.json): Mevcut Swift
+  örnekleri ve HTTP response'ları. `liveGatewayAvailable: false` Paket 1'in
+  tarihsel metadata'sıdır; güncel local/staging kapısı değildir (bölüm 0.2).
+- [Fizik fixture'ı](/Users/frowing/Projects/houseflowApi/internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsSimulation.json): Mevcut Swift
   kaynakları değiştirilmeden çalıştırılarak elde edilen 2/4/8 kişilik spawn,
   altı hareket senaryosu, geometri, dönüş, field salınımı ve yüzey teması.
   Paket 2'de üç navigation/effect senaryosu eklendi: 30 s parkur sürüşü,
@@ -280,7 +533,7 @@ Ortak referanslar:
 
 House Rockets için `protocolVersion: 2`. Mevcut v1 session WebSocket
 payload formatını sessizce değiştirmek yerine yeni camelCase sözleşme sürümü
-tanımlansın. `flappyBird` v1 tanımı ve mevcut regression testleri korunur.
+tanımlandı. `flappyBird` v1 tanımı ve mevcut regression testleri korunur.
 House Rockets katalog tanımı v2; bu kayıt ancak ilgili runtime/protokol hazırken
 production'da açılır.
 
@@ -368,10 +621,10 @@ atlanabilir veya `{}` olabilir; `null` kabul edilmez. Ready'de açık `false`,
 steer'de heading `0` geçerlidir; eksik/null alan yerine konmaz. Bilinmeyen alan,
 case alias, duplicate key ve art arda iki JSON değer reddedilir. Decoder yalnız
 şekil/sayı kontrolüdür; oyuncu yetkisi, rate limit ve sequence/generation
-geçerliliği runtime/gateway'de ayrıca uygulanacak.
+geçerliliği runtime/gateway'de ayrıca uygulanır.
 
 `gameSession.snapshot` payload'ı mevcut HTTP `GameSessionResponseModel`
-biçimiyle aynı olacak. `sequence` yalnız session version'ıdır. Domain
+biçimiyle aynıdır. `sequence` yalnız session version'ıdır. Domain
 struct'larının JSON çıktısı wire DTO olarak kullanılmaz.
 
 ### 5.3. Mesajlar ve tamamlanma anlamı
@@ -469,8 +722,8 @@ Kimlik scope'u `sessionId + courseVersion + id`; rematch/cache karışmaz.
 | `realtime.error.unavailable` | Geçici coordination erişim sorunu; bounded backoff/resync. |
 | `realtime.error.command_failed` | Beklenmeyen server hatası; bounded retry, internal detaylar gönderilmez. |
 
-İlk ve envelope/protocol rejection'ları bağımsız decoder'da mevcut; kontrol,
-phase, rate limit ve result hatalarının üretimi sonraki paketlerin işi. Mevcut
+Envelope/protocol rejection'ları decoder'da; kontrol/phase/rate-limit hataları
+runtime/gateway'de, result hataları application katmanında mevcuttur. Mevcut
 application lifecycle error code'ları da v2 rejection içinde taşınabilir.
 HTTP error formatı `success/error` olarak korunur; mobile localized error
 metninden bu code'ları türetmez, HTTP status üzerinden karar verir.
@@ -519,13 +772,18 @@ sınırsız physics burst veya dev bir delta uygulanmaz. Kalıcı overload ölç
 gerekirse açık recovery/cancellation üretir.
 
 Girdi gönderimi en fazla 20 Hz coalesced son niyettir. Yön değişmediyse sürekli
-paket gönderilmez. ACK görülmeyen son niyet aynı sequence ile bounded aralıkla
-yeniden gönderilebilir; owner aynı sequence'i iki kez uygulamaz. App lifecycle
-ve kontrol canlılığı ayrı ping ile izlenir. Online ViewModel her dokunuş için
+paket gönderilmez. ACK görülmeyen son niyet gerekiyorsa bounded aralıkla **yeni
+artan inputSequence** ile gönderilir; bu retransmit de 20 Hz bütçesine dahildir.
+Mevcut runtime aynı/eski sequence'i idempotent başarı olarak kabul etmez,
+stale-control rejection üretir. Lifecycle command'larının aynı messageId ile
+retry politikası steering'e uygulanmaz. ACK coalescing nedeniyle gönderilen
+her sequence'i ayrı ayrı göstermeyebilir; sürekli resync/rebind döngüsü kurma.
+App lifecycle ve kontrol canlılığı ayrı ping ile izlenir. Online ViewModel her dokunuş için
 bir öncekini bekleyen sınırsız Task zinciri oluşturmaz.
 
 Yerel owner'a girdi memory üzerinden ulaşır; uzak owner'a ayrı kısa ömürlü
-Pub/Sub yolu önerilir. Gateway aynı oda için girdileri bounded batch'leyebilir.
+Pub/Sub yolu uygulanmıştır. Bu adapter yolu mobilin yönlendirme sorumluluğu
+değildir; client owner instance'ını seçmez.
 Envelope actor/connection bilgisini server ekler. Owner, control generation,
 source binding, epoch ve artan input sequence'i doğrular. Input subscription
 hazır olmadan controlGranted verilmez. Owner değişiminde resync/control rebind
@@ -535,7 +793,7 @@ Bu girdi yolu anlık veri kaybedebilir; retransmit/latest-state yaklaşımı kay
 telafi eder. Ready/leave gibi kalıcı business niyetleri mevcut Streams yolunda
 kalır. Snapshot dağıtımı oda başına/instance başına mevcut hub'ı kullanır.
 
-Control ve gameplay rate limit'leri ayrılır. Başlangıç önerisi steering için
+Control ve gameplay rate limit'leri ayrıdır. Güncel steering ayarları
 30 mesaj/s üst sınır, normal gönderim 20 Hz; resync/ping ayrıca bounded.
 Client bu değerleri welcome ayarlarından okuyabilir. Gateway'de sırf tek
 maximumMessages değerini büyütmek yeterli değildir.
@@ -583,11 +841,11 @@ Bağlantı state'i önerisi: `idle`, `connecting`, `connected`, `reconnecting`,
 `syncing`, `failed`. Bunlar oyun phase'i değildir. Foreground sonrası eski
 snapshot'tan kontrol açılmaz; önce tam sync alınır.
 
-Mevcut socket timeout 45 s, presence TTL 30 s; bunlar önerilen 10 s grace'i
-tek başına sağlayamaz. Online control heartbeat için başlangıç önerisi 2 s
-ping, 6 s canlılık deadline'ı ve sonrasında 10 s reconnect grace. Owner gerçek
+Genel socket timeout 45 s ve presence TTL 30 s, oyundaki control grace'in
+yerine geçmez. Güncel online ayarları 2 s application ping, 6 s kontrol
+canlılığı deadline'ı ve 10 s reconnect grace'tir. Owner gerçek
 kontrol bağlantısının heartbeat'ini izler. Bu süreler ve server scheduling
-payı fixture/testlerde açık olacak. Background'da heartbeat'in durması maçın
+payı fixture/testlerde tanımlıdır. Background'da heartbeat'in durması maçın
 pause edilmesine yol açmaz. Hayatta kalan oyuncu grace boyunca hâlâ elenebilir.
 
 Lobide bağlantı süresi dolan ready oyuncusu server system geçişiyle ready'den
@@ -619,7 +877,7 @@ Player sonucu: `playerId`, `rank`, `eliminatedAtTick`, `eliminationReason`,
 kuralı otomatik eklenmez. Distance `max(0, worldX - spawnX)` olarak son durumdan
 üretilir; geriye uçuş mesafeyi azaltabilir, sıra belirlemez.
 
-Paket 1 sonuç politikası:
+Güncel sonuç politikası (Paket 1'de sabitlendi, Paket 5–6'da uygulandı):
 
 - Bir tam fizik tick'indeki bütün roketler işlenir. Tek survivor varsa completed
   / `lastSurvivor`, winner o oyuncudur. Hiç survivor kalmazsa completed /
@@ -703,17 +961,19 @@ belirtilir; kesintisiz failover diye sunulmaz. Checkpoint TTL'i önerilen azami
 maç/recovery süresini kapsar; bitmiş odalar temizlenir. Kalıcı sonucu Redis'te
 tutmak veya her fizik tick'ini Mongo'ya yazmak gerekli değildir.
 
-## 8. Backend geliştirme paketleri ve mobil başlangıç noktaları
+## 8. Backend paketleri — kapsam ve aşamalı teslim geçmişi
 
-Bu bölüm 3 Ekim 2026'da backend teslimlerine göre yeniden düzenlendi. Önceki
-Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
+Bu bölüm backend paketlerinin tarihsel kapsamını ve her teslimdeki sınırları
+korur. Özellikle Paket 2–4'teki "sonuç/recovery henüz yok" notları bugün geçerli
+değildir; Paket 5–6 bunları tamamladı. Güncel durum bölüm 0.1'dir.
+Önceki Faz 0–6 sıralaması artık Paket 1–7 olarak adlandırılır; paralel mobil işler
 aşağıdaki başlangıç tablosunda ayrıca gösterilir. Diğer bölümler bu paketlere
-referans verir. Paket 1–6 teslimleri ve iki-instance gerçek socket senaryoları
-mevcut; Paket 7 kapasite kabulü ve mobil teslimler henüz doğrulanmadı.
+referans verir. Paket 1–6 teslimleri, iki-instance gerçek socket senaryoları ve
+Paket 7 yerel backend ölçümleri mevcut; gerçek Fly/mobil yayın kabulü açıktır.
 
-**Sıradaki backend işi Paket 7 — Yük, gecikme ve production kabulü.**
-Mobil agent local/staging ortamında tam maç, sonuç ve rematch entegrasyonunu
-ve recovery entegrasyonunu tamamlayabilir; production kabulü için Paket 7 beklenir.
+**Sıradaki implementasyon mobil M1–M5, ardından ortak M6/Paket 7 kabulüdür.**
+Mobil agent online geliştirmeye başlayabilir; yeni bir backend paketini
+beklemez. Canlı bağlantı için çalışan local/staging ortamı gerekir.
 
 Bağımlılık sırası:
 
@@ -1449,17 +1709,18 @@ Mongo volume silinmez, deploy/commit yapılmaz.
 
 ### 8.8. Mobil agent ne zaman başlamalı?
 
-Mobil agent bütün backend'i beklememeli. Başlangıç ve canlı test kapıları:
+Bu tablo bağımlılıkları özetler; uygulama sırası bölüm 0.4'teki M0–M6'dır.
+Backend kapıları artık mevcuttur; mobil temel tamamlanmış olarak bildirilmiştir.
 
 | Mobil iş grubu | Başlayabileceği zaman | Canlı doğrulama bağımlılığı |
 | --- | --- | --- |
-| İki mod seçimi, yerel bot modu regresyonları, scene/simulation ayrımı, dependency factory | Şimdi; mevcut mobil kod ve onaylı mod sınırı yeterli | Backend gerektirmez. |
-| Online wire DTO, string ID/isim mapping, HTTP/socket transport, lobby state, mock server | Paket 1 sözleşmesi/fixture'ları sabitlenince | Paket 4. |
-| Input coalescing, ACK/epoch filtreleri, interpolation ve prediction/reconciliation | Paket 1 sonrasında fixture üzerinden; Paket 2 golden çıktılarıyla uyum kontrolü | Paket 3 runtime ve Paket 4 gateway. |
-| Gerçek ev üyeleriyle join/ready/countdown/oynanış entegrasyonu | Paket 4 test ortamı hazır olunca | Paket 4 ve mobilde önceki iş grupları. |
-| Sonuç ekranı, HTTP result fallback, rematch | Paket 1 result fixture'ıyla mock geliştirme | Paket 5. |
-| Reconnect/background/recovery/logout/ev değişimi | Paket 1 politikalarıyla mock geliştirme | Paket 6. |
-| İki cihazlı nihai kabul ve gecikme hissi | İlk canlı kontrol Paket 4; tam maç Paket 5; hata testleri Paket 6 | Yayın kararı Paket 7. |
+| İki mod seçimi, yerel bot, scene/simulation ayrımı, dependency factory | Tamamlandığı bildirildi; M0'da güncel kod/test kontrolü | Backend gerektirmez; korunur. |
+| Online wire DTO, string ID/isim mapping, HTTP/socket transport, mock server | Şimdi, M1 | Paket 4 backend mevcut; canlı ortam gerekir. |
+| Gerçek ev üyeleriyle join/ready/countdown | M1 sonrası, M2 | Paket 4 mevcut; aynı evden iki hesap gerekir. |
+| Input coalescing, ACK/epoch, interpolation ve prediction/reconciliation | M2 sonrası, M3; fixture testleri M1'de hazırlanabilir | Paket 2–4 mevcut; canlı kontrol hissi ayrıca ölçülür. |
+| Sonuç ekranı, HTTP result fallback, rematch | M3 sonrası, M4 | Paket 5 mevcut. |
+| Reconnect/background/recovery/logout/ev değişimi | M5; temel cancellation/context isolation M1'den itibaren | Paket 6 mevcut; owner kaybı backend ile koordineli test edilir. |
+| İki cihazlı nihai kabul ve gecikme hissi | M6; önceki fazlarda da canlı smoke yapılır | Paket 7 ortak yayın kabulü henüz açık. |
 
 Her backend tesliminde agent aynı dokümana package status, test özeti,
 contract/fixture revision ve doğrulanabilen yolları işler. Local/staging bağlantı
@@ -1470,11 +1731,13 @@ mock sonucu gerçek entegrasyon başarısı diye raporlamaz.
 ### 8.9. Backend'in ne zaman tamamlanmış sayılacağı
 
 - **Paket 1 sonrası:** Mobil online geliştirmesi için sabit sözleşme var.
-- **Paket 4 sonrası:** Gerçek socket ve cihazlarla aynı maçta hareket testi var.
+- **Paket 4 sonrası:** Gerçek HTTP/socket backend testleri geçti; mobil cihazlar
+  aynı maçta hareket entegrasyonuna başlayabilir. İki fiziksel cihaz kabulü ayrı iştir.
 - **Paket 5 sonrası:** Kontrollü ortamda lobi → oynanış → kalıcı sonuç → rematch
   akışı tamamlanabilir.
 - **Paket 6 sonrası:** Reconnect/instance kaybı/iptal senaryoları tutarlı.
-- **Paket 7 sonrası:** Multiplayer production kabulüne hazır.
+- **Paket 7 ortak kabulü sonrası:** Gerçek Fly/mobil hedefleri doğrulanınca
+  bilinçli production açılışına hazır. Yalnız backend yerel testleri yeterli değildir.
 
 House Rockets'ı düzgün ve çoklu instance'a uygun multiplayer olarak yayınlamak
 için Paket 1–7'nin tamamı gerekir. Paket 6/7 ileride isteğe bağlı iyileştirme
@@ -1490,7 +1753,7 @@ korunması backend paketlerinin tamamlanmasını beklemez.
 | Aynı house/game için eşzamanlı PUT | Tek aktif session; üyeler aynı session ID'yi alır. |
 | Ready commandAccepted, sonra rejection | UI yanlış biçimde kesin hazır göstermez. |
 | Landscape başarısızlığı | Hazır onayı verilmez; yerel otomatik maç başlamaz. |
-| Aynı kullanıcı, iki cihaz | Tek controller; eski/ikinci connection input'ları oyunu yönetemez. |
+| Aynı kullanıcı, iki cihaz | Yalnız güncel grant/generation kontrol eder; control bind devrinden önceki connection/input'lar reddedilir, istemciler rebind yarışına girmez. |
 | Yön bırakma/dönüş sırasında yeni dokunma | Son parkur yönü korunur; yeni ekran yönü doğru dönüştürülür. |
 | Çok sayıda steer / kayıp / tekrar | Bounded latest input; başka oyuncu veya session etkilenmez. |
 | NaN/infinite/geçersiz payload | World state korunur; typed rejection/limit davranışı. |
@@ -1505,10 +1768,11 @@ korunması backend paketlerinin tamamlanmasını beklemez.
 | Bilinmeyen v2 / eski v1 istemci | Uyumluluk açıkça doğrulanır; sessiz yanlış decode yok. |
 | Çok uzun/takılmış maç | Onaylı session expiry/cleanup; kaynaklar sonsuza kadar tutulmaz. |
 
-Backend testleri mevcut `tests/gameSessionDomain_test.go`,
+Backend testleri `tests/gameSessionDomain_test.go`,
 `tests/realtimeRoomRuntimeIntegration_test.go`,
 `tests/realtimeGatewayIntegration_test.go` ve persistence/catalog testleri
-üzerine genişletilir. Yeni Go test dosyaları `houseRockets..._test.go` gibi
+üzerine genişletildi; Paket 5–7 result/recovery/admission/yük testleri de mevcut.
+Mobil agent bu backend testlerini yeniden implement etmez. Yeni Go test dosyaları `houseRockets..._test.go` gibi
 camelCase gövde ve Go'nun zorunlu `_test.go` suffix'ini kullanır.
 
 Mobilde mevcut HouseRocketsTests korunur; DTO fixtures, mock transport,
@@ -1525,6 +1789,11 @@ elenme sınırları tolerans ve server authority ile ayrıca doğrulanır.
   dosyada güncellenebilir; test edilmemiş paket tamamlandı sayılmaz.
 - Backend ve mobil ilerlemeleri ayrı raporlayın; ikisi doğrulanmadan ortak
   teslim kapısını geçmiş saymayın. Mock test canlı iki cihaz testi yerine geçmez.
+- Mobil faz tesliminde faz adı, değişen dosyalar, wire/fixture revizyonu,
+  test komutu/sonucu, mock/canlı ayrımı, açık kabul kapıları ve sıradaki iş
+  raporlanır. Kullanıcının "tamamlandı" beyanı ve salt-okunur inceleme,
+  çalıştırılmış mobil test gibi sunulmaz. Backend erişimi yoksa kanonik belgede
+  değişiklik yapılmış gibi iddia edilmez; durum özeti kullanıcıya verilir.
 - `external/doc` altında yalnız Markdown (`.md`) dokümanları tutulsun;
   başka dizinlere yeni dokümantasyon dağıtılmasın. Oyuna özgü tanımlar,
   modeller, kurallar ve JSON contract/physics fixture'ları
@@ -1543,19 +1812,16 @@ elenme sınırları tolerans ve server authority ile ayrıca doğrulanır.
   kullanıcının önceden çalışan ilgisiz servisleri kapatılmaz.
 - Commit yalnız kullanıcının verdiği commit mesajı ve yetkiyle yapılır.
 
-İlerleme durumu (3 Ekim 2026):
+## 11. Önceki paketlerin doğrulama kayıtları — tarihsel
 
-| Backend paketi | Backend | İlgili mobil doğrulama | Ortak kapı |
-| --- | --- | --- | --- |
-| 1 — Sözleşme | Doğrulandı (Go contract) | Planlandı; mock/DTO başlayabilir | Mobil kabul bekleniyor |
-| 2 — Oyun motoru | Doğrulandı (Go/Swift golden + restore) | Prediction/render fixture kontrolü başlayabilir | Mobil kabul bekleniyor |
-| 3 — Runtime / coordination | İki gerçek instance ile doğrulandı | ACK/epoch/mock transport geliştirilebilir | Backend runtime kapısı geçti |
-| 4 — Gateway / online lobi | İki instance / gerçek HTTP-WebSocket testleri geçti | Canlı local/staging entegrasyonu başlayabilir | Backend kapısı geçti; iki cihazlı mobil kabul bekleniyor |
-| 5 — Sonuç / rematch | Planlandı | Planlandı | Geçilmedi |
-| 6 — Dayanıklılık | Planlandı | Planlandı | Geçilmedi |
-| 7 — Yayın kabulü | Planlandı | Planlandı | Geçilmedi |
+Bu bölüm o teslim anındaki test/ortam kapsamını korur; mobil başlangıç görevi
+değildir. Paket 5–7'nin daha yeni doğrulamaları bölüm 8'deki teslim notlarındadır.
+Güncel ilerleme tablosu yalnız bölüm 0.1'de tutulur; aşağıdaki eski live-gateway
+ve eksik paket ifadeleri bugünkü backend erişim kapısını değiştirmez.
 
-Paket 1 doğrulama: `go test ./...` ve
+### Paket 1 doğrulama kaydı
+
+`go test ./...` ve
 `go test -race ./tests -run '^TestHouseRockets' -count=1` başarılı.
 V2 decoder ayrıca 5 s fuzz testinde 46.272 girdiyle beklenmeyen başarısızlık/panic üretmeden
 doğrulandı (`-parallel=2`). Bu kapasite/yük testi değildir.
@@ -1565,11 +1831,13 @@ yapılmadı. Swift'in mevcut üç Foundation/CoreGraphics kaynak dosyası bağı
 bir referans executable ile çalıştırıldı; iOS uygulaması build edilmedi ve
 mobil kaynak değiştirilmedi. Test için server/container açılmadı.
 
-Mobil agent şimdi fixture'larla wire DTO, mock transport, lobby ve online render
-ayrımına başlayabilir. Yerel bot modunun mevcut fiziği korunur. Canlı House
-Rockets endpoint'ine bağlanma veya production'da oyunu açma kapısı henüz geçilmedi.
+Paket 1 teslim anında mobil yalnız fixture'larla wire DTO/mock geliştirebilirdi;
+canlı gateway kapısı o aşamada geçilmemişti. Bugün local/staging canlı gateway
+mevcuttur; yalnız production gate kapalıdır (bölüm 0.3).
 
-Paket 2 doğrulama: Go contract/engine testleri, tüm `go test ./...` ve House
+### Paket 2 doğrulama kaydı
+
+Go contract/engine testleri, tüm `go test ./...` ve House
 Rockets race kontrolü başarılı. Fizik sabitleri, 2/4/8 spawn, altı kısa hareket,
 üç navigation/effect senaryosu ve gerçek convex yüzeyler Swift fixture'larıyla
 1e-9 toleransında eşleşti. 30/60/120/144 FPS batching aynı state'i üretiyor;
@@ -1585,7 +1853,9 @@ veya production garantisi değildir. Gerçek çoklu instance/yük kabulü Paket 
 Mongo/Redis environment'ı olmadığı için mevcut integration testleri skip edildi;
 bu pakette canlı socket/DB/compose testi yapılmadı, server/container açılmadı.
 
-Paket 3 doğrulama: Host üzerinde `go test ./...`, House Rockets race testleri
+### Paket 3 doğrulama kaydı
+
+Host üzerinde `go test ./...`, House Rockets race testleri
 ve `go vet ./...` başarılı. Docker Compose'un izole test ortamında gerçek Mongo
 replica set ve Redis ile tüm `go test -race ./tests -count=1` başarılı (115 s).
 Son adapter/ownership mapping düzenlemesinden sonra runtime/owner/gameplay bus
@@ -1602,7 +1872,9 @@ kapılar Paket 4/7'de kalır. iOS repo değiştirilmedi ve build edilmedi.
 Test için başlatılan Mongo/Redis/init container'ları durduruldu; çalışan container
 kalmadığı kontrol edildi. Volume'lar korundu, kod commit edilmedi.
 
-Paket 4 doğrulama: Host `go test ./...`, `go vet ./...` ve `git diff --check`
+### Paket 4 doğrulama kaydı
+
+Host `go test ./...`, `go vet ./...` ve `git diff --check`
 başarılı. Compose üzerinde gerçek Mongo replica set + Redis ile tüm proje
 `go test -race ./... -count=1` geçti. Son düzenlemelerden sonra game/session,
 runtime ve v1/v2 gateway regresyonları ayrıca race detector ile tekrar geçti;
