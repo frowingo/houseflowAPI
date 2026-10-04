@@ -257,6 +257,7 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, re
 	if runtime == nil {
 		return nil
 	}
+	runtime.SetObserver(room.manager.options.Metrics)
 	checkpoint := runtime.Checkpoint()
 	if recovered {
 		checkpoint = *runtime.RecoveryFrame().Checkpoint
@@ -310,6 +311,9 @@ func (room *managedRoom) syncGameRuntime(snapshot gameDomain.SessionSnapshot, re
 		payload, _ := json.Marshal(frame)
 		ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
 		err := room.manager.coordinator.PublishRoomEvent(ctx, room.lease, coordinationAbstract.MessageEnvelope{MessageID: uuid.NewString(), Type: GameRuntimeSnapshotEventType, Sequence: frame.StateSequence, Payload: payload})
+		if err == nil {
+			room.manager.options.Metrics.roomPublishedBytes.Add(uint64(len(payload)))
+		}
 		cancel()
 		if err != nil {
 			return err
@@ -380,6 +384,9 @@ func (room *managedRoom) publishGameUpdates(runtime *houseRockets.Runtime) {
 		}
 		ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
 		err := room.manager.coordinator.PublishRoomEvent(ctx, room.lease, event)
+		if err == nil {
+			room.manager.options.Metrics.roomPublishedBytes.Add(uint64(len(event.Payload)))
+		}
 		cancel()
 		if err != nil {
 			room.manager.report(room.lease.RoomID, err)

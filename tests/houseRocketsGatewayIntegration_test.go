@@ -39,11 +39,16 @@ import (
 
 type rocketsGatewayFixture struct {
 	*gameSessionApplicationFixture
-	jwt  *helpers.JWTService
-	urls []string
+	jwt      *helpers.JWTService
+	urls     []string
+	services []*realtime.Service
 }
 
 func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabledOptions ...bool) *rocketsGatewayFixture {
+	return newConfiguredRocketsGatewayFixture(t, rules, 0, 0, enabledOptions...)
+}
+
+func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, maxRooms, maxConnections int, enabledOptions ...bool) *rocketsGatewayFixture {
 	t.Helper()
 	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret")}
 	enabled := len(enabledOptions) == 0 || enabledOptions[0]
@@ -71,8 +76,8 @@ func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabl
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](mediator, gameQueries.NewGetActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
 		coordinator := newTestCoordinator(t, redisURL, fmt.Sprintf("rockets-gateway-%d", index))
 		service, err := realtime.NewService(coordinator, fixture.repository, mediator,
-			realtime.RoomManagerOptions{LeaseTTL: 10 * time.Second, RenewInterval: 500 * time.Millisecond, CommandTimeout: 2 * time.Second, ReconcileInterval: 100 * time.Millisecond, ParticipantDirectory: database.NewGameParticipantDirectory(fixture.db.Client(), fixture.db.Name()), MatchRepository: matches},
-			realtime.GatewayOptions{EnableHouseRockets: enabled, AllowedOrigins: []string{"*"}, PingInterval: 100 * time.Millisecond, IdleTimeout: 3 * time.Second, WriteTimeout: time.Second, PresenceTTL: time.Second, PresenceRefresh: 200 * time.Millisecond})
+			realtime.RoomManagerOptions{LeaseTTL: 10 * time.Second, RenewInterval: 500 * time.Millisecond, CommandTimeout: 2 * time.Second, ReconcileInterval: 100 * time.Millisecond, ParticipantDirectory: database.NewGameParticipantDirectory(fixture.db.Client(), fixture.db.Name()), MatchRepository: matches, MaxOwnedRooms: maxRooms},
+			realtime.GatewayOptions{EnableHouseRockets: enabled, AllowedOrigins: []string{"*"}, PingInterval: 100 * time.Millisecond, IdleTimeout: 3 * time.Second, WriteTimeout: time.Second, PresenceTTL: time.Second, PresenceRefresh: 200 * time.Millisecond, MaxConnections: maxConnections})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,6 +97,7 @@ func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabl
 		}
 		go func() { _ = app.Listener(listener) }()
 		fixture.urls = append(fixture.urls, "http://"+listener.Addr().String())
+		fixture.services = append(fixture.services, service)
 		t.Cleanup(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

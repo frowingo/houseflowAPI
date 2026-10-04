@@ -35,6 +35,7 @@ var (
 	ErrRoomRuntimeStopped    = errors.New("room runtime is stopped")
 	ErrTerminalRoom          = errors.New("terminal game session cannot own a realtime room")
 	ErrRoomCommandQueueFull  = errors.New("room command queue is full")
+	ErrRealtimeCapacity      = errors.New("realtime instance capacity reached")
 )
 
 type RoomManagerOptions struct {
@@ -54,6 +55,8 @@ type RoomManagerOptions struct {
 	RecoveryScanBatch    int
 	FinalizationTimeout  time.Duration
 	IdleRoomTimeout      time.Duration
+	MaxOwnedRooms        int
+	Metrics              *Metrics
 }
 
 type RoomOwnership struct {
@@ -79,6 +82,7 @@ type RoomManager struct {
 	mutex                sync.RWMutex
 	rooms                map[string]*managedRoom
 	activations          map[string]*roomActivation
+	startingRooms        int
 	started              bool
 	closed               bool
 	ctx                  context.Context
@@ -105,6 +109,9 @@ func NewRoomManager(
 		return nil, errors.New("CQRS sender is required")
 	}
 	options = normalizeOptions(options)
+	if options.MaxOwnedRooms < 0 {
+		return nil, errors.New("maximum owned rooms must not be negative")
+	}
 	if options.RecoveryScanBatch > 1000 || options.CheckpointTTL <= options.CheckpointInterval || options.IdleRoomTimeout < 2*time.Millisecond {
 		return nil, errors.New("invalid checkpoint TTL, recovery scan batch or idle room timeout")
 	}
@@ -192,6 +199,10 @@ func (manager *RoomManager) EnsureRoom(
 			return RoomOwnership{}, err
 		}
 		manager.mutex.Lock()
+		if manager.closed || !manager.started {
+			manager.mutex.Unlock()
+			return RoomOwnership{}, ErrRoomRuntimeStopped
+		}
 		if room := manager.rooms[roomID]; room != nil {
 			manager.mutex.Unlock()
 			if snapshot := room.snapshot.Load(); snapshot != nil && (snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled) {
@@ -214,6 +225,7 @@ func (manager *RoomManager) EnsureRoom(
 		}
 		activation := &roomActivation{done: make(chan struct{})}
 		manager.activations[roomID] = activation
+		manager.workers.Add(1)
 		manager.mutex.Unlock()
 
 		ownership, activationErr := manager.activateRoom(ctx, rootCtx, roomID)
@@ -223,6 +235,7 @@ func (manager *RoomManager) EnsureRoom(
 			close(activation.done)
 		}
 		manager.mutex.Unlock()
+		manager.workers.Done()
 		return ownership, activationErr
 	}
 }
@@ -308,6 +321,23 @@ func (manager *RoomManager) startRoom(
 	expectedOwner gameAbstract.RuntimeOwner,
 ) (RoomOwnership, error) {
 	roomID := lease.RoomID
+	// Reserve only local ownership after lease acquisition. A saturated instance
+	// may still serve sockets/input for a room owned by another instance.
+	manager.mutex.Lock()
+	if manager.closed || !manager.started {
+		manager.mutex.Unlock()
+		manager.releaseLease(lease)
+		return RoomOwnership{}, ErrRoomRuntimeStopped
+	}
+	if manager.options.MaxOwnedRooms > 0 && len(manager.rooms)+manager.startingRooms >= manager.options.MaxOwnedRooms {
+		manager.mutex.Unlock()
+		manager.releaseLease(lease)
+		manager.options.Metrics.admissionRejected.Add(1)
+		return RoomOwnership{}, ErrRealtimeCapacity
+	}
+	manager.startingRooms++
+	manager.mutex.Unlock()
+	defer func() { manager.mutex.Lock(); manager.startingRooms--; manager.mutex.Unlock() }()
 	session, err := manager.repository.FindByID(ctx, roomID)
 	if err != nil {
 		manager.releaseLease(lease)
@@ -540,6 +570,7 @@ func (manager *RoomManager) releaseLease(lease coordinationAbstract.RoomLease) {
 }
 
 func (manager *RoomManager) report(roomID string, err error) {
+	manager.options.Metrics.errors.Add(1)
 	select {
 	case manager.errors <- RuntimeError{RoomID: roomID, Err: err}:
 	default:
@@ -547,6 +578,9 @@ func (manager *RoomManager) report(roomID string, err error) {
 }
 
 func normalizeOptions(options RoomManagerOptions) RoomManagerOptions {
+	if options.Metrics == nil {
+		options.Metrics = &Metrics{}
+	}
 	if options.LeaseTTL <= 0 {
 		options.LeaseTTL = defaultLeaseTTL
 	}

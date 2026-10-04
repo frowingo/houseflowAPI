@@ -43,7 +43,9 @@ jobs:
           docker compose wait mongodb-init
 
       - name: Run integration tests
-        run: docker compose --profile test run --rm --no-deps integrationTests
+        run: >-
+          docker compose --profile test run --rm --no-deps integrationTests
+          sh -c 'apk add --no-cache gcc musl-dev >/dev/null && go test -race ./... -count=1'
 
       - name: Stop test containers
         if: always()

@@ -1266,6 +1266,187 @@ RTT, jitter ve kısa kesintiler; 30/60/120 FPS, iPhone/iPad ve orientation
 geçişleri. Yerel bot modu regresyonları da geçer. Backend kapasite hedefi ve
 mobil kontrol hissi birlikte doğrulanınca production katalog/online mod açılır.
 
+#### Paket 7 backend teslimi — ölçüm ve kontrollü kabul
+
+Durum: Backend ölçüm/admission altyapısı uygulanmıştır. Aşağıdaki yerel
+ölçümler production kapasite garantisi değildir; ortak mobil/Fly kabulü hâlâ
+açıktır. Production flag/katalog kapısı bu pakette açılmamıştır. Mobil repo,
+wire contract, oyun kuralları ve migration numaraları değiştirilmemiştir.
+
+**Oda kuralı ile instance kapasitesi farklıdır.** Ürün kuralı, bir ev ve bir
+oyun için aynı anda yalnız bir aktif session olmasıdır. Mevcut Mongo unique
+aktif-session pointer ve eşzamanlı PUT testleri bunu zaten sağlar. Diğer evler
+aynı anda kendi odalarında oynayabilir; bütün sistemin toplam concurrent oda
+hedefi henüz belirlenmemiştir. Ölçümdeki 1/4/8 oda, ayrı evleri temsil eder;
+ürün limiti değildir.
+
+Local/staging House Rockets açılırken şu iki environment ayarı zorunludur:
+
+- `REALTIME_MAX_OWNED_ROOMS`: Instance'ın aynı anda sahiplenebileceği oda
+  sayısı. Devam eden local başlangıçlar da rezervasyon hesabına katılır.
+  Instance doluyken mevcut odaları ve başka instance'ın sahip olduğu odaların
+  socket/input trafiğini taşımaya devam edebilir.
+- `REALTIME_MAX_CONNECTIONS`: Instance üzerindeki bütün realtime bağlantılar
+  ve devam eden upgrade rezervasyonlarının toplam sınırı. Oyuncu sayısı değil,
+  socket sayısıdır; tekrar bağlantı ve birden fazla cihaz da bütçeye girer.
+
+Değerler pozitif tamsayıdır. Feature açıkken eksik veya hatalı değer startup'ı
+durdurur; ölçülmemiş bir kapasite varsayılanı eklenmemiştir. Örneğin yalnız
+kontrollü **tek oda staging denemesi** için `REALTIME_MAX_OWNED_ROOMS=1`,
+`REALTIME_MAX_CONNECTIONS=8` verilebilir. Sekiz dolu bağlantı varken ek cihaz
+veya kısa reconnect overlap'ı da reddedilebilir; bu örnek production tavsiyesi
+değildir. Feature kapalıysa verilmeyen limitler mevcut davranışı korur.
+
+Kapasite dolduğunda HTTP upgrade `503`, mevcut `realtime.error.unavailable` error
+contract'ı ve `Retry-After: 1` döner. Lease yeni alınmışsa bırakılır; reddedilen
+oda için Mongo ownership claim yapılmaz. Upgrade rezervasyonu başarısız
+başlangıçta serbest bırakılır; hijack gerçekleşmezse upgrade timeout'unda
+sona erer. Kapanış pending rezervasyonları temizler ve devam eden oda
+aktivasyonlarını da bekler. Yeni bir oyun session'ı yaratmak kapasite aşımı
+için çözüm değildir.
+
+Mobil agent: Bu 503'ü maç sonucu/elenme olarak yorumlama. Son session ID'sini
+koru, kontrollü bekleme göster ve sınırlı exponential backoff + jitter ile
+reconnect uygula. Kullanıcı ekrandan çıkınca retry'ı iptal et. `Retry-After`
+asgari beklemedir; 401/403/terminal conflict aynı retry politikasına girmez.
+Online'a otomatik bot ekleme veya kullanıcıyı habersiz bot moduna geçirme.
+
+**Ölçümler ve anlamları:** Her instance 30 saniyede bir yapılandırılmış
+`realtimeMetrics` log'u üretir. Runtime hata kanalları da boşaltılır;
+`realtimeError` yalnız sınırlı kategori içerir, ham hata/Redis URL/token/oyuncu
+ID'si loglanmaz. Public diagnostics HTTP endpoint'i eklenmemiştir.
+
+- `activeRooms`, `pendingActivations`, `activeConnections`,
+  `pendingConnections` ve ayarlanmış maksimumlar kapasiteyi gösterir.
+- `physicsGap`: Runtime advance çağrıları arasındaki süre; 60 Hz referansı
+  yaklaşık 16,67 ms'dir. `physicsStep`: Kilit beklemesi dahil advance maliyeti.
+  Mevcut 250 ms bounded catch-up aşılırsa overload sayılır; fizik kuralları
+  değiştirilmez ve sınırsız geçmiş tick işleme yapılmaz.
+- `serverInputAge`: Backend gameplay girişinden input'un gerçekten fizikte
+  uygulanmasına kadar geçen süre. Mobil RTT veya client saat ölçümü değildir.
+  Coalescing nedeniyle eski steering input'ları tek tek uygulanmak zorunda
+  değildir. `inputsCoalesced` ve `framesCoalesced` bunun sayacıdır.
+- Checkpoint süre/başarı/hata/JSON byte'ları, başarılı socket JSON byte'ları,
+  runtime fanout payload byte'ları, input JSON byte'ları, slow-consumer ve
+  admission/error sayaçları tutulur. JSON byte'ları TCP/TLS/WebSocket framing
+  veya Redis RESP overhead'ini içermez. Runtime fanout sayacı bütün lifecycle
+  mesajlarının toplamı değildir.
+- Redis `clientCommands`, go-redis üzerinden yapılan komutları sayar; Lua
+  içindeki komutları veya sağlayıcının billing hesabını saymaz. `clientFailures`
+  cold-start `NOSCRIPT` gibi beklenen fallback'leri de içerebilir; tek başına
+  maç hatası değildir. Blocking stream okumaları `clientDuration` içinde
+  olduğundan bu süre saf Redis network latency diye yorumlanmaz.
+- Histogramlar sabit boyutludur. `p95UpperMilliseconds` bucket üst sınırıdır,
+  kesin percentile değildir; eşzamanlı snapshot yaklaşık olabilir. Sayaçlar
+  process ömrü boyunca kümülatiftir; hız için zaman aralığındaki fark alınır.
+  Oyuncu/oda bazlı sınırsız metric label veya latency listesi tutulmaz.
+- Log'daki `goHeapBytes` ve `goRuntimeBytes` RSS değildir. Yük testinde ayrıca
+  process peak RSS ve OS user+system CPU zamanı ölçülür.
+
+**Tekrarlanabilir yük ölçümü:** `tests/houseRocketsLoadIntegration_test.go`
+iki ayrı backend test process'i başlatır; yük üreticisi bunlardan ayrıdır.
+Gerçek Mongo transaction'ı, Redis lease/checkpoint/fanout, JWT-auth HTTP
+aktif-oda keşfi ve WebSocket v2 kullanılır. Oyuncular iki gateway arasında
+paylaştırılır; input'un bir kısmı remote owner'a yönlenir. Maç fixture'ı
+running hazırlanır; ready/countdown beklemesi yalnız bu performans testinde
+kısaltılır. Normal lobby/ready/finalization akışları ayrı regresyon testlerinde
+doğrulanır. Synthetic controller'lar yalnız test client'ıdır, online bot modu
+değildir.
+
+Her worker `GOMAXPROCS=1`, `GOMEMLIMIT=200MiB` ile çalışır. Bunlar hard CPU
+quota/RSS limiti veya Fly shared CPU performans modeli değildir. Worker,
+API'nin bütün diğer modüllerinin startup/HTTP yükünü içeren production binary
+değil, gerçek realtime bileşenlerini kullanan test sunucusudur. Referans ortam
+yerel OrbStack compose, Linux/arm64, yakın Mongo/Redis ve loopback gateway'dir;
+Fly region/Upstash WAN latency ölçümü yapılmamıştır. Her senaryoda bütün
+oyuncuların grant + playing snapshot alması beklenir, ardından 3 saniye boyunca
+kişi başına en çok mevcut `maximumInputRateHz=20` steering gönderilir. Bu kısa
+matris uzun süreli soak veya beş dakikalık maç kabulü yerine geçmez.
+
+Opt-in komut (test Mongo/Redis ortamında):
+
+```sh
+docker compose --profile test run --rm \
+  -e HOUSEFLOW_REALTIME_LOAD=true integrationTests \
+  go test -v ./tests -run '^TestHouseRocketsLoadMatrix$' -count=1
+```
+
+`HOUSEFLOW_LOAD_DURATION` isteğe bağlı `2s`–`20s` ölçüm penceresidir; uzun
+pencerede synthetic controller'ın doğal elenmesi de testi başarısız kılabilir.
+3 saniyelik varsayılanın artırılması tek başına production soak testi değildir.
+Her alt test disposable DB kullanır; Redis test DB'si resetlenir. Başka
+entegrasyon testleriyle paralel çalıştırılmaz ve production URL verilmez.
+İki worker graceful kapatılır; açık oda/socket/aktivasyon/upgrade kalmaması
+kontrol edilir. Normal CI'da 4 oda × 2 oyunculu kısa regresyon otomatik çalışır;
+performans matrisi opt-in'dir ve `-race` olmadan ölçülür. CI compose regresyonu
+ise artık bütün Go paketlerini `-race` ile doğrular.
+
+4 Ekim 2026 ilk yerel matris sonucu: **9/9 senaryo başarılı** (67,2 saniye
+toplam). Tablo CPU için daha yoğun worker'ı; RSS için iki worker'ın daha yüksek
+peak değerini; Redis/socket hızları için iki worker'ın toplamını gösterir.
+KB/MB yerine byte/s korunmuştur; süre penceresi her satırda 3 saniyedir.
+
+| Ayrı ev/oda | Oyuncu/oda | Toplam socket | En yüksek worker CPU, 1 core % | En yüksek peak RSS, MiB | Redis client komut/s, toplam | Socket JSON byte/s, toplam | En yüksek client input→ACK, ms |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 2 | 2 | 3,11 | 24,7 | 64,7 | 68.356 | 34,1 |
+| 1 | 4 | 4 | 4,19 | 24,8 | 108,3 | 205.111 | 50,4 |
+| 1 | 8 | 8 | 6,01 | 25,7 | 191,0 | 656.104 | 55,0 |
+| 4 | 2 | 8 | 6,45 | 25,6 | 246,7 | 272.345 | 54,2 |
+| 4 | 4 | 16 | 9,54 | 26,0 | 410,0 | 820.340 | 53,2 |
+| 4 | 8 | 32 | 13,56 | 27,6 | 743,3 | 2.623.693 | 55,3 |
+| 8 | 2 | 16 | 10,27 | 27,7 | 503,7 | 546.301 | 54,0 |
+| 8 | 4 | 32 | 14,43 | 28,0 | 822,3 | 1.642.799 | 51,3 |
+| 8 | 8 | 64 | 18,70 | 30,2 | 1.446,7 | 5.248.259 | 53,0 |
+
+Bütün satırlarda runtime overload, checkpoint failure, slow consumer,
+beklenmeyen admission rejection ve runtime/gateway error sıfırdır. Physics
+gap p95 bucket üst sınırı 20 ms; en yüksek tek gap 62,6 ms'dir. Ölçülen client
+input→ACK, test client'ın gönderiminden kendi processed-input sequence'ini
+snapshot'ta görmesine kadardır; gerçek mobil RTT değildir. ACK örnekleri
+coalescing yüzünden bütün gönderimler için ayrı ayrı oluşmaz.
+
+Bu ölçümde maliyet açısından dikkat çeken nokta sekiz kişilik oda fanout'udur:
+oda başına yaklaşık 656 bin JSON byte/s socket çıkışı vardır. Sekiz oda için
+5,25 milyon byte/s toplam görülmüştür. Bunlar sürekli trafik/fatura tahmini
+değildir; region/provider overhead'i ve normal maç evreleri ölçülmemiştir.
+Production hedefi belirlendiğinde bu hızlar ile Redis sağlayıcı ölçümleri için
+bütçe çıkarılmalıdır. Contract değiştiren binary/delta/compression protokolü
+bu teslimde varsayılmamıştır; gerekli olup olmadığı ölçülerek kararlaştırılır.
+
+Çok odalı ölçüm ayrıca bir transport-lifetime hatasını ortaya çıkarmıştır:
+Fiber HTTP `Params` değeri request buffer'ını ödünç alıyordu. Gateway bu oda
+kimliğini uzun ömürlü runtime'a kopyalamadan verdiğinden request reuse önceki
+lease kimliğini değiştirebiliyordu. Kalıcı string kopyasıyla düzeltilmiştir;
+4 odalı regresyon, oda ilerlemesini ve kapanışta haritanın temizlenmesini
+kontrol eder. Public WebSocket/Mongo sözleşmesi değişmemiştir.
+
+**Production açma kapısı — henüz tamamlanmamış işler:**
+
+1. Farklı evlerden hedef toplam concurrent oda/socket sayısını ve maliyet
+   bütçesini belirle. Ev/oyun başına tek oda kuralı bunu cevaplamaz.
+2. Aynı ölçümü gerçek Fly instance/region ve bağlı Redis/Mongo ile staging'de
+   tekrar et; normal HTTP yükünü, ownership dengesizliğini ve instance kaybında
+   kalan instance'ın kapasitesini dahil et. Admission değerleri bu sonuç ve
+   headroom'a göre seçilir; yerelde 8 oda geçti diye production limiti 8 olmaz.
+3. Hedef süre boyunca peak/steady trafik, CPU/RSS/GC, Redis ve egress bütçesi
+   için soak doğrulaması yap. Tolerans/bütçeler yayından önce açıkça onaylanır.
+4. Mobil agent iki gerçek hesap/cihazla 100/200/400 ms RTT, jitter, kısa kesinti,
+   background/reconnect, 30/60/120 FPS, orientation ve yerel bot regresyonunu
+   raporlar. Backend matrisinin geçmesi bunları geçmiş saydırmaz.
+5. Ortak sonuçlar kabul edildikten sonra production gate ayrı ve bilinçli
+   geliştirmeyle açılır. Şu anki değişiklik production'a otomatik online açmaz.
+
+Backend doğrulaması: Host `go test ./...`, `go vet ./...` ve `git diff --check`
+başarılı. Compose Mongo/Redis üzerinde bütün proje
+`go test -race -v ./... -count=1` başarılı (243 saniye); migration/result/
+recovery/child-process-kill regresyonları da bu çalışmada geçti. Son kapasite
+değişiklikleri ve eklenen pending upgrade expiry/shutdown testi ayrıca gerçek
+compose ortamında `-race -count=1` ile geçti (28 saniye). 12 paralel upgrade'de
+3 socket limiti için 3 kabul/9 HTTP 503; limit doluyken remote owner'a ulaşma;
+yarım kalan upgrade rezervasyonunun timeout'ta ve shutdown'da temizlenmesi
+doğrulandı. Testlerden sonra yalnız yerel test container'ları durdurulur;
+Mongo volume silinmez, deploy/commit yapılmaz.
+
 ### 8.8. Mobil agent ne zaman başlamalı?
 
 Mobil agent bütün backend'i beklememeli. Başlangıç ve canlı test kapıları:

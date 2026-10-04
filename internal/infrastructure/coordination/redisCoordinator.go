@@ -40,6 +40,7 @@ type managedSubscription interface {
 }
 
 type RedisCoordinator struct {
+	measurements      redisMeasurements
 	client            *redis.Client
 	instanceID        string
 	heartbeatValue    string
@@ -85,7 +86,7 @@ func NewRedisCoordinator(options RedisOptions) (*RedisCoordinator, error) {
 	redisOptions.ReadTimeout = 3 * time.Second
 	redisOptions.WriteTimeout = 3 * time.Second
 
-	return &RedisCoordinator{
+	coordinator := &RedisCoordinator{
 		client:            redis.NewClient(redisOptions),
 		instanceID:        options.InstanceID,
 		heartbeatValue:    uuid.NewString(),
@@ -94,7 +95,9 @@ func NewRedisCoordinator(options RedisOptions) (*RedisCoordinator, error) {
 		leases:            make(map[string]coordinationAbstract.RoomLease),
 		presences:         make(map[string]coordinationAbstract.Presence),
 		subscriptions:     make(map[managedSubscription]struct{}),
-	}, nil
+	}
+	coordinator.client.AddHook(&coordinator.measurements)
+	return coordinator, nil
 }
 
 func NewInstanceID(base string) string {

@@ -23,6 +23,10 @@ func NewService(
 	roomOptions RoomManagerOptions,
 	gatewayOptions GatewayOptions,
 ) (*Service, error) {
+	if roomOptions.Metrics == nil {
+		roomOptions.Metrics = &Metrics{}
+	}
+	gatewayOptions.Metrics = roomOptions.Metrics
 	if !gatewayOptions.EnableHouseRockets {
 		roomOptions.RecoveryScanInterval = -1
 	}
@@ -63,3 +67,18 @@ func (service *Service) Close(ctx context.Context) error {
 func (service *Service) Errors() <-chan RuntimeError {
 	return service.gateway.Errors()
 }
+
+func (service *Service) Metrics() MetricsSnapshot {
+	result := service.manager.options.Metrics.Snapshot()
+	service.manager.mutex.RLock()
+	result.ActiveRooms, result.PendingActivations = len(service.manager.rooms), len(service.manager.activations)
+	service.manager.mutex.RUnlock()
+	service.gateway.mutex.Lock()
+	result.ActiveConnections = len(service.gateway.clients)
+	result.PendingConnections = len(service.gateway.reservations)
+	service.gateway.mutex.Unlock()
+	result.MaximumRooms, result.MaximumConnections = service.manager.options.MaxOwnedRooms, service.gateway.options.MaxConnections
+	return result
+}
+
+func (service *Service) RoomErrors() <-chan RuntimeError { return service.manager.Errors() }

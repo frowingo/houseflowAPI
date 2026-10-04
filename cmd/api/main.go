@@ -123,6 +123,7 @@ func runAPI() error {
 		return fmt.Errorf("initialize realtime room runtime: %w", err)
 	}
 	defer closeRealtimeService(realtimeService)
+	go observeRealtime(rootCtx, coordinator, realtimeService)
 
 	listenError := make(chan error, 1)
 	go func() {

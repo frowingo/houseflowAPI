@@ -348,15 +348,20 @@ func SetupRoutes(
 		})
 		return nil, nil
 	}
+	limits, err := config.LoadRealtimeLimits()
+	if err != nil {
+		return nil, err
+	}
 	realtimeService, err := realtime.NewService(
 		coordinator,
 		gameSessionRepository,
 		applicationMediator,
-		realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, dbName), MatchRepository: matchRepository},
+		realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, dbName), MatchRepository: matchRepository, MaxOwnedRooms: limits.MaxOwnedRooms},
 		realtime.GatewayOptions{
 			EnableHouseRockets: houseRocketsEnabled,
 			AllowedOrigins:     webSocketAllowedOrigins(),
 			Localizer:          localizationCache,
+			MaxConnections:     limits.MaxConnections,
 		},
 	)
 	if err != nil {

@@ -57,6 +57,8 @@ type GatewayOptions struct {
 	UpgradeTimeout      time.Duration
 	AllowedOrigins      []string
 	Localizer           helpers.MessageLocalizer
+	MaxConnections      int
+	Metrics             *Metrics
 }
 
 type Gateway struct {
@@ -65,15 +67,16 @@ type Gateway struct {
 	sender      cqrs.Sender
 	options     GatewayOptions
 
-	mutex   sync.Mutex
-	hubs    map[string]*roomHub
-	clients map[string]*gatewayClient
-	started bool
-	closed  bool
-	ctx     context.Context
-	cancel  context.CancelFunc
-	errors  chan RuntimeError
-	workers sync.WaitGroup
+	mutex        sync.Mutex
+	hubs         map[string]*roomHub
+	clients      map[string]*gatewayClient
+	reservations map[*connectionReservation]struct{}
+	started      bool
+	closed       bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	errors       chan RuntimeError
+	workers      sync.WaitGroup
 }
 
 func NewGateway(
@@ -92,6 +95,12 @@ func NewGateway(
 		return nil, errors.New("CQRS sender is required")
 	}
 	options = normalizeGatewayOptions(options)
+	if options.Metrics == nil {
+		options.Metrics = manager.options.Metrics
+	}
+	if options.MaxConnections < 0 {
+		return nil, errors.New("maximum connections must not be negative")
+	}
 	if options.EnableHouseRockets && manager.options.ParticipantDirectory == nil {
 		return nil, errors.New("House Rockets requires a participant directory")
 	}
@@ -102,13 +111,14 @@ func NewGateway(
 		return nil, errors.New("presence refresh interval must be shorter than presence TTL")
 	}
 	return &Gateway{
-		coordinator: coordinator,
-		manager:     manager,
-		sender:      sender,
-		options:     options,
-		hubs:        make(map[string]*roomHub),
-		clients:     make(map[string]*gatewayClient),
-		errors:      make(chan RuntimeError, 32),
+		coordinator:  coordinator,
+		manager:      manager,
+		sender:       sender,
+		options:      options,
+		hubs:         make(map[string]*roomHub),
+		clients:      make(map[string]*gatewayClient),
+		reservations: make(map[*connectionReservation]struct{}),
+		errors:       make(chan RuntimeError, 32),
 	}, nil
 }
 
@@ -145,7 +155,9 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 				helpers.NewUnavailableError(roomUnavailableErrorCode, err),
 			)
 		}
-		roomID := strings.TrimSpace(c.Params("sessionId"))
+		// Fiber params borrow the HTTP request buffer. Room ownership outlives
+		// this handler, so retain an owned copy before starting the runtime.
+		roomID := strings.Clone(strings.TrimSpace(c.Params("sessionId")))
 		userID, _ := c.Locals("userID").(string)
 		if roomID == "" || userID == "" {
 			return helpers.RespondLocalizedError(
@@ -182,8 +194,17 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 				return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 			}
 		}
+		reservation, err := gateway.reserveConnection()
+		if err != nil {
+			c.Set(fiber.HeaderRetryAfter, "1")
+			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewUnavailableError(roomUnavailableErrorCode, err))
+		}
 		ownership, err := gateway.manager.EnsureRoom(requestCtx, roomID)
 		if err != nil {
+			reservation.release()
+			if errors.Is(err, ErrRealtimeCapacity) {
+				c.Set(fiber.HeaderRetryAfter, "1")
+			}
 			if errors.Is(err, ErrTerminalRoom) {
 				err = helpers.NewConflictError("game.error.invalid_state")
 			} else {
@@ -193,7 +214,12 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		}
 		c.Locals("realtimeProtocolVersion", version)
 		c.Locals("realtimeEpoch", ownership.RuntimeEpoch)
-		return c.Next()
+		c.Locals("realtimeReservation", reservation)
+		if err := c.Next(); err != nil {
+			reservation.release()
+			return err
+		}
+		return nil
 	}
 }
 
@@ -214,6 +240,9 @@ func (gateway *Gateway) Close(ctx context.Context) error {
 	}
 	gateway.closed = true
 	gateway.started = false
+	for reservation := range gateway.reservations {
+		reservation.releaseLocked()
+	}
 	cancel := gateway.cancel
 	clients := make([]*gatewayClient, 0, len(gateway.clients))
 	for _, client := range gateway.clients {
@@ -249,7 +278,7 @@ func (gateway *Gateway) Close(ctx context.Context) error {
 }
 
 func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
-	roomID := socket.Params("sessionId")
+	roomID := strings.Clone(socket.Params("sessionId"))
 	userID, _ := socket.Locals("userID").(string)
 	connection := newGatewayClient(gateway, socket, roomID, userID)
 	if !gateway.registerClient(connection) {
@@ -347,6 +376,15 @@ func (gateway *Gateway) registerClient(client *gatewayClient) bool {
 	gateway.mutex.Lock()
 	defer gateway.mutex.Unlock()
 	if gateway.closed || !gateway.started {
+		return false
+	}
+	if reservation, ok := client.socket.Locals("realtimeReservation").(*connectionReservation); ok {
+		if reservation.gateway != gateway || reservation.released {
+			return false
+		}
+		reservation.releaseLocked()
+	} else if gateway.options.MaxConnections > 0 && len(gateway.clients)+len(gateway.reservations) >= gateway.options.MaxConnections {
+		gateway.options.Metrics.admissionRejected.Add(1)
 		return false
 	}
 	gateway.clients[client.id] = client
@@ -455,6 +493,7 @@ func (gateway *Gateway) originAllowed(origin string) bool {
 }
 
 func (gateway *Gateway) report(roomID string, err error) {
+	gateway.options.Metrics.errors.Add(1)
 	select {
 	case gateway.errors <- RuntimeError{RoomID: roomID, Err: err}:
 	default:
@@ -687,8 +726,11 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 		expiration = timer.C
 	}
 	write := func(payload []byte) bool {
+		started := time.Now()
 		_ = client.socket.SetWriteDeadline(time.Now().Add(client.gateway.options.WriteTimeout))
-		if err := client.socket.WriteMessage(fasthttpWebsocket.TextMessage, payload); err != nil {
+		err := client.socket.WriteMessage(fasthttpWebsocket.TextMessage, payload)
+		client.gateway.options.Metrics.observeSocketWrite(started, len(payload), err)
+		if err != nil {
 			client.stop(fasthttpWebsocket.CloseAbnormalClosure, "write failed")
 			return false
 		}
@@ -717,9 +759,7 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 			client.stop(fasthttpWebsocket.CloseGoingAway, "realtime gateway stopping")
 			return
 		case payload := <-client.outbound:
-			_ = client.socket.SetWriteDeadline(time.Now().Add(client.gateway.options.WriteTimeout))
-			if err := client.socket.WriteMessage(fasthttpWebsocket.TextMessage, payload); err != nil {
-				client.stop(fasthttpWebsocket.CloseAbnormalClosure, "write failed")
+			if !write(payload) {
 				return
 			}
 		case <-pingTicker.C:
@@ -760,6 +800,9 @@ func (client *gatewayClient) reject(messageID string, protocolError ProtocolErro
 
 func (client *gatewayClient) stop(code int, reason string) {
 	client.stopOnce.Do(func() {
+		if reason == "slow consumer" {
+			client.gateway.options.Metrics.slowConsumers.Add(1)
+		}
 		client.cancel()
 		if client.v2 != nil {
 			// fasthttp's hijacked Conn.Close may defer closing until the handler

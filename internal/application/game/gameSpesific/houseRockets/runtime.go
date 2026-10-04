@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	gameAbstract "houseflowApi/internal/application/game/abstract"
 )
 
 const (
@@ -111,6 +112,8 @@ type Runtime struct {
 	terminal        bool
 	stopped         bool
 	runOnce         sync.Once
+	observer        gameAbstract.RuntimeObserver
+	framesCoalesced uint64
 }
 
 func NewRuntime(params NewSimulationParams, epoch int64, now time.Time, initialSequences ...int64) (*Runtime, error) {
@@ -141,6 +144,12 @@ func (runtime *Runtime) Frames() <-chan RuntimeFrame             { return runtim
 func (runtime *Runtime) Events() <-chan RuntimeEvent             { return runtime.events }
 func (runtime *Runtime) Results() <-chan HouseRocketsResultModel { return runtime.results }
 
+func (runtime *Runtime) SetObserver(observer gameAbstract.RuntimeObserver) {
+	runtime.mutex.Lock()
+	defer runtime.mutex.Unlock()
+	runtime.observer = observer
+}
+
 // The application calls this only after the immutable result transaction commits.
 func (runtime *Runtime) CommittedFrame(result HouseRocketsResultModel) RuntimeFrame {
 	runtime.mutex.Lock()
@@ -153,7 +162,15 @@ func (runtime *Runtime) CommittedFrame(result HouseRocketsResultModel) RuntimeFr
 // confirm actual processing. Gaps are expected when newer headings coalesce.
 func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 	runtime.mutex.Lock()
-	defer runtime.mutex.Unlock()
+	observation := gameAbstract.RuntimeObservation{}
+	observer, framesBefore := runtime.observer, runtime.framesCoalesced
+	defer func() {
+		observation.FramesCoalesced = runtime.framesCoalesced - framesBefore
+		runtime.mutex.Unlock()
+		if observer != nil && (observation.FramesCoalesced > 0 || observation.InputsCoalesced > 0) {
+			observer.ObserveRuntime(observation)
+		}
+	}()
 	if runtime.stopped {
 		return ErrSimulationFinished
 	}
@@ -215,6 +232,9 @@ func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 		control.rateCount++
 		control.highestInput = input.InputSequence
 		control.lastSeen = now
+		if _, exists := runtime.pending[input.PlayerID]; exists {
+			observation.InputsCoalesced++
+		}
 		runtime.pending[input.PlayerID] = queuedInput{input, now}
 		return nil
 	}
@@ -262,8 +282,21 @@ func (runtime *Runtime) Run(ctx context.Context, leaseValid func() bool) {
 }
 
 func (runtime *Runtime) Advance(now time.Time) error {
+	started := time.Now()
 	runtime.mutex.Lock()
-	defer runtime.mutex.Unlock()
+	observer, framesBefore := runtime.observer, runtime.framesCoalesced
+	observation := gameAbstract.RuntimeObservation{StepGap: now.Sub(runtime.lastAdvance)}
+	measureStep := !runtime.terminal && !runtime.stopped && !now.Before(runtime.lastAdvance)
+	defer func() {
+		observation.FramesCoalesced = runtime.framesCoalesced - framesBefore
+		if measureStep {
+			observation.StepDuration = time.Since(started)
+		}
+		runtime.mutex.Unlock()
+		if observer != nil {
+			observer.ObserveRuntime(observation)
+		}
+	}()
 	if runtime.stopped {
 		return ErrSimulationFinished
 	}
@@ -278,6 +311,7 @@ func (runtime *Runtime) Advance(now time.Time) error {
 	}
 	elapsed := now.Sub(runtime.lastAdvance)
 	if elapsed > maximumCatchUp {
+		observation.Overloaded = true
 		_ = runtime.simulation.Cancel(EndRuntimeOverloaded)
 		runtime.terminal = true
 		runtime.publishFrame()
@@ -358,6 +392,9 @@ commandsDrained:
 		if now.Sub(queued.receivedAt) <= InputLifetime && control.connectionID == queued.input.ConnectionID && control.generation == queued.input.ControlGeneration {
 			if runtime.simulation.Steer(id, queued.input.Heading) == nil {
 				control.processedInput = queued.input.InputSequence
+				if observer != nil {
+					observation.InputAges = append(observation.InputAges, now.Sub(queued.input.CreatedAt))
+				}
 			}
 		}
 		delete(runtime.pending, id)
@@ -412,6 +449,7 @@ func (runtime *Runtime) publishFrame() {
 	frame := runtime.buildFrame()
 	select {
 	case <-runtime.frames:
+		runtime.framesCoalesced++
 	default:
 	}
 	runtime.frames <- frame

@@ -281,6 +281,7 @@ func (client *gatewayClient) enqueueGameFrame(frame gamePreviewFrame, messageID 
 		} else {
 			select {
 			case <-client.v2.snapshots:
+				client.gateway.options.Metrics.framesCoalesced.Add(1)
 			default:
 			}
 			client.v2.snapshots <- payload
@@ -299,6 +300,7 @@ func (client *gatewayClient) readV2Loop() {
 		if err != nil {
 			return
 		}
+		client.gateway.options.Metrics.inputBytes.Add(uint64(len(payload)))
 		_ = client.socket.SetReadDeadline(time.Now().Add(client.gateway.options.IdleTimeout))
 		if kind != websocket.TextMessage {
 			client.reject("", ProtocolError{Code: defaultInvalidCommandErrorCode})

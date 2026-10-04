@@ -52,10 +52,15 @@ func (room *managedRoom) protectCheckpoint(checkpoint *houseRockets.RuntimeCheck
 	}
 	ctx, cancel := context.WithTimeout(room.ctx, min(room.manager.options.CommandTimeout, time.Until(*room.leaseDeadline.Load())))
 	defer cancel()
+	started := time.Now()
 	err = store.SaveRuntimeCheckpoint(ctx, room.lease, coordinationAbstract.RuntimeCheckpoint{Epoch: checkpoint.Epoch, Sequence: checkpoint.Sequence, CapturedAt: checkpoint.CapturedAt, Payload: payload}, room.manager.options.CheckpointTTL)
+	room.manager.options.Metrics.checkpointDuration.Observe(time.Since(started))
 	if err != nil {
+		room.manager.options.Metrics.checkpointFailures.Add(1)
 		return err
 	}
+	room.manager.options.Metrics.checkpoints.Add(1)
+	room.manager.options.Metrics.checkpointBytes.Add(uint64(len(payload)))
 	room.checkpointSequence, room.checkpointCritical, room.checkpointAt = checkpoint.Sequence, critical, time.Now()
 	return nil
 }
