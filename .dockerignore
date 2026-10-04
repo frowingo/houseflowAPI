@@ -21,6 +21,7 @@ vendor/
 # Environment files
 .env
 .env.local
+internal/config/config.json
 
 # OS files
 Thumbs.db

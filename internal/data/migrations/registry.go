@@ -1,12 +1,10 @@
 package migrations
 
-import "houseflowApi/external/migration"
-
 // AllMigrations returns every migration in the order they must be applied.
 // To add a new migration: create a new file in this package and append its
 // instance to the slice below.
-func AllMigrations() []migration.Migration {
-	return []migration.Migration{
+func AllMigrations() []Migration {
+	return []Migration{
 		// --- Collection Init ---
 		&createUserCollection{},
 		&createHouseCollection{},
@@ -61,5 +59,15 @@ func AllMigrations() []migration.Migration {
 		&houseInviteCodes{},
 		// --- House Profile History ---
 		&houseInfoHistory{},
+		// --- Game Session Persistence ---
+		&gameSessionPersistence{},
+		// --- Game Session Command Idempotency ---
+		&gameSessionCommandReceipts{},
+		// --- Realtime WebSocket Gateway ---
+		&realtimeGateway{},
+		// --- Game Catalog And Active Session Slot ---
+		&gameCatalogActiveSession{},
+		&gameRuntimeOwner{},
+		&gameMatchResult{},
 	}
 }

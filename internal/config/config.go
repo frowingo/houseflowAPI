@@ -25,6 +25,7 @@ type ConfigModel struct {
 type ConfigExternal struct {
 	Mongo      ConfigMongo      `json:"mongo"`
 	Cloudinary ConfigCloudinary `json:"cloudinary"`
+	Redis      ConfigRedis      `json:"redis"`
 }
 
 type ConfigInternal struct {
@@ -55,6 +56,10 @@ type ConfigSMTP struct {
 type ConfigMongo struct {
 	ConnectionString string `json:"connectionString"`
 	DbName           string `json:"dbName"`
+}
+
+type ConfigRedis struct {
+	URL string `json:"url"`
 }
 
 type ConfigCloudinary struct {
@@ -101,6 +106,10 @@ func applyEnvOverrides(config *ConfigModel) {
 		config.External.Mongo.DbName = db
 	}
 
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		config.External.Redis.URL = redisURL
+	}
+
 	if cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME"); cloudName != "" {
 		config.External.Cloudinary.CloudName = cloudName
 	}
@@ -142,11 +151,8 @@ func applyEnvOverrides(config *ConfigModel) {
 }
 
 func Validate(config *ConfigModel) error {
-	if config.External.Mongo.ConnectionString == "" {
-		return errors.New("mongo connection string is required")
-	}
-	if config.External.Mongo.DbName == "" {
-		return errors.New("mongo db name is required")
+	if err := ValidateMongo(config.External.Mongo); err != nil {
+		return err
 	}
 	if config.Internal.JWT.ApiSecret == "" {
 		return errors.New("jwt secret is required")
@@ -162,6 +168,19 @@ func Validate(config *ConfigModel) error {
 	}
 	if config.Internal.HouseJoinCode.ValidityMinutes <= 0 {
 		return errors.New("house join code validity must be greater than zero")
+	}
+	if config.Internal.SMTP.Password == "" {
+		return errors.New("smtp password is required")
+	}
+	return nil
+}
+
+func ValidateMongo(config ConfigMongo) error {
+	if config.ConnectionString == "" {
+		return errors.New("mongo connection string is required")
+	}
+	if config.DbName == "" {
+		return errors.New("mongo db name is required")
 	}
 	return nil
 }

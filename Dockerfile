@@ -21,7 +21,7 @@ COPY . .
 # Swagger docs'u generate et
 RUN swag init -g cmd/api/main.go -o external/swagger/docs --parseDependency --parseInternal
 
-# Binary'yi build et
+# API binary'sini build et
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o houseflowapi ./cmd/api
 
 # Final stage
@@ -34,15 +34,15 @@ WORKDIR /root/
 # Builder'dan binary'yi kopyala
 COPY --from=builder /app/houseflowapi .
 
-# Config dosyalarını kopyala
-COPY ./internal/config/ ./internal/config/
+# Güvenli varsayılan config'i kopyala; gerçek secret'lar env/volume üzerinden gelir
+COPY ./internal/config/config.template.json ./internal/config/config.json
 
 # Port'u expose et
 EXPOSE 3162
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3162/swagger/index.html || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3162/api/v1/base/health/ready || exit 1
 
 # Uygulamayı çalıştır
 CMD ["./houseflowapi"]

@@ -6,6 +6,14 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
+	gameApplication "houseflowApi/internal/application/game"
+	gameCommands "houseflowApi/internal/application/game/commands"
+	gameDomain "houseflowApi/internal/application/game/domain"
+	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	rocketsQueries "houseflowApi/internal/application/game/gameSpesific/houseRockets/queries"
+	gameQueries "houseflowApi/internal/application/game/queries"
 	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
@@ -24,15 +32,24 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
 	"houseflowApi/internal/infrastructure/middleware"
+	"houseflowApi/internal/infrastructure/realtime"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/internal/services"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbName string, cfg config.ConfigInternal) {
+func SetupRoutes(
+	ctx context.Context,
+	app *fiber.App,
+	client *mongo.Client,
+	dbName string,
+	cfg config.ConfigInternal,
+	coordinator coordinationAbstract.Coordinator,
+) (*realtime.Service, error) {
 	applicationMediator := cqrs.New()
 	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
@@ -54,10 +71,14 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[cqrs.NoResult, localizationCommands.InsertLocalizationLanguageCommand](applicationMediator, insertLocalizationLanguageHandler)
 	localizationController := controllers.NewLocalizationController(applicationMediator, localizationCache)
 
-	api := app.Group("/api/v1", middleware.IPRateLimit(localizationCache))
+	baseRoutes := app.Group("/api/v1/base")
+	baseRoutes.Get("/health", controllers.HealthController)
+	baseRoutes.Get("/health/live", controllers.HealthController)
+	baseRoutes.Get("/health/ready", controllers.ReadinessController(func(ctx context.Context) error {
+		return client.Ping(ctx, readpref.Primary())
+	}))
 
-	baseRoutes := api.Group("/base")
-	baseRoutes.Get("/health", controllers.LocalizedHealthController(localizationCache))
+	api := app.Group("/api/v1", middleware.IPRateLimit(localizationCache))
 
 	// - LOCALIZATION -
 	localizationRoutes := api.Group("/localization", middleware.IPRateLimit(localizationCache))
@@ -114,6 +135,32 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	imageAssetRepository := database.NewDbContext[entities.ImageAsset](client, dbName)
 	houseMembershipPolicy := housePolicies.NewMembershipPolicy(houseRepository)
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
+	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
+	matchRepository := database.NewGameMatchRepository(client, dbName)
+	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](applicationMediator, rocketsCommands.NewCompleteMatchHandler(gameSessionRepository, matchRepository))
+	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsQueries.GetMatchResultQuery](applicationMediator, rocketsQueries.NewGetMatchResultHandler(gameSessionRepository, matchRepository, houseMembershipPolicy))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](applicationMediator, gameQueries.NewAuthorizeCancellationHandler(gameSessionRepository, houseMembershipPolicy))
+	houseRocketsEnabled := coordinator != nil && config.HouseRocketsEnabled()
+	gameCatalog, err := gameApplication.NewDefaultCatalog(gameApplication.CatalogOptions{EnableHouseRockets: houseRocketsEnabled})
+	if err != nil {
+		return nil, err
+	}
+	ensureActiveGameSessionHandler := gameCommands.NewEnsureActiveGameSessionHandler(
+		gameSessionRepository,
+		gameCatalog,
+		houseMembershipPolicy,
+	)
+	joinGameSessionHandler := gameCommands.NewJoinGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	setPlayerReadyHandler := gameCommands.NewSetPlayerReadyHandler(gameSessionRepository, houseMembershipPolicy)
+	leaveGameSessionHandler := gameCommands.NewLeaveGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	cancelGameSessionHandler := gameCommands.NewCancelGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	advanceGameSessionHandler := gameCommands.NewAdvanceGameSessionHandler(gameSessionRepository)
+	getGameSessionHandler := gameQueries.NewGetGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
+	getActiveGameSessionHandler := gameQueries.NewGetActiveGameSessionHandler(
+		gameSessionRepository,
+		gameCatalog,
+		houseMembershipPolicy,
+	)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
 	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository)
@@ -136,6 +183,15 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	cqrs.MustRegister[cqrs.NoResult, imageAssetCommands.UpdateImageAssetCommand](applicationMediator, updateImageAssetHandler)
 	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](applicationMediator, getImagesByCategoryHandler)
 	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](applicationMediator, getImageByPublicIDHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](applicationMediator, ensureActiveGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](applicationMediator, joinGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.SetPlayerReadyCommand](applicationMediator, setPlayerReadyHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](applicationMediator, leaveGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](applicationMediator, cancelGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](applicationMediator, advanceGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](applicationMediator, gameCommands.NewReconcileGameSessionPlayersHandler(gameSessionRepository))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](applicationMediator, getGameSessionHandler)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](applicationMediator, getActiveGameSessionHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)
 
 	userRoutes := api.Group("/user", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
@@ -265,4 +321,59 @@ func SetupRoutes(ctx context.Context, app *fiber.App, client *mongo.Client, dbNa
 	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Put("/:id", choreController.UpdateChore)
 	// ----------
+	gameController := controllers.NewGameController(applicationMediator, localizationCache)
+	gameRoutes := api.Group(
+		"/game",
+		middleware.AuthRequired(jwtService, localizationCache),
+	)
+	gameRoutes.Put(
+		"/:gameKey/session",
+		middleware.UserRateLimit(localizationCache),
+		gameController.EnsureActiveSession,
+	)
+	gameRoutes.Get(
+		"/:gameKey/session",
+		middleware.UserRateLimit(localizationCache),
+		gameController.GetActiveSession,
+	)
+	gameRoutes.Get("/:sessionId/result", middleware.UserRateLimit(localizationCache), gameController.GetResult)
+
+	if coordinator == nil {
+		gameRoutes.Get("/:sessionId/realtime", func(c *fiber.Ctx) error {
+			return helpers.RespondLocalizedError(
+				c,
+				localizationCache,
+				helpers.NewUnavailableError("realtime.error.unavailable", coordinationAbstract.ErrUnavailable),
+			)
+		})
+		return nil, nil
+	}
+	limits, err := config.LoadRealtimeLimits()
+	if err != nil {
+		return nil, err
+	}
+	realtimeService, err := realtime.NewService(
+		coordinator,
+		gameSessionRepository,
+		applicationMediator,
+		realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, dbName), MatchRepository: matchRepository, MaxOwnedRooms: limits.MaxOwnedRooms},
+		realtime.GatewayOptions{
+			EnableHouseRockets: houseRocketsEnabled,
+			AllowedOrigins:     webSocketAllowedOrigins(),
+			Localizer:          localizationCache,
+			MaxConnections:     limits.MaxConnections,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := realtimeService.Start(ctx); err != nil {
+		return nil, err
+	}
+	gameRoutes.Get(
+		"/:sessionId/realtime",
+		realtimeService.UpgradeMiddleware(),
+		realtimeService.Handler(),
+	)
+	return realtimeService, nil
 }

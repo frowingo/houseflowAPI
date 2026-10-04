@@ -44,6 +44,7 @@ func AuthRequired(jwtService *helpers.JWTService, localizers ...helpers.MessageL
 		c.Locals("userID", jwtData.Subject)
 		c.Locals("userRole", jwtData.IssuerRole)
 		c.Locals("language", helpers.NormalizeLanguage(jwtData.Language))
+		c.Locals("tokenExpiresAt", jwtData.ExpiresAt.Time)
 
 		return c.Next()
 	}

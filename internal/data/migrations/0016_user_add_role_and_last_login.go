@@ -36,7 +36,7 @@ func (m *userAddRoleAndLastLogin) Up(ctx context.Context, db *mongo.Database) er
 			bson.M{"lastLogin": zeroTime},
 		}},
 		mongo.Pipeline{
-			{{"$set", bson.M{"lastLogin": "$createdOn"}}},
+			{{Key: "$set", Value: bson.M{"lastLogin": "$createdOn"}}},
 		},
 	)
 	return err

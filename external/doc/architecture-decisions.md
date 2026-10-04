@@ -383,3 +383,273 @@ indirilmiştir. Eski `HouseService` kaldırılmıştır. Sıradaki CQRS çalış
 Chore modülüdür. WebSocket, Redis ve RabbitMQ eklenmemiştir. İstemci retry'larını
 aynı işlem olarak tanıyacak genel `commandId` sözleşmesi de henüz yoktur; bu
 sözleşme ilk oyun command'ları tasarlanırken ele alınacaktır.
+
+## ADR-009 — Multi-instance coordination oyun domain'inden önce kurulacak
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+ADR-008'deki tek-instance WebSocket MVP sırası, ürünün ilk sürümden itibaren
+birden fazla API instance'ında çalışması hedeflendiği için değiştirilmiştir.
+Bu karar oyun kurallarını erkenden genelleştiren bir game engine oluşturmaz;
+yalnız instance'lar arasında ortak olacak teknik koordinasyon sınırını kurar.
+
+Redis yalnız kısa ömürlü coordination verisi için kullanılır:
+
+- instance heartbeat,
+- TTL'li room owner lease ve monoton fencing token,
+- connection presence,
+- instance'a yönlenen command'lar,
+- room event dağıtımı,
+- message idempotency kaydı.
+
+Kalıcı oyun sonucu, leaderboard, kullanıcı/hane verisi ve her frame/tick Redis'e
+yazılmaz. Normal HTTP endpoint'lerinin readiness'i Redis'e bağlanmaz. Redis
+kesintisinde yalnız coordination/realtime özelliği unavailable olur.
+
+Instance command'ları kısa kesintilerde kaybolmaması ve işlendikten sonra açıkça
+ACK edilebilmesi için süreli Redis Streams girdileridir. Room event'leri anlıktır
+ve ileride snapshot ile telafi edileceğinden Redis Pub/Sub üzerinden dağıtılır.
+Room event yayınlama işlemi lease değerini aynı Redis script'i içinde doğrular;
+eski owner'ın fencing token'ıyla event yayınlamasına izin verilmez.
+
+RabbitMQ, kalıcı asenkron business job veya outbox consumer ihtiyacı oluşana
+kadar; Kafka ise replay edilebilir yüksek hacimli event stream ihtiyacı oluşana
+kadar eklenmeyecektir.
+
+## ADR-010 — GameSession ortak lifecycle aggregate'i
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+Oyun türlerinden bağımsız ortak lifecycle `GameSession` aggregate'i tarafından
+yönetilir:
+
+```text
+lobby -> readyWindow -> countdown -> running -> finished
+   ^          |
+   +----------+
+
+Her terminal olmayan state -> cancelled
+```
+
+- `lobby`: Oyuncular katılabilir ve ready durumunu değiştirebilir.
+- `readyWindow`: Minimum ready oyuncu sayısına ulaşılmıştır; yeni oyuncular
+  belirlenen süre boyunca katılabilir.
+- `countdown`: Katılım ve ready değişikliği kapanmıştır. Ready olmayan oyuncular
+  session dışında bırakılır.
+- `running`: Oyun türüne özel runtime çalışır.
+- `finished` / `cancelled`: Terminal state'lerdir.
+
+Session kuralları minimum/maksimum oyuncu, ready window süresi, countdown süresi,
+oyun modu ve protokol version'ını içerir. State yalnız aggregate metotlarıyla
+değişir. Her başarılı değişiklik monoton `version` ve sıralı bir domain event
+üretir. Snapshot'tan restore işlemi event üretmez.
+
+Domain event'leri publication başarısızlığında kaybolmasın diye aggregate
+tarafından otomatik silinmez. Application katmanı ileride snapshot ve event/outbox
+kaydını aynı transaction'da kalıcılaştırdıktan sonra pending event'leri temizler.
+
+WebSocket connection/presence bilgisi aggregate'e eklenmez. Bu bilgi Redis
+coordination katmanında kısa ömürlüdür; reconnect eden kullanıcı kalıcı connection
+state'i yerine session snapshot'ını alır. Skor, fizik, elenme ve leaderboard
+kuralları da ortak aggregate'e ait değildir; oyun türüne özel domain tarafından
+yönetilir.
+
+Bu faz MongoDB adapter'ı, HTTP/WebSocket endpoint'i veya realtime room runtime
+eklemez. Persistence concurrency sözleşmesi ve room runtime ayrı çalışma
+paketlerinde GameSession snapshot/version modeli üzerinden kurulacaktır.
+
+## ADR-011 — GameSession optimistic concurrency ve transactional outbox
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+`GameSession` aggregate snapshot'ı MongoDB'de kalıcılaştırılır. Her update,
+aggregate yüklenirken görülen `expectedVersion` ile mevcut document version'ını
+aynı write filtresinde karşılaştırır. Version eşleşmezse ikinci yazarın değişikliği
+uygulanmaz ve application katmanına açık bir concurrency hatası döner. Bu yaklaşım
+process içi mutex veya distributed lock gerektirmeden birden fazla API instance'ı
+arasında kayıp update'i önler.
+
+Aggregate snapshot'ı ile o değişiklikte oluşan domain event'leri aynı MongoDB
+transaction'ında yazılır. Event'ler oyunlara özel olmayan `OutboxMessage`
+koleksiyonunda saklanır. Event ID ve aggregate-version çiftleri unique index ile
+korunur; böylece aynı event'in mükerrer kalıcılaştırılması engellenir. Snapshot
+yazımı veya outbox insert'lerinden biri başarısız olursa transaction bütünüyle
+rollback edilir.
+
+Repository yalnız başarılı transaction sonrasında aggregate'in pending event'leri
+temizlenebilecek şekilde tasarlanmıştır. Outbox publisher bu paketin kapsamında
+değildir. İleride publisher eklendiğinde unpublished kayıtları claim ederek
+at-least-once teslim edecek; consumer'lar `eventId` üzerinden idempotent olacaktır.
+Henüz retention süresi belli olmadığı için published event'lere TTL index
+eklenmemiştir.
+
+Kalıcı snapshot ortak lifecycle verisiyle sınırlıdır. Skor, oyun fiziği, elenme,
+leaderboard ve connection presence ortak GameSession document'ına eklenmez.
+
+## ADR-012 — GameSession application orchestration ve command idempotency
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+GameSession kullanım akışları transport katmanından bağımsız CQRS handler'larıyla
+yürütülür. Session oluşturma, katılma, ready durumunu değiştirme, ayrılma ve iptal
+etme command; yetkili snapshot okuma ise query olarak tanımlanır. Handler'lar house
+üyelik ve iptal yetkisini kontrol ettikten sonra aggregate metodunu çalıştırır ve
+snapshot ile pending event'leri repository üzerinden kalıcılaştırır.
+
+Mutating command'larda `actorId + commandId` çifti idempotency anahtarıdır. Command
+türü ve business payload hash'i receipt kaydında tutulur. Receipt, GameSession
+snapshot'ı ve outbox event'leri aynı MongoDB transaction'ında yazılır. Aynı command
+tekrar geldiğinde state ikinci kez değiştirilmez; aynı anahtar farklı command veya
+payload için kullanılırsa conflict üretilir. State'i değiştirmeyen başarılı
+command'lar da receipt bırakarak aynı sözleşmeye uyar.
+
+Receipt kayıtlarına bu aşamada TTL eklenmez. GameSession saklama süresi ve replay
+penceresi ürün davranışıyla birlikte belirlendiğinde session ve receipt retention
+politikası beraber tanımlanacaktır.
+
+Bu faz HTTP/WebSocket endpoint'i, realtime room runtime, oyun türüne özel command,
+outbox publisher veya message broker eklemez. Aynı handler'lar sonraki fazlarda
+HTTP ya da WebSocket/room runtime tarafından çağrılabilir.
+
+## ADR-013 — Realtime room runtime ve tek-yazar oda modeli
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+Her aktif GameSession odası aynı anda yalnız bir API instance'ı tarafından
+işletilir. Owner seçimi Redis lease ile yapılır; lease düzenli yenilenir ve her
+yeni owner monoton artan bir fencing token alır. Instance lease'i yenileyemezse
+odayı işlemeyi bırakır. Eski owner'ın event yayınlaması Redis tarafında fencing
+kontrolüyle reddedilir.
+
+Runtime'ın sorumlulukları şunlardır:
+
+- odayı yüklemek ve lease sahibi instance'ta sınırlı bir command kuyruğu açmak,
+- instance'a yönlendirilmiş Redis Stream command'larını oda içinde sırayla
+  mevcut CQRS handler'larına iletmek,
+- başarılı command sonrasında version'lı GameSession snapshot event'i yayınlamak,
+- `readyWindow` ve `countdown` deadline'larını kalıcı snapshot'tan yeniden kurmak,
+- owner kapanırsa yeni owner'ın MongoDB snapshot'ından devam edebilmesini
+  sağlamak.
+
+MongoDB kalıcı ve doğrulanabilir source of truth olmaya devam eder. Redis oda
+sahipliği, command taşıma ve anlık event yayını içindir. Pub/Sub event'i geçici
+bir kesintide kaçabilir; istemci reconnect olduğunda MongoDB'deki güncel snapshot
+ve version ile toparlanır. Command ise başarılı application işlemi sonrasında ACK
+edilir. ACK edilmeyen stream girdileri çalışan process içinde de yeniden teslim
+edilir; handler receipt'leri aynı command'ın state'i ikinci kez değiştirmesini
+engeller.
+
+Deadline geçişleri kullanıcıya ait sahte bir kimlikle değil,
+`gameSessionRuntime` system actor'ı ve session/deadline'dan türetilen deterministik
+bir command ID ile kalıcılaştırılır. Böylece failover sırasında aynı deadline iki
+instance tarafından denenirse Mongo optimistic concurrency ile command receipt
+birlikte sonucu tekilleştirir.
+
+Lease süresi; renew aralığı, command timeout'u ve retry bütçesini kapsamak
+zorundadır. Aksi bir runtime konfigürasyonu başlangıçta reddedilir. Bu, uzun süren
+bir command yüzünden instance'ın fark etmeden lease dışına çıkmasını önler.
+
+Kullanıcı actor kimliği command payload'ından kabul edilmez. Realtime envelope'un
+`actorId` alanı ileride JWT doğrulayan transport gateway tarafından doldurulur;
+runtime CQRS command'larındaki `UserID` değerini yalnız bu doğrulanmış alandan
+üretir. Böylece bir house üyesi payload içinde başka bir üyenin ID'sini yazarak
+onun adına ready, leave veya cancel işlemi yapamaz.
+
+Bu paket WebSocket endpoint'i, bağlantı kimlik doğrulama, presence lifecycle,
+slow-consumer politikası, Flappy Bird fiziği/tick'leri, skor, elenme veya
+leaderboard içermez. Bunlar sırasıyla transport gateway ve oyuna özel runtime
+paketlerinde ele alınacaktır.
+
+## ADR-014 — Realtime protocol ve WebSocket gateway
+
+**Durum:** Kabul edildi — 19 Eylül 2026
+
+Mobil istemciler realtime GameSession akışına aşağıdaki endpoint üzerinden
+bağlanır:
+
+```text
+GET /api/v1/game/:sessionId/realtime
+Authorization: Bearer <JWT>
+Upgrade: websocket
+```
+
+JWT HTTP upgrade tamamlanmadan doğrulanır. Session erişimi house membership
+policy ile kontrol edilir ve kullanıcı kimliği client mesajından alınmaz. Gateway,
+command envelope içindeki `actorId` değerini doğrulanmış JWT subject'inden üretir.
+Browser origin'i varsa `CORS_ALLOW_ORIGINS` ile eşleşmek zorundadır; native mobil
+istemcilerin Origin header'ı göndermemesi desteklenir.
+
+Client mesaj sözleşmesi protocol version, benzersiz message ID, command type ve
+oyuna/command'a ait payload'dan oluşur. Bu sürümün desteklediği ortak command'lar
+`gameSession.join`, `gameSession.setReady`, `gameSession.leave` ve
+`gameSession.cancel` ile sınırlıdır. Bilinmeyen üst seviye alanlar reddedilir.
+
+Server mesajları üç temel tipe ayrılır:
+
+- `gameSession.commandAccepted`: Mesaj gateway tarafından doğrulanmış ve kalıcı
+  Redis Stream'e yönlendirilmek üzere kabul edilmiştir; business işleminin
+  tamamlandığı anlamına gelmez.
+- `gameSession.snapshot`: Başarılı işlemin kesin sonucudur. `sequence`, kalıcı
+  GameSession version'ıdır ve `messageId` sonucu tetikleyen command ile
+  korelasyon kurar.
+- `gameSession.commandRejected`: Kalıcı olarak uygulanamayan command'ın hata kodu,
+  argümanları ve retry bilgisidir. Yalnız command'ı gönderen connection'a iletilir.
+
+Bağlantı kurulduğunda MongoDB'den güncel snapshot gönderilir. Gateway snapshot
+okunurken oluşabilecek Pub/Sub event'lerini geçici olarak buffer'lar; initial
+snapshot'tan eski version'ları eler ve daha yeni event'leri sırayla teslim eder.
+Reconnect kalıcı socket state'ini geri yüklemeye çalışmaz; MongoDB snapshot ve
+version üzerinden toparlanır.
+
+Her API instance'ı oda başına tek Redis Pub/Sub subscription açar ve event'i o
+instance'taki bağlantılara process içinde dağıtır. Her connection için ayrı Redis
+subscription açılmaz. Connection presence Redis'te TTL ile tutulur ve periyodik
+yenilenir; bağlantı kapanınca silinir.
+
+Gateway; 16 KiB inbound mesaj sınırı, bağlantı bazlı command rate limit,
+ping/pong idle timeout, tek-yazarlı socket writer ve 64 mesajlık sınırlı outbound
+queue uygular. Kuyruğu dolduran slow consumer veya art arda protokol ihlali yapan
+istemci policy violation ile kapatılır. Uygulama shutdown'ında önce yeni realtime
+trafik durdurulur ve socket/hub'lar kapatılır, sonra room runtime ve Redis
+coordinator kapatılır.
+
+Bu protokol Flappy Bird frame/input mesajlarını, fizik tick'lerini, skor, elenme
+ve leaderboard'u tanımlamaz. Bunlar ortak lifecycle command'larından ayrı,
+oyuna özel protokol ve runtime paketinde ele alınacaktır.
+
+## ADR-015 — Game catalog ve tek aktif session
+
+**Durum:** Kabul edildi — 20 Eylül 2026
+
+Mobil istemci oyun modu, protokol sürümü, oyuncu sayısı veya lobby sürelerini
+belirleyemez. Bu değerler uygulama içindeki statik game catalog tarafından
+yönetilir. İlk tanım `flappyBird` için realtime mod, protokol sürümü 1, minimum 2
+oyuncu, en fazla 8 oyuncu, 30 saniyelik ready window ve 3 saniyelik countdown
+olarak belirlenmiştir. Bir house'un daha düşük üye limiti varsa session oyuncu
+limiti house kapasitesine düşürülür; kapasite minimum oyuncu sayısından düşükse
+session oluşturulmaz.
+
+Aktif session açma ve keşfetme sözleşmeleri şöyledir:
+
+```text
+PUT /api/v1/game/:gameKey/session
+GET /api/v1/game/:gameKey/session?houseId=:houseId
+```
+
+`PUT` aynı house ve oyun için aktif session varsa onu döndürür, yoksa katalogdaki
+tanımdan yeni session oluşturur. Bu nedenle aynı aktif kaynak için tekrarlanabilir
+bir ensure işlemidir; command kimliği sunucu tarafından üretilir. `GET` hiçbir
+state üretmeden yalnız mevcut aktif session'ı döndürür. Her iki işlem de JWT ve
+house membership kontrolünden geçer.
+
+Aynı house ve game key için tek aktif session garantisi process belleğiyle değil,
+MongoDB'deki `ActiveGameSession` koleksiyonunun unique index'iyle sağlanır. Slot,
+session snapshot'ı, command receipt ve outbox mesajıyla aynı transaction içinde
+oluşturulur. Session `finished` veya `cancelled` olduğunda slot yine snapshot
+değişikliğiyle aynı transaction içinde silinir. Böylece farklı API instance'larına
+eşzamanlı gelen create istekleri iki ayrı aktif lobby üretemez.
+
+Migration mevcut non-terminal GameSession kayıtları için slotları backfill eder.
+Aynı house ve oyun için birden fazla aktif eski kayıt bulunursa sessizce seçim
+yapmak yerine migration hata verir; veri kaybına yol açabilecek otomatik iptal
+uygulanmaz.
