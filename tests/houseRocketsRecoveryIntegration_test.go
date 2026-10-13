@@ -138,6 +138,12 @@ func TestHouseRocketsRecoveryRestoresTerminalProposalAndCleansCheckpoint(t *test
 	if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, houseRockets.GameKey); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
 		t.Fatalf("active slot retained: %v", err)
 	}
+	// The commit is visible before the room deletes its checkpoint; the lease is
+	// released only after that cleanup, so wait for it before closing.
+	eventually(t, 2*time.Second, func() bool {
+		_, owned, err := second.CurrentRoomOwner(fixture.ctx, snapshot.SessionID)
+		return err == nil && !owned
+	})
 	closeRoomManager(t, manager)
 	cleanupLease, acquired, err := second.AcquireRoom(fixture.ctx, snapshot.SessionID, time.Second)
 	if err != nil || !acquired {

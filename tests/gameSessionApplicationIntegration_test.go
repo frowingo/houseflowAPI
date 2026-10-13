@@ -62,18 +62,37 @@ func (fixture *gameSessionApplicationFixture) membershipPolicy() *housePolicies.
 	)
 }
 
-func (fixture *gameSessionApplicationFixture) createSession(t *testing.T) gameDomain.SessionSnapshot {
+// sessionTestGameKey exercises the game-agnostic session layer without a runtime.
+const sessionTestGameKey = "sessionTestGame"
+
+func sessionTestCatalog(t *testing.T) *gameApplication.Catalog {
 	t.Helper()
-	catalog, err := gameApplication.NewDefaultCatalog()
+	catalog, err := gameApplication.NewCatalog(gameDomain.GameDefinition{
+		GameKey:         sessionTestGameKey,
+		ProtocolVersion: 1,
+		Mode:            gameDomain.RealtimeGame,
+		Rules: gameDomain.SessionRules{
+			MinimumPlayers:      2,
+			MaximumPlayers:      8,
+			ReadyWindowDuration: 30 * time.Second,
+			CountdownDuration:   3 * time.Second,
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return catalog
+}
+
+func (fixture *gameSessionApplicationFixture) createSession(t *testing.T) gameDomain.SessionSnapshot {
+	t.Helper()
+	catalog := sessionTestCatalog(t)
 	handler := gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy())
 	snapshot, err := handler.Handle(fixture.ctx, gameCommands.EnsureActiveGameSessionCommand{
 		CommandID: "create-session",
 		UserID:    fixture.ownerID,
 		HouseID:   fixture.houseID,
-		GameKey:   gameApplication.FlappyBirdGameKey,
+		GameKey:   sessionTestGameKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -83,16 +102,13 @@ func (fixture *gameSessionApplicationFixture) createSession(t *testing.T) gameDo
 
 func TestGameSessionApplicationCreateAndJoinAreIdempotent(t *testing.T) {
 	fixture := newGameSessionApplicationFixture(t)
-	catalog, err := gameApplication.NewDefaultCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := sessionTestCatalog(t)
 	createHandler := gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy())
 	createCommand := gameCommands.EnsureActiveGameSessionCommand{
 		CommandID: "create-idempotent",
 		UserID:    fixture.ownerID,
 		HouseID:   fixture.houseID,
-		GameKey:   gameApplication.FlappyBirdGameKey,
+		GameKey:   sessionTestGameKey,
 	}
 	created, err := createHandler.Handle(fixture.ctx, createCommand)
 	if err != nil {

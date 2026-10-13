@@ -684,6 +684,7 @@ type managedRoom struct {
 	pendingResult        *houseRockets.HouseRocketsResultModel
 	pendingCancellations []coordinationAbstract.CommandDelivery
 	checkpointMutex      sync.Mutex
+	checkpointReleased   bool
 	checkpointSequence   int64
 	checkpointCritical   string
 	checkpointAt         time.Time

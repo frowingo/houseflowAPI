@@ -653,3 +653,15 @@ Migration mevcut non-terminal GameSession kayıtları için slotları backfill e
 Aynı house ve oyun için birden fazla aktif eski kayıt bulunursa sessizce seçim
 yapmak yerine migration hata verir; veri kaybına yol açabilecek otomatik iptal
 uygulanmaz.
+
+## ADR-016 — Realtime protocol v1 ve `flappyBird` emekliye ayrıldı
+
+Protocol v1'i kullanan bir istemci yoktur. `flappyBird` katalog kaydı v1 ile
+çalışıyordu ancak bir runtime'ı yoktu: `running` durumuna geçen bir session hiçbir
+zaman `finished` olamıyor ve house'un aktif slotunu süresiz tutuyordu.
+
+Bu nedenle gateway yalnız `protocolVersion=2` ile upgrade kabul eder; v1 decoder,
+v1 mesaj üretimi ve gateway içindeki v1 dalları kaldırılmıştır. Varsayılan katalog
+yalnız etkinleştirilmiş oyunları içerir. `0043_retireFlappyBird` migration'ı kalan
+non-terminal `flappyBird` session'larını `cancelled/gameRetired` yapar ve aktif
+slotlarını siler. Yeni oyunlar ortak modül sözleşmesi üzerinden eklenecektir.

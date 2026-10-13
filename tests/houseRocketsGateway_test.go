@@ -22,15 +22,11 @@ func TestHouseRocketsActivationIsExplicitAndIndependentOfAppEnvironment(t *testi
 	}
 }
 
-func TestHouseRocketsCatalogActivationPreservesDefaultV1(t *testing.T) {
+func TestHouseRocketsCatalogActivationIsExplicit(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		catalog, err := gameApplication.NewDefaultCatalog(gameApplication.CatalogOptions{EnableHouseRockets: enabled})
 		if err != nil {
 			t.Fatal(err)
-		}
-		flappy, err := catalog.Find(gameApplication.FlappyBirdGameKey)
-		if err != nil || flappy.ProtocolVersion != 1 {
-			t.Fatalf("flappy regression: %+v %v", flappy, err)
 		}
 		rockets, err := catalog.Find(houseRockets.GameKey)
 		if enabled && (err != nil || rockets.ProtocolVersion != 2 || rockets.Rules.MaximumPlayers != 8) {

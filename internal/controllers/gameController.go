@@ -56,7 +56,7 @@ func (controller *GameController) GetResult(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param gameKey path string true "Game key" example(flappyBird)
+// @Param gameKey path string true "Game key" example(houseRockets)
 // @Param request body dtos.EnsureGameSessionModel true "House selection"
 // @Success 200 {object} core.ApiResponse[dtos.GameSessionResponseModel]
 // @Failure 400 {object} core.ErrorResponse
@@ -98,7 +98,7 @@ func (controller *GameController) EnsureActiveSession(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param gameKey path string true "Game key" example(flappyBird)
+// @Param gameKey path string true "Game key" example(houseRockets)
 // @Param houseId query string true "House ID"
 // @Success 200 {object} core.ApiResponse[dtos.GameSessionResponseModel]
 // @Failure 400 {object} core.ErrorResponse

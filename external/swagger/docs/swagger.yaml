@@ -1317,7 +1317,7 @@ paths:
         and game without creating one.
       parameters:
       - description: Game key
-        example: flappyBird
+        example: houseRockets
         in: path
         name: gameKey
         required: true
@@ -1362,7 +1362,7 @@ paths:
         creates one from the server-side game catalog.
       parameters:
       - description: Game key
-        example: flappyBird
+        example: houseRockets
         in: path
         name: gameKey
         required: true

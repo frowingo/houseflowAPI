@@ -2,7 +2,6 @@ package realtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -175,24 +174,15 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		if err != nil {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
-		version := ProtocolVersion
-		if query := c.Query("protocolVersion"); query != "" {
-			parsed, parseErr := strconv.Atoi(query)
-			if parseErr != nil {
-				parsed = 0
-			}
-			version = parsed
+		version, _ := strconv.Atoi(c.Query("protocolVersion"))
+		if version != V2ProtocolVersion || snapshot.ProtocolVersion != V2ProtocolVersion || snapshot.GameKey != houseRockets.GameKey {
+			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewLocalizedError(unsupportedProtocolErrorCode))
 		}
-		if version != snapshot.ProtocolVersion || (version != 1 && version != 2) || (version == 2 && snapshot.GameKey != houseRockets.GameKey) {
-			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewLocalizedError("realtime.error.unsupported_protocol"))
+		if !gateway.options.EnableHouseRockets {
+			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewNotFoundError("game.error.definition_not_found"))
 		}
-		if snapshot.GameKey == houseRockets.GameKey {
-			if !gateway.options.EnableHouseRockets {
-				return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewNotFoundError("game.error.definition_not_found"))
-			}
-			if err := gateway.requireActiveMember(requestCtx, snapshot.HouseID, userID); err != nil {
-				return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
-			}
+		if err := gateway.requireActiveMember(requestCtx, snapshot.HouseID, userID); err != nil {
+			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
 		reservation, err := gateway.reserveConnection()
 		if err != nil {
@@ -213,7 +203,6 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 			}
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
-		c.Locals("realtimeProtocolVersion", version)
 		c.Locals("realtimeEpoch", ownership.RuntimeEpoch)
 		c.Locals("realtimeReservation", reservation)
 		if err := c.Next(); err != nil {
@@ -290,9 +279,7 @@ func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
 	presenceActive := false
 	writerStarted := false
 	defer func() {
-		if connection.v2 != nil {
-			connection.disconnectController()
-		}
+		connection.disconnectController()
 		connection.stop(fasthttpWebsocket.CloseNormalClosure, "connection closed")
 		if writerStarted {
 			<-connection.writerDone
@@ -341,13 +328,7 @@ func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
 		connection.stop(fasthttpWebsocket.ClosePolicyViolation, "session unavailable")
 		return
 	}
-	activated := false
-	if connection.v2 != nil {
-		activated = connection.activateV2(snapshot)
-	} else {
-		activated = connection.activate(snapshotMessage(snapshot))
-	}
-	if !activated {
+	if !connection.activateV2(snapshot) {
 		connection.stop(fasthttpWebsocket.ClosePolicyViolation, "outbound queue unavailable")
 		return
 	}
@@ -356,8 +337,8 @@ func (gateway *Gateway) handleConnection(socket *fiberWebsocket.Conn) {
 		return
 	}
 	writerStarted = true
-	go connection.writeLoop(presence)
-	if connection.v2 != nil && gateway.startWorker() {
+	go connection.writeLoop()
+	if gateway.startWorker() {
 		go connection.controlLoop(presence)
 	}
 	connection.readLoop()
@@ -551,7 +532,6 @@ type gatewayClient struct {
 	outbound   chan []byte
 	mutex      sync.Mutex
 	active     bool
-	pending    []ServerMessage
 	stopOnce   sync.Once
 	rateLimit  connectionRateLimit
 	violations int
@@ -581,65 +561,9 @@ func newGatewayClient(
 		},
 	}
 	client.expiresAt, _ = socket.Locals("tokenExpiresAt").(time.Time)
-	if version, _ := socket.Locals("realtimeProtocolVersion").(int); version == 2 {
-		epoch, _ := socket.Locals("realtimeEpoch").(int64)
-		client.v2 = newV2ClientState(epoch)
-	}
+	epoch, _ := socket.Locals("realtimeEpoch").(int64)
+	client.v2 = newV2ClientState(epoch)
 	return client
-}
-
-func (client *gatewayClient) activate(initial ServerMessage) bool {
-	client.mutex.Lock()
-	defer client.mutex.Unlock()
-	messages := make([]ServerMessage, 0, len(client.pending)+1)
-	messages = append(messages, initial)
-	for _, pending := range client.pending {
-		if pending.Type == GameSessionSnapshotEventType && pending.Sequence <= initial.Sequence {
-			continue
-		}
-		messages = append(messages, pending)
-	}
-	if len(messages) > cap(client.outbound) {
-		return false
-	}
-	for _, message := range messages {
-		payload, err := json.Marshal(message)
-		if err != nil {
-			return false
-		}
-		client.outbound <- payload
-	}
-	client.pending = nil
-	client.active = true
-	return true
-}
-
-func (client *gatewayClient) enqueue(message ServerMessage) bool {
-	client.mutex.Lock()
-	if !client.active {
-		if len(client.pending) >= cap(client.outbound)-1 {
-			client.mutex.Unlock()
-			client.stop(fasthttpWebsocket.ClosePolicyViolation, "slow consumer")
-			return false
-		}
-		client.pending = append(client.pending, message)
-		client.mutex.Unlock()
-		return true
-	}
-	payload, err := json.Marshal(message)
-	if err != nil {
-		client.mutex.Unlock()
-		return false
-	}
-	select {
-	case client.outbound <- payload:
-		client.mutex.Unlock()
-		return true
-	default:
-		client.mutex.Unlock()
-		client.stop(fasthttpWebsocket.ClosePolicyViolation, "slow consumer")
-		return false
-	}
 }
 
 func (client *gatewayClient) readLoop() {
@@ -648,56 +572,7 @@ func (client *gatewayClient) readLoop() {
 	client.socket.SetPongHandler(func(string) error {
 		return client.socket.SetReadDeadline(time.Now().Add(client.gateway.options.IdleTimeout))
 	})
-	if client.v2 != nil {
-		client.readV2Loop()
-		return
-	}
-	for {
-		messageType, payload, err := client.socket.ReadMessage()
-		if err != nil {
-			return
-		}
-		_ = client.socket.SetReadDeadline(time.Now().Add(client.gateway.options.IdleTimeout))
-		if messageType != fasthttpWebsocket.TextMessage {
-			client.reject("", ProtocolError{Code: defaultInvalidCommandErrorCode})
-			if client.recordViolation() {
-				return
-			}
-			continue
-		}
-		if !client.rateLimit.allow(time.Now()) {
-			client.reject("", ProtocolError{Code: messageRateLimitErrorCode, Retryable: true})
-			if client.recordViolation() {
-				return
-			}
-			continue
-		}
-		message, err := decodeClientMessage(payload)
-		if err != nil {
-			client.reject(message.MessageID, protocolErrorFrom(err))
-			if client.recordViolation() {
-				return
-			}
-			continue
-		}
-		client.violations = 0
-		if !client.enqueue(newServerMessage(CommandAcceptedMessageType, message.MessageID)) {
-			return
-		}
-		commandCtx, cancel := context.WithTimeout(client.ctx, client.gateway.options.CommandTimeout)
-		err = client.gateway.manager.Dispatch(commandCtx, coordinationAbstract.MessageEnvelope{
-			MessageID:    message.MessageID,
-			RoomID:       client.roomID,
-			Type:         message.Type,
-			ActorID:      client.userID,
-			ConnectionID: client.id,
-			Payload:      message.Payload,
-		})
-		cancel()
-		if err != nil {
-			client.reject(message.MessageID, ProtocolError{Code: roomUnavailableErrorCode, Retryable: true})
-		}
-	}
+	client.readV2Loop()
 }
 
 func (client *gatewayClient) recordViolation() bool {
@@ -709,17 +584,12 @@ func (client *gatewayClient) recordViolation() bool {
 	return true
 }
 
-func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
+// Presence is refreshed by controlLoop; this loop only owns socket writes.
+func (client *gatewayClient) writeLoop() {
 	defer client.gateway.workers.Done()
 	defer close(client.writerDone)
 	pingTicker := time.NewTicker(client.gateway.options.PingInterval)
-	presenceTicker := time.NewTicker(client.gateway.options.PresenceRefresh)
 	defer pingTicker.Stop()
-	defer presenceTicker.Stop()
-	var snapshots <-chan []byte
-	if client.v2 != nil {
-		snapshots = client.v2.snapshots
-	}
 	var expiration <-chan time.Time
 	if !client.expiresAt.IsZero() {
 		timer := time.NewTimer(time.Until(client.expiresAt))
@@ -738,21 +608,20 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 		return true
 	}
 	for {
-		if client.v2 != nil {
-			select {
-			case payload := <-client.outbound:
-				if !write(payload) {
-					return
-				}
-				continue
-			default:
+		// Control/session messages are ordered ahead of coalesced motion frames.
+		select {
+		case payload := <-client.outbound:
+			if !write(payload) {
+				return
 			}
+			continue
+		default:
 		}
 		select {
 		case <-expiration:
 			client.stop(fasthttpWebsocket.ClosePolicyViolation, "authentication expired")
 			return
-		case payload := <-snapshots:
+		case payload := <-client.v2.snapshots:
 			if !write(payload) {
 				return
 			}
@@ -769,56 +638,25 @@ func (client *gatewayClient) writeLoop(presence coordinationAbstract.Presence) {
 				client.stop(fasthttpWebsocket.CloseAbnormalClosure, "ping failed")
 				return
 			}
-		case <-presenceTicker.C:
-			if client.v2 != nil {
-				continue
-			}
-			presenceCtx, cancel := context.WithTimeout(client.ctx, client.gateway.options.WriteTimeout)
-			err := client.gateway.coordinator.TouchPresence(
-				presenceCtx,
-				presence,
-				client.gateway.options.PresenceTTL,
-			)
-			cancel()
-			if err != nil {
-				client.gateway.report(client.roomID, err)
-				client.stop(fasthttpWebsocket.CloseTryAgainLater, "presence unavailable")
-				return
-			}
 		}
 	}
 }
 
 func (client *gatewayClient) reject(messageID string, protocolError ProtocolError) {
-	if client.v2 != nil {
-		client.enqueueV2(NewV2ErrorMessage(messageID, time.Now(), V2ProtocolError{Code: protocolError.Code, Args: protocolError.Args, Retryable: protocolError.Retryable}), "", 0)
-		return
-	}
-	message := newServerMessage(CommandRejectedMessageType, messageID)
-	message.Error = &protocolError
-	client.enqueue(message)
+	client.enqueueV2(NewV2ErrorMessage(messageID, time.Now(), V2ProtocolError{Code: protocolError.Code, Args: protocolError.Args, Retryable: protocolError.Retryable}), "", 0)
 }
 
-func (client *gatewayClient) stop(code int, reason string) {
+// The close code documents intent at call sites; no close frame is written.
+func (client *gatewayClient) stop(_ int, reason string) {
 	client.stopOnce.Do(func() {
 		if reason == "slow consumer" {
 			client.gateway.options.Metrics.slowConsumers.Add(1)
 		}
 		client.cancel()
-		if client.v2 != nil {
-			// fasthttp's hijacked Conn.Close may defer closing until the handler
-			// returns. A net.Conn deadline interrupts the concurrent reader/writer
-			// immediately, without a blocking close-frame write in room fanout.
-			_ = client.socket.NetConn().SetDeadline(time.Now())
-			_ = client.socket.Close()
-			return
-		}
-		deadline := time.Now().Add(client.gateway.options.WriteTimeout)
-		_ = client.socket.WriteControl(
-			fasthttpWebsocket.CloseMessage,
-			fasthttpWebsocket.FormatCloseMessage(code, reason),
-			deadline,
-		)
+		// fasthttp's hijacked Conn.Close may defer closing until the handler
+		// returns. A net.Conn deadline interrupts the concurrent reader/writer
+		// immediately, without a blocking close-frame write in room fanout.
+		_ = client.socket.NetConn().SetDeadline(time.Now())
 		_ = client.socket.Close()
 	})
 }
@@ -893,35 +731,4 @@ func (hub *roomHub) stop() {
 		hub.cancel()
 		_ = hub.subscription.Close()
 	})
-}
-
-func snapshotMessage(snapshot gameDomain.SessionSnapshot) ServerMessage {
-	payload, _ := json.Marshal(snapshot)
-	message := newServerMessage(GameSessionSnapshotEventType, "")
-	message.Sequence = snapshot.Version
-	message.Payload = payload
-	return message
-}
-
-func serverMessageFromEvent(event coordinationAbstract.MessageEnvelope) ServerMessage {
-	message := ServerMessage{
-		ProtocolVersion: ProtocolVersion,
-		MessageID:       event.MessageID,
-		Type:            event.Type,
-		Sequence:        event.Sequence,
-		SentAt:          event.CreatedAt,
-	}
-	if message.SentAt.IsZero() {
-		message.SentAt = time.Now().UTC()
-	}
-	if event.Type == CommandRejectedMessageType {
-		var protocolError ProtocolError
-		if err := json.Unmarshal(event.Payload, &protocolError); err != nil {
-			protocolError = ProtocolError{Code: defaultInternalCommandErrorCode, Retryable: true}
-		}
-		message.Error = &protocolError
-	} else {
-		message.Payload = event.Payload
-	}
-	return message
 }

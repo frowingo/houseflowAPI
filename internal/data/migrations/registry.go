@@ -69,5 +69,7 @@ func AllMigrations() []Migration {
 		&gameCatalogActiveSession{},
 		&gameRuntimeOwner{},
 		&gameMatchResult{},
+		// --- Protocol v1 Retirement ---
+		&retireFlappyBird{},
 	}
 }

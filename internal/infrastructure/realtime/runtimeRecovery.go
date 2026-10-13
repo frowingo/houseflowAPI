@@ -33,6 +33,9 @@ func (room *managedRoom) protectCheckpoint(checkpoint *houseRockets.RuntimeCheck
 	}
 	room.checkpointMutex.Lock()
 	defer room.checkpointMutex.Unlock()
+	if room.checkpointReleased {
+		return nil
+	}
 	critical := checkpoint.CriticalKey()
 	if checkpoint.Sequence <= room.checkpointSequence {
 		if critical == room.checkpointCritical {
@@ -63,6 +66,22 @@ func (room *managedRoom) protectCheckpoint(checkpoint *houseRockets.RuntimeCheck
 	room.manager.options.Metrics.checkpointBytes.Add(uint64(len(payload)))
 	room.checkpointSequence, room.checkpointCritical, room.checkpointAt = checkpoint.Sequence, critical, time.Now()
 	return nil
+}
+
+// releaseCheckpoint deletes the checkpoint of a committed match. Like lease
+// release it outlives room cancellation, so shutdown right after a commit still
+// cleans up; frames still queued for publication must not recreate it.
+func (room *managedRoom) releaseCheckpoint() error {
+	store, ok := room.manager.coordinator.(coordinationAbstract.RuntimeCheckpointStore)
+	if !ok {
+		return nil
+	}
+	room.checkpointMutex.Lock()
+	defer room.checkpointMutex.Unlock()
+	room.checkpointReleased = true
+	ctx, cancel := context.WithTimeout(context.Background(), roomCleanupTimeout)
+	defer cancel()
+	return store.DeleteRuntimeCheckpoint(ctx, room.lease)
 }
 
 func (room *managedRoom) restoreGameRuntime(snapshot gameDomain.SessionSnapshot) (*houseRockets.Runtime, bool, error) {

@@ -614,7 +614,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "example": "flappyBird",
+                        "example": "houseRockets",
                         "description": "Game key",
                         "name": "gameKey",
                         "in": "path",
@@ -681,7 +681,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "example": "flappyBird",
+                        "example": "houseRockets",
                         "description": "Game key",
                         "name": "gameKey",
                         "in": "path",

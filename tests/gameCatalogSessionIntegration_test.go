@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	gameApplication "houseflowApi/internal/application/game"
+	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
@@ -28,35 +30,21 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-func TestDefaultGameCatalogOwnsFlappyBirdSessionRules(t *testing.T) {
+func TestDefaultGameCatalogAdvertisesOnlyEnabledGames(t *testing.T) {
 	catalog, err := gameApplication.NewDefaultCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition, err := catalog.Find(gameApplication.FlappyBirdGameKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if definition.Mode != gameDomain.RealtimeGame || definition.ProtocolVersion != 1 {
-		t.Fatalf("definition mode/version = %s/%d", definition.Mode, definition.ProtocolVersion)
-	}
-	if definition.Rules.MinimumPlayers != 2 ||
-		definition.Rules.MaximumPlayers != 8 ||
-		definition.Rules.ReadyWindowDuration != 30*time.Second ||
-		definition.Rules.CountdownDuration != 3*time.Second {
-		t.Fatalf("unexpected Flappy Bird rules: %+v", definition.Rules)
-	}
-	if _, err := catalog.Find("unknownGame"); err == nil {
-		t.Fatal("unknown game must not resolve from the catalog")
+	for _, gameKey := range []string{"flappyBird", "unknownGame"} {
+		if _, err := catalog.Find(gameKey); !errors.Is(err, gameAbstract.ErrGameDefinitionNotFound) {
+			t.Fatalf("%s must not resolve from the default catalog: %v", gameKey, err)
+		}
 	}
 }
 
 func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T) {
 	fixture := newGameSessionApplicationFixture(t)
-	catalog, err := gameApplication.NewDefaultCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := sessionTestCatalog(t)
 	handler := gameCommands.NewEnsureActiveGameSessionHandler(
 		fixture.repository,
 		catalog,
@@ -77,7 +65,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 				CommandID: fmt.Sprintf("ensure-%d", requestIndex),
 				UserID:    fixture.ownerID,
 				HouseID:   fixture.houseID,
-				GameKey:   gameApplication.FlappyBirdGameKey,
+				GameKey:   sessionTestGameKey,
 			})
 			results <- result
 			errorsChannel <- err
@@ -122,7 +110,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 		CommandID: "ensure-replacement",
 		UserID:    fixture.ownerID,
 		HouseID:   fixture.houseID,
-		GameKey:   gameApplication.FlappyBirdGameKey,
+		GameKey:   sessionTestGameKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +125,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 	)
 	discovered, err := queryHandler.Handle(fixture.ctx, gameQueries.GetActiveGameSessionQuery{
 		HouseID: fixture.houseID,
-		GameKey: gameApplication.FlappyBirdGameKey,
+		GameKey: sessionTestGameKey,
 		UserID:  fixture.memberID,
 	})
 	if err != nil {
@@ -150,10 +138,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 
 func TestGameSessionHTTPEnsuresAndDiscoversActiveSession(t *testing.T) {
 	fixture := newGameSessionApplicationFixture(t)
-	catalog, err := gameApplication.NewDefaultCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := sessionTestCatalog(t)
 	mediator := cqrs.New()
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](
 		mediator,
@@ -184,7 +169,7 @@ func TestGameSessionHTTPEnsuresAndDiscoversActiveSession(t *testing.T) {
 
 	missingRequest := httptest.NewRequest(
 		http.MethodGet,
-		"/api/v1/game/flappyBird/session?houseId="+fixture.houseID,
+		"/api/v1/game/"+sessionTestGameKey+"/session?houseId="+fixture.houseID,
 		nil,
 	)
 	missingRequest.Header.Set("Authorization", "Bearer "+token)
@@ -203,7 +188,7 @@ func TestGameSessionHTTPEnsuresAndDiscoversActiveSession(t *testing.T) {
 	}
 	ensureRequest := httptest.NewRequest(
 		http.MethodPut,
-		"/api/v1/game/flappyBird/session",
+		"/api/v1/game/"+sessionTestGameKey+"/session",
 		bytes.NewReader(body),
 	)
 	ensureRequest.Header.Set("Authorization", "Bearer "+token)
@@ -220,13 +205,13 @@ func TestGameSessionHTTPEnsuresAndDiscoversActiveSession(t *testing.T) {
 	if err := json.NewDecoder(ensureResponse.Body).Decode(&ensured); err != nil {
 		t.Fatal(err)
 	}
-	if !ensured.Success || ensured.Data.SessionId == "" || ensured.Data.GameKey != gameApplication.FlappyBirdGameKey {
+	if !ensured.Success || ensured.Data.SessionId == "" || ensured.Data.GameKey != sessionTestGameKey {
 		t.Fatalf("unexpected ensure response: %+v", ensured)
 	}
 
 	discoverRequest := httptest.NewRequest(
 		http.MethodGet,
-		"/api/v1/game/flappyBird/session?houseId="+fixture.houseID,
+		"/api/v1/game/"+sessionTestGameKey+"/session?houseId="+fixture.houseID,
 		nil,
 	)
 	discoverRequest.Header.Set("Authorization", "Bearer "+token)
@@ -254,7 +239,7 @@ func TestGameCatalogMigrationBackfillsExistingActiveSession(t *testing.T) {
 	_, err := fixture.db.Collection(database.GameSessionCollectionName).InsertOne(fixture.ctx, bson.M{
 		"_id":             sessionID,
 		"houseId":         fixture.houseID,
-		"gameKey":         gameApplication.FlappyBirdGameKey,
+		"gameKey":         sessionTestGameKey,
 		"protocolVersion": 1,
 		"mode":            "realtime",
 		"state":           "lobby",
@@ -286,13 +271,66 @@ func TestGameCatalogMigrationBackfillsExistingActiveSession(t *testing.T) {
 	active, err := fixture.repository.FindActive(
 		fixture.ctx,
 		fixture.houseID,
-		gameApplication.FlappyBirdGameKey,
+		sessionTestGameKey,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if active.Snapshot().SessionID != sessionID {
 		t.Fatalf("backfilled session = %s, want %s", active.Snapshot().SessionID, sessionID)
+	}
+}
+
+func TestRetireFlappyBirdMigrationReleasesActiveSlots(t *testing.T) {
+	fixture := newGameSessionApplicationFixture(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	sessionID := uuid.NewString()
+	_, err := fixture.db.Collection(database.GameSessionCollectionName).InsertOne(fixture.ctx, bson.M{
+		"_id":             sessionID,
+		"houseId":         fixture.houseID,
+		"gameKey":         "flappyBird",
+		"protocolVersion": 1,
+		"mode":            "realtime",
+		"state":           "countdown",
+		"rules": bson.M{
+			"minimumPlayers":          2,
+			"maximumPlayers":          4,
+			"readyWindowMilliseconds": int64(30000),
+			"countdownMilliseconds":   int64(3000),
+		},
+		"players": bson.A{
+			bson.M{"playerId": fixture.ownerID, "state": "ready", "joinedAt": now, "readyAt": now},
+			bson.M{"playerId": fixture.memberID, "state": "ready", "joinedAt": now, "readyAt": now},
+		},
+		"createdBy":       fixture.ownerID,
+		"createdAt":       now,
+		"updatedAt":       now,
+		"countdownEndsAt": now.Add(3 * time.Second),
+		"version":         int64(5),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Collection(database.ActiveGameSessionCollectionName).InsertOne(fixture.ctx, bson.M{"houseId": fixture.houseID, "gameKey": "flappyBird", "sessionId": sessionID, "createdAt": now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Collection("_migrations").DeleteOne(fixture.ctx, bson.M{"version": "0043"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrations.RunAll(fixture.ctx, fixture.db, migrations.AllMigrations()); err != nil {
+		t.Fatal(err)
+	}
+
+	retired, err := fixture.repository.FindByID(fixture.ctx, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := retired.Snapshot()
+	if snapshot.State != gameDomain.SessionCancelled || snapshot.EndReason != "gameRetired" || snapshot.Version != 6 || !snapshot.CountdownEndsAt.IsZero() || snapshot.EndedAt.IsZero() {
+		t.Fatalf("retired session = %+v", snapshot)
+	}
+	if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, "flappyBird"); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
+		t.Fatalf("retired active slot lookup = %v", err)
 	}
 }
 
