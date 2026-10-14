@@ -76,5 +76,7 @@ func AllMigrations() []Migration {
 		&retireGameOutbox{},
 		// --- Game Config Collection ---
 		&gameConfig{},
+		// --- Turn-Based Games ---
+		&turnGameLocalizations{},
 	}
 }

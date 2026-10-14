@@ -74,7 +74,7 @@ func (repository *GameMatchRepository) Complete(ctx context.Context, completion 
 		return gameDomain.MatchResult{}, err
 	}
 	if result.Validate() != nil || strings.TrimSpace(completion.ResultEventType) == "" ||
-		!resultBelongsToSession(result, snapshot) || !ownerCompletesResult(owner, result) {
+		!resultBelongsToSession(result, snapshot) || (owner != nil && !ownerCompletesResult(*owner, result)) {
 		return gameDomain.MatchResult{}, gameAbstract.ErrInvalidPersistenceBatch
 	}
 	if completion.TriggerCommand != nil {
@@ -89,7 +89,13 @@ func (repository *GameMatchRepository) Complete(ctx context.Context, completion 
 		return gameDomain.MatchResult{}, gameAbstract.ErrInvalidPersistenceBatch
 	}
 	now := time.Now().UTC()
-	document := gameMatchResultDocument{SessionID: result.SessionID, HouseID: result.HouseID, GameKey: result.GameKey, SchemaVersion: result.SchemaVersion, Status: result.Status, EndReason: result.EndReason, StartedAt: result.StartedAt, EndedAt: result.EndedAt, ResultEventType: completion.ResultEventType, RuntimeEpoch: owner.Generation, Payload: payload, PayloadHash: hash, CreatedAt: now}
+	// The epoch records which fence produced the result: the runtime owner's
+	// generation, or the session version a turn game's last command replaced.
+	epoch := expectedVersion
+	if owner != nil {
+		epoch = owner.Generation
+	}
+	document := gameMatchResultDocument{SessionID: result.SessionID, HouseID: result.HouseID, GameKey: result.GameKey, SchemaVersion: result.SchemaVersion, Status: result.Status, EndReason: result.EndReason, StartedAt: result.StartedAt, EndedAt: result.EndedAt, ResultEventType: completion.ResultEventType, RuntimeEpoch: epoch, Payload: payload, PayloadHash: hash, CreatedAt: now}
 	// A cancelled match has no winner to keep; it expires with its session.
 	if result.Status == gameDomain.MatchCancelled {
 		document.ExpiresAt = cancelledExpiry(snapshot.State, snapshot.EndedAt)
@@ -111,12 +117,14 @@ func (repository *GameMatchRepository) Complete(ctx context.Context, completion 
 		}
 		// A conditional write fences concurrent ownership claims: a stale owner
 		// cannot commit a result based only on a transaction's snapshot read.
-		fence, err := repository.results.Database().Collection(RuntimeOwnerCollectionName).UpdateOne(txCtx, bson.M{"_id": owner.SessionID, "generation": owner.Generation, "ownerInstanceId": owner.OwnerInstanceID, "leaseId": owner.LeaseID, "started": true, "completed": bson.M{"$ne": true}}, bson.M{"$set": bson.M{"completed": true, "expiresAt": runtimeOwnerExpiry(snapshot)}})
-		if err != nil {
-			return err
-		}
-		if fence.MatchedCount != 1 {
-			return gameAbstract.ErrRuntimeOwnerConflict
+		if owner != nil {
+			fence, err := repository.results.Database().Collection(RuntimeOwnerCollectionName).UpdateOne(txCtx, bson.M{"_id": owner.SessionID, "generation": owner.Generation, "ownerInstanceId": owner.OwnerInstanceID, "leaseId": owner.LeaseID, "started": true, "completed": bson.M{"$ne": true}}, bson.M{"$set": bson.M{"completed": true, "expiresAt": runtimeOwnerExpiry(snapshot)}})
+			if err != nil {
+				return err
+			}
+			if fence.MatchedCount != 1 {
+				return gameAbstract.ErrRuntimeOwnerConflict
+			}
 		}
 		if err := repository.sessions.insertReceipt(txCtx, command, result.SessionID); err != nil {
 			return err

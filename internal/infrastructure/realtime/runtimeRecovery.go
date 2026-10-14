@@ -46,7 +46,9 @@ func (manager *RoomManager) recoveryLoop(ctx context.Context, scanner gameAbstra
 					break
 				}
 				after = session.Cursor
-				if manager.tickGame(session.GameKey) == nil || manager.localRoom(session.SessionID) != nil {
+				// A running turn game needs an owner to expire turns even when
+				// nobody is connected, so the house's active slot is released.
+				if manager.realtimeGame(session.GameKey) == nil || manager.localRoom(session.SessionID) != nil {
 					continue
 				}
 				_, exists, err := manager.coordinator.CurrentRoomOwner(workCtx, session.SessionID)

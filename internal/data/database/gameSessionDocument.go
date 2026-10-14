@@ -41,6 +41,8 @@ type gameSessionDocument struct {
 	// sessions written by an older release have neither.
 	ConfigVersion     int64                       `bson:"configVersion,omitempty"`
 	Settings          bson.M                      `bson:"settings,omitempty"`
+	GameState         bson.M                      `bson:"gameState,omitempty"`
+	TurnDeadline      *time.Time                  `bson:"turnDeadline,omitempty"`
 	Players           []gameSessionPlayerDocument `bson:"players"`
 	CreatedBy         string                      `bson:"createdBy"`
 	CreatedAt         time.Time                   `bson:"createdAt"`
@@ -76,6 +78,9 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 	}
 	// Settings were resolved from a valid object when the session was created.
 	settings, _ := jsonDocument(snapshot.Settings)
+	// A module's state is a JSON object; storing it as a subdocument keeps it
+	// readable. Its key order is not preserved, its content is.
+	gameState, _ := jsonDocument(snapshot.GameState)
 	activeKey := ""
 	if !isTerminalSession(snapshot.State) {
 		activeKey = activeSessionKey(snapshot.HouseID, snapshot.GameKey)
@@ -95,6 +100,8 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 		},
 		ConfigVersion:     snapshot.ConfigVersion,
 		Settings:          settings,
+		GameState:         gameState,
+		TurnDeadline:      optionalTime(snapshot.TurnDeadline),
 		Players:           players,
 		CreatedBy:         snapshot.CreatedBy,
 		CreatedAt:         snapshot.CreatedAt,
@@ -143,6 +150,8 @@ func (document gameSessionDocument) snapshot() gameDomain.SessionSnapshot {
 		},
 		ConfigVersion:     document.ConfigVersion,
 		Settings:          documentJSON(document.Settings),
+		GameState:         documentJSON(document.GameState),
+		TurnDeadline:      dereferenceTime(document.TurnDeadline),
 		Players:           players,
 		CreatedBy:         document.CreatedBy,
 		CreatedAt:         document.CreatedAt,

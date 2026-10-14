@@ -228,7 +228,7 @@ func TestGameSessionApplicationEnforcesHouseAuthorization(t *testing.T) {
 		t.Fatalf("outsider query error = %v, want house.error.user_not_member", err)
 	}
 
-	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames())
+	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames(), nil)
 	_, err = cancelHandler.Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{
 		CommandID: "member-cancel",
 		SessionID: session.SessionID,

@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -22,8 +23,10 @@ type DecodedV2ClientMessage struct {
 	Envelope ClientMessage
 	Ready    *dtos.RealtimeReadyModel
 	Ping     *dtos.RealtimePingModel
-	// Intent is a game-owned gameplay message, validated by its module.
+	// Intent is a tick game's gameplay message, validated by its module.
 	Intent module.Intent
+	// Move is a turn game's canonical move payload, validated by its module.
+	Move json.RawMessage
 }
 
 type V2ServerMessage[T any] struct {
@@ -83,7 +86,7 @@ func NewV2ServerMessage[T any](messageType string, messageID string, sequence *i
 
 // DecodeV2ClientMessage strictly decodes one client envelope. Lobby commands
 // and realtime controls are shared; game must decode its own gameplay intents.
-func DecodeV2ClientMessage(data []byte, game module.TickModule) (DecodedV2ClientMessage, error) {
+func DecodeV2ClientMessage(data []byte, game module.Game) (DecodedV2ClientMessage, error) {
 	var decoded DecodedV2ClientMessage
 	if len(data) > defaultMaximumMessageBytes {
 		return decoded, ErrInvalidClientMessage
@@ -118,7 +121,14 @@ func DecodeV2ClientMessage(data []byte, game module.TickModule) (DecodedV2Client
 			err = ErrInvalidClientMessage
 		}
 	case game != nil:
-		decoded.Intent, err = game.DecodeIntent(message.Type, message.Payload)
+		switch lane := game.(type) {
+		case module.TickModule:
+			decoded.Intent, err = lane.DecodeIntent(message.Type, message.Payload)
+		case module.TurnModule:
+			decoded.Move, err = lane.DecodeMove(message.Type, message.Payload)
+		default:
+			err = module.ErrUnsupportedIntent
+		}
 		if errors.Is(err, module.ErrUnsupportedIntent) {
 			err = ErrUnsupportedRoomCommand
 		}

@@ -18,7 +18,7 @@ import (
 
 // rocketsGames is the registry of a process with House Rockets enabled.
 func rocketsGames() *module.Registry {
-	registry, err := games.NewRegistry(games.Options{TickGames: true})
+	registry, err := games.NewRegistry(games.Options{Realtime: true})
 	if err != nil {
 		panic(err)
 	}

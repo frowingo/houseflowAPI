@@ -111,7 +111,7 @@ func TestGameConfigControlsNewSessionsOnly(t *testing.T) {
 	if _, err := gameQueries.NewGetActiveGameSessionHandler(fixture.repository, fixture.catalog, fixture.membershipPolicy()).Handle(fixture.ctx, gameQueries.GetActiveGameSessionQuery{HouseID: fixture.houseID, GameKey: houseRockets.GameKey, UserID: fixture.memberID}); err != nil {
 		t.Fatalf("active session lookup after switch-off: %v", err)
 	}
-	if _, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "config-cancel", SessionID: first.SessionID, UserID: fixture.ownerID}); err != nil {
+	if _, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames(), nil).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "config-cancel", SessionID: first.SessionID, UserID: fixture.ownerID}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fixture.ensureSession(); !helpers.IsApplicationError(err, "game.error.unavailable") {

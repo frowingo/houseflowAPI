@@ -92,11 +92,14 @@ func snapshotMessageHead(gameKey, messageID string, sequence int64, sentAt time.
 	return encoded[:len(encoded)-len("null}")], nil
 }
 
-// v2ClientState is one connection's view of its room's runtime: the newest
-// frame and epoch it has seen, its control grant and the work it still owes
-// the runtime (a snapshot request or a control bind).
+// v2ClientState is one connection's view of its room. For a tick game it is
+// the newest frame and epoch it has seen, its control grant and the work it
+// still owes the runtime (a snapshot request or a control bind); a turn game
+// needs only the module that renders its state.
 type v2ClientState struct {
-	game            module.TickModule
+	game            module.Game
+	tick            module.TickModule
+	turn            module.TurnModule
 	epoch           int64
 	sequence        int64
 	sessionVersion  int64
@@ -115,9 +118,15 @@ type v2ClientState struct {
 }
 
 // settings are the session's frozen game settings.
-func newV2ClientState(game module.TickModule, settings json.RawMessage, epoch int64) *v2ClientState {
-	return &v2ClientState{game: game, epoch: epoch, snapshots: make(chan []byte, 1), controlSignal: make(chan struct{}, 1), needSnapshot: true, needBind: true,
-		intentLimit: connectionRateLimit{window: time.Second, maximum: game.Timing(settings).MaximumIntentRate}, pingLimit: connectionRateLimit{window: time.Second, maximum: 5}}
+func newV2ClientState(game module.Game, settings json.RawMessage, epoch int64) *v2ClientState {
+	state := &v2ClientState{game: game, epoch: epoch, snapshots: make(chan []byte, 1), controlSignal: make(chan struct{}, 1), needSnapshot: true, needBind: true,
+		pingLimit: connectionRateLimit{window: time.Second, maximum: 5}}
+	state.tick, _ = game.(module.TickModule)
+	state.turn, _ = game.(module.TurnModule)
+	if state.tick != nil {
+		state.intentLimit = connectionRateLimit{window: time.Second, maximum: state.tick.Timing(settings).MaximumIntentRate}
+	}
+	return state
 }
 
 func (state *v2ClientState) gameKey() string { return state.game.Definition().GameKey }
@@ -182,13 +191,17 @@ func (client *gatewayClient) activateV2(snapshot gameDomain.SessionSnapshot) boo
 	initial := NewV2ServerMessage(GameSessionSnapshotEventType, "", &snapshot.Version, time.Now(), dtos.GameSessionToResponseModel(snapshot))
 	welcomeBytes, _ := json.Marshal(welcome)
 	initialBytes, _ := json.Marshal(initial)
+	state, hasState := client.turnStateMessage("", snapshot, time.Now())
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
-	if cap(client.outbound) < 2 {
+	if cap(client.outbound) < 3 {
 		return false
 	}
 	client.outbound <- welcomeBytes
 	client.outbound <- initialBytes
+	if hasState {
+		client.outbound <- state
+	}
 	client.v2.sessionVersion = snapshot.Version
 	for _, pending := range client.v2.pending {
 		if pending.kind == GameSessionSnapshotEventType && pending.sequence <= client.v2.sessionVersion {
@@ -237,7 +250,10 @@ func (hub *roomHub) broadcastEvent(event coordinationAbstract.MessageEnvelope) {
 	}
 	var frame *tickFrame
 	if event.Type == GameRuntimeSnapshotEventType {
-		decoded, err := newTickFrame(clients[0].v2.game, event.Payload, event.CreatedAt)
+		if clients[0].v2.tick == nil {
+			return
+		}
+		decoded, err := newTickFrame(clients[0].v2.tick, event.Payload, event.CreatedAt)
 		if err != nil {
 			return
 		}
@@ -270,6 +286,7 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 			return
 		}
 		client.enqueueV2(NewV2ServerMessage(event.Type, event.MessageID, &snapshot.Version, sentAt, dtos.GameSessionToResponseModel(snapshot)), event.Type, snapshot.Version)
+		client.enqueueTurnState(event.MessageID, snapshot, sentAt)
 		client.signalControl()
 	case GameRuntimeSnapshotEventType:
 		if frame != nil {
@@ -462,6 +479,10 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput("", message.MessageID, epoch), decoded.Intent)
 	case message.Type == PingMessageType:
 		client.enqueueV2(NewV2ServerMessage(PongMessageType, message.MessageID, nil, time.Now(), dtos.RealtimePongModel{PingID: decoded.Ping.PingID, ServerTime: time.Now().UTC()}), "", 0)
+		// Presence heartbeats feed tick controls and lobbies only.
+		if client.v2.tick == nil {
+			return nil
+		}
 		if controlsOwnPlayer {
 			control := client.controlInput(module.InputHeartbeat, message.MessageID, epoch)
 			control.ControlGeneration = grant.ControlGeneration
@@ -477,6 +498,10 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 			return err
 		}
 		client.enqueueV2(NewV2ServerMessage(GameSessionSnapshotEventType, message.MessageID, &snapshot.Version, time.Now(), dtos.GameSessionToResponseModel(snapshot)), "", 0)
+		if client.v2.tick == nil {
+			client.enqueueTurnState(message.MessageID, snapshot, time.Now())
+			return nil
+		}
 		client.mutex.Lock()
 		client.v2.needBind = true
 		client.v2.lastBind = time.Time{}
@@ -486,12 +511,16 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 		if _, err := client.verifyV2Access(ctx); err != nil {
 			return err
 		}
-		if message.Type == gameCommands.SetPlayerReadyCommandType {
+		if message.Type == gameCommands.SetPlayerReadyCommandType && client.v2.tick != nil {
 			if err := client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(lobbyHeartbeatInput, "", epoch), nil); err != nil {
 				return err
 			}
 		}
-		if err := client.gateway.manager.Dispatch(ctx, coordinationAbstract.MessageEnvelope{MessageID: message.MessageID, RoomID: client.roomID, ActorID: client.userID, ConnectionID: client.id, Type: message.Type, Payload: message.Payload}); err != nil {
+		payload := message.Payload
+		if decoded.Move != nil {
+			payload = decoded.Move
+		}
+		if err := client.gateway.manager.Dispatch(ctx, coordinationAbstract.MessageEnvelope{MessageID: message.MessageID, RoomID: client.roomID, ActorID: client.userID, ConnectionID: client.id, Type: message.Type, Payload: payload}); err != nil {
 			return err
 		}
 		client.enqueueV2(NewV2ServerMessage(CommandAcceptedMessageType, message.MessageID, nil, time.Now(), struct{}{}), "", 0)
@@ -551,6 +580,9 @@ func (client *gatewayClient) refreshPresence(presence coordinationAbstract.Prese
 // requestOwedControl asks the runtime for a snapshot and, while this player is
 // alive in play, rebinds its controls at most once per second.
 func (client *gatewayClient) requestOwedControl() {
+	if client.v2.tick == nil {
+		return
+	}
 	client.mutex.Lock()
 	epoch := client.v2.epoch
 	needSnapshot := client.v2.needSnapshot

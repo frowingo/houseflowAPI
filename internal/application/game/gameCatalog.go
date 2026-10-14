@@ -244,24 +244,11 @@ func resolveConfig(game module.Game, record gameAbstract.GameConfigRecord) (game
 			houseIDs = append(houseIDs, houseID)
 		}
 	}
-	settings, err := canonicalObject(resolved.Settings)
+	settings, err := helpers.CanonicalJSONObject(resolved.Settings)
 	if err != nil {
 		return gameDomain.GameConfig{}, errors.Join(module.ErrInvalidConfig, err)
 	}
 	return gameDomain.GameConfig{Version: record.Version, Enabled: record.Enabled, HouseIDs: houseIDs, Rules: resolved.Rules, Settings: settings}, nil
-}
-
-// canonicalObject sorts keys so frozen settings read back from storage are
-// byte-identical to the ones a session was created with.
-func canonicalObject(raw json.RawMessage) (json.RawMessage, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil {
-		return nil, err
-	}
-	return json.Marshal(object)
 }
 
 var _ gameAbstract.GameCatalog = (*Catalog)(nil)

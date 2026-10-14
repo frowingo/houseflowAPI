@@ -843,3 +843,69 @@ socket'leri hangi instance'a düştüyse orada kalıyor. Upgrade isteği, odanı
 Fly'ın `fly-replay` header'ıyla yönlendirilirse bütün odalar colocated olur ve local kısa yol
 frame trafiğinin tamamını Redis'ten çıkarır. Bu, Fly'a bağımlı bir routing kararı olduğu için
 ayrıca değerlendirilmelidir.
+
+## ADR-021 — Turn hattı ve pilot oyun (`ticTacToe`)
+
+Sıra tabanlı oyunlar ikinci hat olarak eklendi (`module.TurnModule`). Tick hattının aksine
+bellekte runtime yok; oyunun tüm durumu session dokümanında tutuluyor (`gameState`,
+`turnDeadline`). Her değişiklik, onu doğuran komutun içinde commit ediliyor; recovery yalnızca
+Mongo'dan okumaktan ibaret.
+
+**Hamle dayanıklı bir komut.** Client `<gameKey>.<hamle>` mesajı gönderir, modül
+`DecodeMove` ile katı biçimde doğrulayıp kanonik payload'a çevirir. Mesaj lobby komutlarıyla
+aynı Redis stream'inden odanın sahibine gider. Oda döngüsü `ApplyTurnMoveCommand`'ı çalıştırır:
+yeni durum ve komutun receipt'i aynı transaction'da yazılır, yani tekrar gönderilen hamle bir
+kez uygulanır. Kurala aykırı hamle `game.error.invalid_move`, sırası olmayan oyuncunun hamlesi
+`game.error.not_your_turn` ile reddedilir. Hamle geçmişi saklanmaz; oyunun ihtiyacı olan her
+şey durumdadır.
+
+**Turn motoru (`TurnEngine`).** Session'ı değiştiren her komut (advance, hamle, ayrılma, üyelik
+uzlaştırma, iptal) motoru kullanır. Motor:
+- maç yeni başladıysa ilk durumu kurar (`Start`);
+- süresi geçmiş turları sırayla çözer (`Expire`, komut başına en fazla 32 tur);
+- artık oynamayan oyuncuları düşer (`Reconcile`).
+
+Durumlar sıralı anahtarlı kanonik JSON olarak karşılaştırılır; değişmeyen durum version
+artırmaz. Bunu sözleşme testi zorunlu kılar: değişmemiş oyuncu listesinde `Reconcile` aynı
+durumu döndürmelidir.
+
+**Tur süresi mevcut deadline timer'ıyla yönetilir.** `sessionDeadline` çalışan bir turn
+oyununda `turnDeadline`'ı döndürür; oda döngüsü bunu ready window ve countdown gibi
+`AdvanceGameSessionCommand` ile ilerletir. Turlar kendi deadline zamanında çözülür, sonuç
+belirleyicidir. Recovery tarayıcısı çalışan turn oyunlarının odasını da açar. Kimse bağlı olmasa
+bile süresi dolan tur çözülür ve evin aktif slotu boşalır.
+
+**Maç sonu.** Modülün döndürdüğü sonuç, session'ın terminal geçişi ve tetikleyen komutun
+receipt'iyle tek transaction'da yazılır. Tick oyunlarının runtime owner fence'i turn oyununda
+yoktur (`MatchCompletion.Owner` nil): bütün durum session'da olduğundan beklenen session
+version'ı fence'tir ve sonuç dokümanının `runtimeEpoch` alanına yazılır. Çalışan bir turn
+oyununun iptali, oyuncu listesinden kurulan iptal sonucuyla biter. Oda, terminal session
+snapshot'ının ardından `<gameKey>.result` mesajını yayınlar.
+
+**Gateway.** Bağlantı iki hattı da kabul eder. Turn oyununda frame, kontrol bağlama ve lobby
+heartbeat'i yoktur; ping yalnızca pong döndürür. Sessiz bir oyuncuyu tur süresi çözer. Her
+session snapshot'ını, o oyuncunun görebileceği durum (`<gameKey>.state`, `View`) izler; gizli
+bilgi bu yüzden bağlantı başına modülde süzülür. Resync session'ı ve durumu yeniden gönderir.
+
+**Pilot oyun.** `internal/application/game/games/ticTacToe` iki kişilik Tic-Tac-Toe:
+- kazanma, beraberlik, süre aşımında hükmen yenilgi ve rakip ayrılınca kazanma kurallarını
+  içerir;
+- ayarlanabilir tek değeri tur süresidir (`turnTimeoutMilliseconds`, 5 sn - 5 dk).
+
+Core'a eklenen tek satır composition root'taki kayıttır. Kod mimari testi, iki hattın sözleşme
+testlerini ve gerçek gateway üzerinden uçtan uca bir maçı geçer. `Game` dokümanı olmadığı için
+kapalı başlar; açmak için `PUT /game/ticTacToe/config` (`expectedVersion: 0`) yeterlidir.
+
+Client'a yönelik mesajlar:
+
+| Yön | Tip | Payload |
+|---|---|---|
+| client → server | `ticTacToe.move` | `{"cell": 0-8}`; kabulde `commandAccepted` gelir |
+| server → client | `ticTacToe.state` | `board` (9 hücre, `"x"`/`"o"`/`null`), `players`, `currentPlayerId`, `turnEndsAt`, `yourMark`, `moves`, `phase` |
+| server → client | `ticTacToe.result` | `winnerId`, oyuncu başına `outcome` (`won`/`lost`/`draw`), `endReason`, son tahta |
+
+Lobby (join/ready/leave/cancel), welcome, ping ve resync, House Rockets ile aynı v2 zarfını
+kullanır.
+
+**Rolling deploy.** Turn oyunu açılmadıkça yeni alan yazılmaz. Pilot kapalı çıktığı için önceki
+sürüm turn session'ı görmez. Tick oyunlarının davranışı ve wire formatları değişmedi.

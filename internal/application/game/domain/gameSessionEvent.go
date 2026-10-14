@@ -14,6 +14,7 @@ const (
 	ReadyWindowCancelled SessionEventType = "session.readyWindowCancelled"
 	CountdownStarted     SessionEventType = "session.countdownStarted"
 	GameStarted          SessionEventType = "session.gameStarted"
+	GameStateChanged     SessionEventType = "session.gameStateChanged"
 	GameFinished         SessionEventType = "session.gameFinished"
 	GameCancelled        SessionEventType = "session.gameCancelled"
 )

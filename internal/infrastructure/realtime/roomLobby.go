@@ -118,7 +118,12 @@ func (room *managedRoom) reconcilePlayers(snapshot gameDomain.SessionSnapshot, a
 	if at.Before(snapshot.UpdatedAt) {
 		at = snapshot.UpdatedAt
 	}
-	controlTimeout := room.tick.game.Timing(snapshot.Settings).ControlTimeout
+	// Lobby heartbeats belong to tick games; a silent player in a turn game
+	// is resolved by the turn deadline instead.
+	var controlTimeout time.Duration
+	if room.tick.game != nil {
+		controlTimeout = room.tick.game.Timing(snapshot.Settings).ControlTimeout
+	}
 	groups := map[string][]string{"membershipRevoked": {}, "connectionExpired": {}}
 	room.lobby.mutex.Lock()
 	for _, player := range snapshot.Players {
@@ -129,7 +134,7 @@ func (room *managedRoom) reconcilePlayers(snapshot gameDomain.SessionSnapshot, a
 			groups["membershipRevoked"] = append(groups["membershipRevoked"], player.PlayerID)
 			continue
 		}
-		if player.State == gameDomain.PlayerReady {
+		if player.State == gameDomain.PlayerReady && controlTimeout > 0 {
 			lastSeen := room.lobby.lastSeen[player.PlayerID]
 			if lastSeen.Before(player.ReadyAt) {
 				lastSeen = player.ReadyAt

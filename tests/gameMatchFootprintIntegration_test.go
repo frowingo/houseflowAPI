@@ -100,7 +100,7 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	advance := gameCommands.NewAdvanceGameSessionHandler(sessions)
+	advance := gameCommands.NewAdvanceGameSessionHandler(sessions, nil)
 	for snapshot.State == gameDomain.SessionReadyWindow || snapshot.State == gameDomain.SessionCountdown {
 		at := snapshot.CountdownEndsAt
 		if snapshot.State == gameDomain.SessionReadyWindow {

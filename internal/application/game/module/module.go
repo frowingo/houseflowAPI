@@ -45,6 +45,9 @@ func ControlGrantedMessageType(gameKey string) string { return gameKey + ".contr
 func ResyncMessageType(gameKey string) string         { return gameKey + ".resync" }
 func ResultMessageType(gameKey string) string         { return gameKey + ".result" }
 
+// StateMessageType carries a turn game's state as one viewer may see it.
+func StateMessageType(gameKey string) string { return gameKey + ".state" }
+
 var (
 	ErrInvalidInput     = errors.New("invalid gameplay input")
 	ErrInputExpired     = errors.New("gameplay input has expired")
@@ -56,6 +59,7 @@ var (
 	ErrInputRate        = errors.New("gameplay input rate exceeded")
 	ErrFinished         = errors.New("runtime is terminal")
 	ErrInvalidConfig    = errors.New("game config is invalid")
+	ErrNotYourTurn      = errors.New("it is another player's turn")
 )
 
 // Phase is the transient presentation state of a tick runtime, independent of
@@ -251,6 +255,9 @@ type Game interface {
 	// ClientSettings is the public view of resolved settings a client needs
 	// before it connects.
 	ClientSettings(settings json.RawMessage) any
+	// Welcome is the first realtime message of a connection; settings are the
+	// session's frozen settings, empty meaning defaults.
+	Welcome(sessionID, connectionID string, settings json.RawMessage) any
 }
 
 // TickModule is a server-authoritative realtime game advanced by a fixed-rate
@@ -259,7 +266,6 @@ type Game interface {
 type TickModule interface {
 	Game
 	Timing(settings json.RawMessage) TickTiming
-	Welcome(sessionID, connectionID string, settings json.RawMessage) any
 	// DecodeIntent strictly decodes a client gameplay message type the module
 	// owns; unknown types return ErrUnsupportedIntent.
 	DecodeIntent(messageType string, payload json.RawMessage) (Intent, error)
@@ -320,4 +326,44 @@ type RuntimeObservation struct {
 	FramesCoalesced uint64
 	InputsCoalesced uint64
 	Overloaded      bool
+}
+
+// TurnModule is a turn-based game. Its state is part of the session document
+// and changes only inside durable session commands, so a recovering owner
+// simply reads it back. It performs no I/O and keeps no move history.
+type TurnModule interface {
+	Game
+	// Start creates the state of a session that has just started running.
+	Start(turn Turn) (TurnOutcome, error)
+	// DecodeMove strictly decodes a client move message type the module owns
+	// into its canonical payload; unknown types return ErrUnsupportedIntent.
+	DecodeMove(messageType string, payload json.RawMessage) (json.RawMessage, error)
+	// ApplyMove applies one player's canonical move. A move out of turn
+	// returns ErrNotYourTurn, one against the rules ErrInvalidInput.
+	ApplyMove(turn Turn, playerID string, move json.RawMessage) (TurnOutcome, error)
+	// Expire resolves the turn whose deadline passed at turn.Now.
+	Expire(turn Turn) (TurnOutcome, error)
+	// Reconcile continues the match without players the session no longer
+	// counts as playing; with nothing to change it returns the same state.
+	Reconcile(turn Turn) (TurnOutcome, error)
+	// View is the state as one player may see it; a spectator passes "".
+	View(turn Turn, playerID string) (any, error)
+}
+
+// Turn is the input of every turn-module call: the session, carrying its
+// frozen settings, roster and stored state (empty before Start), and the time
+// the change happens.
+type Turn struct {
+	Session gameDomain.SessionSnapshot
+	Now     time.Time
+}
+
+// TurnOutcome is a turn module's answer. Deadline is when the current turn
+// expires (zero for none). A Result ends the match; State is then the final
+// state kept with the finished session. The result payload must carry the
+// session ID as "sessionId".
+type TurnOutcome struct {
+	State    json.RawMessage
+	Deadline time.Time
+	Result   *gameDomain.MatchResult
 }

@@ -394,7 +394,7 @@ func TestHouseRocketsResultTransactionRollbackAndRetry(t *testing.T) {
 		}
 	}
 	// The ordinary cancellation handler recognizes the transaction's user receipt.
-	if _, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "cancel-match", SessionID: result.SessionID, UserID: fixture.ownerID}); err != nil {
+	if _, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames(), nil).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "cancel-match", SessionID: result.SessionID, UserID: fixture.ownerID}); err != nil {
 		t.Fatalf("cancel retry not idempotent: %v", err)
 	}
 }
@@ -506,7 +506,7 @@ func TestHouseRocketsGatewayRunningCancellationAndHTTPFallback(t *testing.T) {
 	if status, _ := fixture.resultHTTP(t, 0, session.SessionID, ""); status != 401 {
 		t.Fatalf("anonymous result: %d", status)
 	}
-	_, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "authorized-cancel", SessionID: session.SessionID, UserID: fixture.ownerID})
+	_, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames(), nil).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "authorized-cancel", SessionID: session.SessionID, UserID: fixture.ownerID})
 	if err != nil {
 		t.Fatalf("committed cancel receipt not replayable: %v", err)
 	}

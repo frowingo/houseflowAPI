@@ -13,7 +13,7 @@ import (
 // Game document says.
 func TestHouseRocketsIsRegisteredOnlyWithTickGames(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
-		catalog, err := builtinCatalog(games.Options{TickGames: enabled})
+		catalog, err := builtinCatalog(games.Options{Realtime: enabled})
 		if err != nil {
 			t.Fatal(err)
 		}

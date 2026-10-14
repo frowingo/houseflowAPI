@@ -96,7 +96,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 	assertDocumentCount(t, fixture, database.GameSessionCollectionName, 1)
 	assertActiveSlotCount(t, fixture, 1)
 
-	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames())
+	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames(), nil)
 	if _, err := cancelHandler.Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{
 		CommandID: "cancel-active",
 		SessionID: active.SessionID,

@@ -52,7 +52,7 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret")}
 	enabled := len(enabledOptions) == 0 || enabledOptions[0]
 	// A disabled game keeps its catalog entry but has no realtime module.
-	fixtureGames, err := games.NewRegistry(games.Options{TickGames: enabled})
+	fixtureGames, err := games.NewRegistry(games.Options{Realtime: enabled})
 	if err != nil {
 		t.Fatal(err)
 	}

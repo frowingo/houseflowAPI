@@ -63,16 +63,107 @@ func TestOnlyGameCompositionImportsConcreteGames(t *testing.T) {
 // Every tick module must satisfy what the shared core relies on. The checks run
 // against each enabled module, so a new game inherits them.
 func TestTickModulesHonourTheCoreContract(t *testing.T) {
-	registry := rocketsGames()
-	definitions := registry.Definitions()
-	sort.Slice(definitions, func(i, j int) bool { return definitions[i].GameKey < definitions[j].GameKey })
-	if len(definitions) == 0 {
+	verified := 0
+	for _, registered := range rocketsGames().Games() {
+		if game, tick := registered.(module.TickModule); tick {
+			verified++
+			t.Run(game.Definition().GameKey, func(t *testing.T) { verifyTickModule(t, game) })
+		}
+	}
+	if verified == 0 {
 		t.Fatal("no tick module to verify")
 	}
-	for _, definition := range definitions {
-		game, _ := registry.Tick(definition.GameKey)
-		t.Run(definition.GameKey, func(t *testing.T) { verifyTickModule(t, game) })
+}
+
+// Every turn module must satisfy what the turn engine relies on.
+func TestTurnModulesHonourTheCoreContract(t *testing.T) {
+	verified := 0
+	for _, registered := range rocketsGames().Games() {
+		if game, turn := registered.(module.TurnModule); turn {
+			verified++
+			t.Run(game.Definition().GameKey, func(t *testing.T) { verifyTurnModule(t, game) })
+		}
 	}
+	if verified == 0 {
+		t.Fatal("no turn module to verify")
+	}
+}
+
+func verifyTurnModule(t *testing.T, game module.TurnModule) {
+	definition := game.Definition()
+	if definition.ProtocolVersion != realtime.V2ProtocolVersion || definition.Mode != gameDomain.TurnBasedGame {
+		t.Fatalf("definition = %+v", definition)
+	}
+	defaults, err := game.ResolveConfig(module.Config{Rules: definition.Rules})
+	if err != nil || defaults.Rules != definition.Rules || !json.Valid(defaults.Settings) {
+		t.Fatalf("default config = %+v %v", defaults, err)
+	}
+	if _, err := game.ResolveConfig(module.Config{Rules: definition.Rules, Settings: json.RawMessage(`{"unknownSetting":1}`)}); !errors.Is(err, module.ErrInvalidConfig) {
+		t.Fatalf("unknown setting accepted: %v", err)
+	}
+	for name, value := range map[string]any{"welcome": game.Welcome("contract-session", "contract-connection", nil), "clientSettings": game.ClientSettings(defaults.Settings)} {
+		if encoded, err := json.Marshal(value); err != nil || len(encoded) < 2 || encoded[0] != '{' {
+			t.Fatalf("%s = %s %v", name, encoded, err)
+		}
+	}
+	if _, err := game.DecodeMove(definition.GameKey+".unknownMove", json.RawMessage(`{}`)); !errors.Is(err, module.ErrUnsupportedIntent) {
+		t.Fatalf("unknown move: %v", err)
+	}
+
+	session := runningContractSession(t, definition)
+	session.Settings = defaults.Settings
+	now := session.StartedAt
+	started, err := game.Start(module.Turn{Session: session, Now: now})
+	if err != nil || started.Result != nil || len(started.State) == 0 || started.State[0] != '{' || !json.Valid(started.State) || (!started.Deadline.IsZero() && !started.Deadline.After(now)) {
+		t.Fatalf("start = %+v %v", started, err)
+	}
+	session.GameState, session.TurnDeadline = started.State, started.Deadline
+	// An unchanged roster must not change the state: the engine reconciles
+	// after every command and would otherwise write a version each time.
+	unchanged, err := game.Reconcile(module.Turn{Session: session, Now: now})
+	if err != nil || unchanged.Result != nil || !sameJSONObject(t, unchanged.State, session.GameState) || !unchanged.Deadline.Equal(session.TurnDeadline) {
+		t.Fatalf("reconcile without changes = %+v %v", unchanged, err)
+	}
+	for _, viewer := range []string{"contract-a", ""} {
+		view, err := game.View(module.Turn{Session: session, Now: now}, viewer)
+		if encoded, marshalErr := json.Marshal(view); err != nil || marshalErr != nil || len(encoded) < 2 || encoded[0] != '{' {
+			t.Fatalf("view for %q = %s %v", viewer, encoded, err)
+		}
+	}
+
+	// A cancelled result reconstructed from the session must finalize against
+	// the terminal session and decode as the game's wire model.
+	cancelledAt := now.Add(time.Second)
+	cancelled, err := game.CancellationResult(session, module.EndCancelledByUser, cancelledAt)
+	if err != nil || cancelled.Validate() != nil || cancelled.Status != gameDomain.MatchCancelled {
+		t.Fatalf("cancellation result = %+v %v", cancelled, err)
+	}
+	terminal, err := gameDomain.RestoreGameSession(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := terminal.Cancel(cancelled.EndReason, cancelled.EndedAt); err != nil {
+		t.Fatal(err)
+	}
+	finalized, err := game.FinalizeResult(cancelled, terminal.Snapshot())
+	if err != nil || finalized.Validate() != nil {
+		t.Fatalf("finalize cancelled = %+v %v", finalized, err)
+	}
+	var identity struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(finalized.Payload, &identity); err != nil || identity.SessionID != session.SessionID {
+		t.Fatalf("result payload must carry its session ID: %s", finalized.Payload)
+	}
+	if _, err := game.DecodeResult(finalized); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+}
+
+func sameJSONObject(t *testing.T, first, second json.RawMessage) bool {
+	t.Helper()
+	var left, right any
+	return json.Unmarshal(first, &left) == nil && json.Unmarshal(second, &right) == nil && reflect.DeepEqual(left, right)
 }
 
 func verifyTickModule(t *testing.T, game module.TickModule) {

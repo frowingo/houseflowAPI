@@ -27,7 +27,7 @@ func NewService(
 		roomOptions.Metrics = &Metrics{}
 	}
 	gatewayOptions.Metrics = roomOptions.Metrics
-	if !roomOptions.Games.HasTickGames() {
+	if !roomOptions.Games.HasRealtimeGames() {
 		roomOptions.RecoveryScanInterval = -1
 	}
 	manager, err := NewRoomManager(coordinator, repository, sender, roomOptions)

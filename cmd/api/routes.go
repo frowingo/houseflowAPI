@@ -136,7 +136,7 @@ func SetupRoutes(
 	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
 	matchRepository := database.NewGameMatchRepository(client, dbName)
 	// Realtime games need the coordinator; without it no game module is registered.
-	gameRegistry, err := games.NewRegistry(games.Options{TickGames: coordinator != nil})
+	gameRegistry, err := games.NewRegistry(games.Options{Realtime: coordinator != nil})
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +151,8 @@ func SetupRoutes(
 	cqrs.MustRegister[[]gameApplication.CatalogEntry, gameQueries.GetGameCatalogQuery](applicationMediator, gameQueries.NewGetGameCatalogHandler(gameCatalog, houseMembershipPolicy))
 	cqrs.MustRegister[[]gameApplication.CatalogEntry, gameQueries.GetGameConfigsQuery](applicationMediator, gameQueries.NewGetGameConfigsHandler(gameCatalog))
 	cqrs.MustRegister[gameApplication.CatalogEntry, gameCommands.UpdateGameConfigCommand](applicationMediator, gameCommands.NewUpdateGameConfigHandler(gameCatalog, gameConfigRepository, reportGameConfig))
+	turnEngine := gameCommands.NewTurnEngine(gameRegistry, matchRepository)
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyTurnMoveCommand](applicationMediator, gameCommands.NewApplyTurnMoveHandler(gameSessionRepository, houseMembershipPolicy, turnEngine))
 	cqrs.MustRegister[gameDomain.MatchResult, gameCommands.CompleteMatchCommand](applicationMediator, gameCommands.NewCompleteMatchHandler(gameSessionRepository, matchRepository, gameRegistry))
 	cqrs.MustRegister[any, gameQueries.GetMatchResultQuery](applicationMediator, gameQueries.NewGetMatchResultHandler(gameSessionRepository, matchRepository, gameRegistry, houseMembershipPolicy))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](applicationMediator, gameQueries.NewAuthorizeCancellationHandler(gameSessionRepository, houseMembershipPolicy))
@@ -161,9 +163,9 @@ func SetupRoutes(
 	)
 	joinGameSessionHandler := gameCommands.NewJoinGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 	setPlayerReadyHandler := gameCommands.NewSetPlayerReadyHandler(gameSessionRepository, houseMembershipPolicy)
-	leaveGameSessionHandler := gameCommands.NewLeaveGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
-	cancelGameSessionHandler := gameCommands.NewCancelGameSessionHandler(gameSessionRepository, houseMembershipPolicy, gameRegistry)
-	advanceGameSessionHandler := gameCommands.NewAdvanceGameSessionHandler(gameSessionRepository)
+	leaveGameSessionHandler := gameCommands.NewLeaveGameSessionHandler(gameSessionRepository, houseMembershipPolicy, turnEngine)
+	cancelGameSessionHandler := gameCommands.NewCancelGameSessionHandler(gameSessionRepository, houseMembershipPolicy, gameRegistry, turnEngine)
+	advanceGameSessionHandler := gameCommands.NewAdvanceGameSessionHandler(gameSessionRepository, turnEngine)
 	getGameSessionHandler := gameQueries.NewGetGameSessionHandler(gameSessionRepository, houseMembershipPolicy)
 	getActiveGameSessionHandler := gameQueries.NewGetActiveGameSessionHandler(
 		gameSessionRepository,
@@ -198,7 +200,7 @@ func SetupRoutes(
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](applicationMediator, leaveGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](applicationMediator, cancelGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](applicationMediator, advanceGameSessionHandler)
-	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](applicationMediator, gameCommands.NewReconcileGameSessionPlayersHandler(gameSessionRepository))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](applicationMediator, gameCommands.NewReconcileGameSessionPlayersHandler(gameSessionRepository, turnEngine))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](applicationMediator, getGameSessionHandler)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](applicationMediator, getActiveGameSessionHandler)
 	userController := controllers.NewUserController(applicationMediator, localizationCache)

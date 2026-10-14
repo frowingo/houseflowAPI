@@ -22,10 +22,11 @@ type ReconcileGameSessionPlayersCommand struct {
 
 type ReconcileGameSessionPlayersHandler struct {
 	repository gameAbstract.GameSessionRepository
+	turns      *TurnEngine
 }
 
-func NewReconcileGameSessionPlayersHandler(repository gameAbstract.GameSessionRepository) *ReconcileGameSessionPlayersHandler {
-	return &ReconcileGameSessionPlayersHandler{repository: repository}
+func NewReconcileGameSessionPlayersHandler(repository gameAbstract.GameSessionRepository, turns *TurnEngine) *ReconcileGameSessionPlayersHandler {
+	return &ReconcileGameSessionPlayersHandler{repository: repository, turns: turns}
 }
 func (handler *ReconcileGameSessionPlayersHandler) Handle(ctx context.Context, command ReconcileGameSessionPlayersCommand) (gameDomain.SessionSnapshot, error) {
 	descriptor, err := describeCommand(command.CommandID, GameSessionRuntimeActorID, "gameSession.reconcilePlayers", struct {
@@ -51,5 +52,9 @@ func (handler *ReconcileGameSessionPlayersHandler) Handle(ctx context.Context, c
 	if err := session.ExcludePlayers(command.PlayerIDs, command.Reason, command.At); err != nil {
 		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
 	}
-	return saveSession(ctx, handler.repository, session, version, descriptor)
+	result, err := handler.turns.settle(session, command.At)
+	if err != nil {
+		return gameDomain.SessionSnapshot{}, mapTurnError(err)
+	}
+	return handler.turns.commit(ctx, handler.repository, session, version, descriptor, result)
 }

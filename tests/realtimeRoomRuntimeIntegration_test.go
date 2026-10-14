@@ -11,6 +11,7 @@ import (
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
+	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
 	infrastructureCoordination "houseflowApi/internal/infrastructure/coordination"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -229,8 +230,11 @@ func newTestRoomManager(
 
 func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediator {
 	mediator := cqrs.New()
-	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](mediator, gameCommands.NewReconcileGameSessionPlayersHandler(fixture.repository))
+	// The turn engine leaves every other game untouched.
+	turns := gameCommands.NewTurnEngine(rocketsGames(), database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name()))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](mediator, gameCommands.NewReconcileGameSessionPlayersHandler(fixture.repository, turns))
 	membershipPolicy := fixture.membershipPolicy()
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyTurnMoveCommand](mediator, gameCommands.NewApplyTurnMoveHandler(fixture.repository, membershipPolicy, turns))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](
 		mediator,
 		gameCommands.NewJoinGameSessionHandler(fixture.repository, membershipPolicy),
@@ -241,15 +245,15 @@ func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediat
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](
 		mediator,
-		gameCommands.NewLeaveGameSessionHandler(fixture.repository, membershipPolicy),
+		gameCommands.NewLeaveGameSessionHandler(fixture.repository, membershipPolicy, turns),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](
 		mediator,
-		gameCommands.NewCancelGameSessionHandler(fixture.repository, membershipPolicy, rocketsGames()),
+		gameCommands.NewCancelGameSessionHandler(fixture.repository, membershipPolicy, rocketsGames(), turns),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](
 		mediator,
-		gameCommands.NewAdvanceGameSessionHandler(fixture.repository),
+		gameCommands.NewAdvanceGameSessionHandler(fixture.repository, turns),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](
 		mediator,

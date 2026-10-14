@@ -35,6 +35,7 @@ type managedRoom struct {
 	snapshot      atomic.Pointer[gameDomain.SessionSnapshot]
 	lobby         lobbyState
 	tick          tickState
+	turn          module.TurnModule
 	completion    completionState
 	publishMutex  sync.Mutex
 	audience      audienceState
@@ -54,9 +55,9 @@ func (room *managedRoom) stop() {
 	room.stopOnce.Do(room.cancel)
 }
 
-// managesPlayers reports whether the room tracks membership, lobby heartbeats
-// and a frozen roster. Only games with a runtime have realtime players.
-func (room *managedRoom) managesPlayers() bool { return room.tick.game != nil }
+// managesPlayers reports whether the room tracks membership and realtime
+// players: every game with a module does.
+func (room *managedRoom) managesPlayers() bool { return room.tick.game != nil || room.turn != nil }
 
 func (room *managedRoom) leaseValid() bool {
 	deadline := room.leaseDeadline.Load()
@@ -107,6 +108,9 @@ func (room *managedRoom) syncSession(snapshot gameDomain.SessionSnapshot, refres
 		if err := room.refreshParticipants(snapshot); err != nil {
 			return err
 		}
+	}
+	if room.tick.game == nil {
+		return nil
 	}
 	return room.syncTick(snapshot)
 }
@@ -402,12 +406,34 @@ func (room *managedRoom) publishSnapshot(messageID string, snapshot gameDomain.S
 	if err != nil {
 		return err
 	}
-	return room.publish(room.ctx, coordinationAbstract.MessageEnvelope{
+	if err := room.publish(room.ctx, coordinationAbstract.MessageEnvelope{
 		MessageID: messageID,
 		Type:      GameSessionSnapshotEventType,
 		Sequence:  snapshot.Version,
 		Payload:   payload,
-	})
+	}); err != nil {
+		return err
+	}
+	return room.announceTurnResult(snapshot)
+}
+
+// announceTurnResult follows a turn game's terminal snapshot with its
+// committed result; a lobby cancellation has none. A lost publication is
+// recovered over HTTP.
+func (room *managedRoom) announceTurnResult(snapshot gameDomain.SessionSnapshot) error {
+	terminal := snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled
+	if room.turn == nil || !terminal || room.manager.options.MatchRepository == nil {
+		return nil
+	}
+	result, err := room.manager.options.MatchRepository.FindResult(room.ctx, snapshot.SessionID)
+	if errors.Is(err, gameAbstract.ErrMatchResultNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	resultType := module.ResultMessageType(snapshot.GameKey)
+	return room.publish(room.ctx, coordinationAbstract.MessageEnvelope{MessageID: resultType + ":" + snapshot.SessionID, Type: resultType, Payload: result.Payload})
 }
 
 func (room *managedRoom) publishCommandRejected(
@@ -437,6 +463,12 @@ func sessionDeadline(snapshot gameDomain.SessionSnapshot) (time.Time, bool) {
 		return snapshot.ReadyWindowEndsAt, !snapshot.ReadyWindowEndsAt.IsZero()
 	case gameDomain.SessionCountdown:
 		return snapshot.CountdownEndsAt, !snapshot.CountdownEndsAt.IsZero()
+	case gameDomain.SessionRunning:
+		// A turn game whose state was not created with its start is due now.
+		if snapshot.Mode == gameDomain.TurnBasedGame && len(snapshot.GameState) == 0 {
+			return snapshot.StartedAt, true
+		}
+		return snapshot.TurnDeadline, !snapshot.TurnDeadline.IsZero()
 	default:
 		return time.Time{}, false
 	}

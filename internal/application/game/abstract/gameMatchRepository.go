@@ -12,14 +12,16 @@ var (
 )
 
 // MatchCompletion is one atomic terminal transition, including the owner fence,
-// the client cancellation receipt, immutable result and active slot release.
+// the client command receipt, immutable result and active slot release.
 // Events are validated against the version change but are not persisted.
+// Owner fences a tick runtime's in-memory state; a turn game keeps its whole
+// state in the session, so it has none and the expected version is its fence.
 type MatchCompletion struct {
 	ExpectedVersion int64
 	Session         gameDomain.SessionSnapshot
 	Events          []gameDomain.SessionEvent
 	Result          gameDomain.MatchResult
-	Owner           RuntimeOwner
+	Owner           *RuntimeOwner
 	Command         CommandDescriptor
 	TriggerCommand  *CommandDescriptor
 	ResultEventType string

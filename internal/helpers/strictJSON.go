@@ -95,3 +95,19 @@ func rejectDuplicateJSONKeys(data []byte) error {
 	}
 	return EnsureJSONEnd(decoder)
 }
+
+// CanonicalJSONObject re-encodes a JSON object with sorted keys and numbers
+// as stored by MongoDB, so equal content always has equal bytes.
+func CanonicalJSONObject(raw json.RawMessage) (json.RawMessage, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, nil
+	}
+	var object map[string]any
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	if object == nil {
+		return nil, errors.New("JSON object is required")
+	}
+	return json.Marshal(object)
+}

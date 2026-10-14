@@ -100,7 +100,7 @@ func NewGateway(
 	if options.MaxConnections < 0 {
 		return nil, errors.New("maximum connections must not be negative")
 	}
-	if manager.options.Games.HasTickGames() && manager.options.ParticipantDirectory == nil {
+	if manager.options.Games.HasRealtimeGames() && manager.options.ParticipantDirectory == nil {
 		return nil, errors.New("realtime games require a participant directory")
 	}
 	if options.PingInterval >= options.IdleTimeout {
@@ -204,7 +204,7 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		if version != V2ProtocolVersion || snapshot.ProtocolVersion != V2ProtocolVersion {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewLocalizedError(unsupportedProtocolErrorCode))
 		}
-		game := gateway.manager.tickGame(snapshot.GameKey)
+		game := gateway.manager.realtimeGame(snapshot.GameKey)
 		if game == nil {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewNotFoundError("game.error.definition_not_found"))
 		}
@@ -591,7 +591,7 @@ func newGatewayClient(
 	}
 	client.expiresAt, _ = socket.Locals("tokenExpiresAt").(time.Time)
 	epoch, _ := socket.Locals("realtimeEpoch").(int64)
-	game, _ := socket.Locals("realtimeGame").(module.TickModule)
+	game, _ := socket.Locals("realtimeGame").(module.Game)
 	settings, _ := socket.Locals("realtimeSettings").(json.RawMessage)
 	client.v2 = newV2ClientState(game, settings, epoch)
 	return client

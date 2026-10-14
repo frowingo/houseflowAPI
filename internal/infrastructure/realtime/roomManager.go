@@ -165,6 +165,8 @@ func NewRoomManager(
 			return nil, err
 		}
 	}
+	// Recovery reopens rooms of every realtime lane.
+	manager.scanner, _ = manager.repository.(gameAbstract.ActiveGameSessionScanner)
 	return manager, nil
 }
 
@@ -181,13 +183,25 @@ func (manager *RoomManager) resolveTickCapabilities() error {
 	if manager.checkpoints, ok = manager.coordinator.(coordinationAbstract.RuntimeCheckpointStore); !ok {
 		return errors.New("tick games require a runtime checkpoint store")
 	}
-	manager.scanner, _ = manager.repository.(gameAbstract.ActiveGameSessionScanner)
 	return nil
 }
 
 // tickGame returns the realtime module of a game, or nil for lobby-only games.
 func (manager *RoomManager) tickGame(gameKey string) module.TickModule {
 	game, _ := manager.options.Games.Tick(gameKey)
+	return game
+}
+
+// turnGame returns the module of a turn-based game, or nil.
+func (manager *RoomManager) turnGame(gameKey string) module.TurnModule {
+	game, _ := manager.options.Games.Turn(gameKey)
+	return game
+}
+
+// realtimeGame returns the module of a game played over the gateway, of
+// either lane, or nil.
+func (manager *RoomManager) realtimeGame(gameKey string) module.Game {
+	game, _ := manager.options.Games.Game(gameKey)
 	return game
 }
 
@@ -456,6 +470,7 @@ func (manager *RoomManager) startRoom(
 		queue:        make(chan coordinationAbstract.CommandDelivery, manager.options.CommandQueueSize),
 		runtimeOwner: runtimeOwner,
 		tick:         tickState{game: game},
+		turn:         manager.turnGame(snapshot.GameKey),
 	}
 	room.leaseDeadline.Store(&lease.ExpiresAt)
 	if err := room.syncSession(snapshot, true); err != nil {

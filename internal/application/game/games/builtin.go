@@ -5,16 +5,18 @@ package games
 
 import (
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
+	ticTacToe "houseflowApi/internal/application/game/games/ticTacToe"
 	"houseflowApi/internal/application/game/module"
 )
 
-// Options.TickGames registers realtime games; they need the Redis coordinator.
-type Options struct{ TickGames bool }
+// Options.Realtime registers the games played over the realtime gateway, of
+// every lane; they need the Redis coordinator.
+type Options struct{ Realtime bool }
 
 func NewRegistry(options Options) (*module.Registry, error) {
-	var ticks []module.TickModule
-	if options.TickGames {
-		ticks = append(ticks, houseRockets.Module())
+	var games []module.Game
+	if options.Realtime {
+		games = append(games, houseRockets.Module(), ticTacToe.Module())
 	}
-	return module.NewRegistry(ticks...)
+	return module.NewRegistry(games...)
 }

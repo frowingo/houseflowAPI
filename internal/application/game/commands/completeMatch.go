@@ -69,7 +69,7 @@ func (handler *CompleteMatchHandler) Handle(ctx context.Context, command Complet
 		Session:         session.Snapshot(),
 		Events:          session.PendingEvents(),
 		Result:          result,
-		Owner:           command.Owner,
+		Owner:           &command.Owner,
 		Command:         gameAbstract.CommandDescriptor{CommandID: "complete:" + snapshot.SessionID, ActorID: gameAbstract.SystemActorID, CommandType: snapshot.GameKey + ".completeMatch", PayloadHash: hex.EncodeToString(digest[:])},
 		TriggerCommand:  cancellation,
 		ResultEventType: module.ResultMessageType(snapshot.GameKey),

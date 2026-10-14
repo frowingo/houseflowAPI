@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,8 @@ type GameSession struct {
 	rules             SessionRules
 	configVersion     int64
 	settings          json.RawMessage
+	gameState         json.RawMessage
+	turnDeadline      time.Time
 	players           []SessionPlayer
 	createdBy         string
 	createdAt         time.Time
@@ -91,6 +94,8 @@ func RestoreGameSession(snapshot SessionSnapshot) (*GameSession, error) {
 		rules:             snapshot.Rules,
 		configVersion:     snapshot.ConfigVersion,
 		settings:          append(json.RawMessage(nil), snapshot.Settings...),
+		gameState:         append(json.RawMessage(nil), snapshot.GameState...),
+		turnDeadline:      snapshot.TurnDeadline.UTC(),
 		players:           players,
 		createdBy:         snapshot.CreatedBy,
 		createdAt:         snapshot.CreatedAt.UTC(),
@@ -115,6 +120,8 @@ func (session *GameSession) Snapshot() SessionSnapshot {
 		Rules:             session.rules,
 		ConfigVersion:     session.configVersion,
 		Settings:          append(json.RawMessage(nil), session.settings...),
+		GameState:         append(json.RawMessage(nil), session.gameState...),
+		TurnDeadline:      session.turnDeadline,
 		Players:           append([]SessionPlayer(nil), session.players...),
 		CreatedBy:         session.createdBy,
 		CreatedAt:         session.createdAt,
@@ -312,6 +319,27 @@ func (session *GameSession) ExcludePlayers(playerIDs []string, reason string, no
 	return nil
 }
 
+// UpdateGameState stores a running turn game's state, a JSON object, and the
+// deadline of its current turn (zero for none).
+func (session *GameSession) UpdateGameState(state json.RawMessage, turnDeadline time.Time, now time.Time) error {
+	if trimmed := bytes.TrimSpace(state); len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
+		return ErrGameStateRequired
+	}
+	if err := session.requireOperationTime(now); err != nil {
+		return err
+	}
+	if session.state != SessionRunning {
+		return ErrInvalidSessionState
+	}
+	session.gameState = append(json.RawMessage(nil), state...)
+	session.turnDeadline = turnDeadline.UTC()
+	if turnDeadline.IsZero() {
+		session.turnDeadline = time.Time{}
+	}
+	session.recordEvent(GameStateChanged, "", "", session.turnDeadline, now.UTC())
+	return nil
+}
+
 func (session *GameSession) Finish(reason string, now time.Time) error {
 	if reason == "" {
 		return ErrEndReasonRequired
@@ -329,6 +357,7 @@ func (session *GameSession) Finish(reason string, now time.Time) error {
 		}
 	}
 	session.state = SessionFinished
+	session.turnDeadline = time.Time{}
 	session.endedAt = now
 	session.endReason = reason
 	session.recordEvent(GameFinished, "", reason, time.Time{}, now)
@@ -444,6 +473,7 @@ func (session *GameSession) cancel(reason string, now time.Time) {
 	session.state = SessionCancelled
 	session.readyWindowEndsAt = time.Time{}
 	session.countdownEndsAt = time.Time{}
+	session.turnDeadline = time.Time{}
 	session.endedAt = now
 	session.endReason = reason
 	session.recordEvent(GameCancelled, "", reason, time.Time{}, now)
