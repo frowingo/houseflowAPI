@@ -1,87 +1,5 @@
 basePath: /api/v1
 definitions:
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason:
-    enum:
-    - behindCamera
-    - forfeit
-    - connectionExpired
-    - membershipRevoked
-    type: string
-    x-enum-varnames:
-    - EliminationBehindCamera
-    - EliminationForfeit
-    - EliminationConnectionExpired
-    - EliminationMembershipRevoked
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason:
-    enum:
-    - lastSurvivor
-    - simultaneousElimination
-    - insufficientPlayers
-    - cancelledByUser
-    - sessionExpired
-    - recoveryFailed
-    - coordinationUnavailable
-    - runtimeOverloaded
-    type: string
-    x-enum-varnames:
-    - EndLastSurvivor
-    - EndSimultaneousElimination
-    - EndInsufficientPlayers
-    - EndCancelledByUser
-    - EndSessionExpired
-    - EndRecoveryFailed
-    - EndCoordinationUnavailable
-    - EndRuntimeOverloaded
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel:
-    properties:
-      distance:
-        type: number
-      eliminatedAtTick:
-        type: integer
-      eliminationReason:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason'
-      playerId:
-        type: string
-      rank:
-        type: integer
-    type: object
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel:
-    properties:
-      courseVersion:
-        type: integer
-      durationSeconds:
-        type: number
-      endReason:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason'
-      endedAt:
-        type: string
-      gameKey:
-        type: string
-      houseId:
-        type: string
-      players:
-        items:
-          $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel'
-        type: array
-      protocolVersion:
-        type: integer
-      sessionId:
-        type: string
-      startedAt:
-        type: string
-      status:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus'
-      winnerId:
-        type: string
-    type: object
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus:
-    enum:
-    - completed
-    - cancelled
-    type: string
-    x-enum-varnames:
-    - ResultCompleted
-    - ResultCancelled
   houseflowApi_internal_data_entities.ChoreLevel:
     enum:
     - 10
@@ -107,6 +25,24 @@ definitions:
   houseflowApi_internal_models_core.ApiResponse-any:
     properties:
       data: {}
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.GameCatalogEntryModel'
+        type: array
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameConfigModel:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.GameConfigModel'
+        type: array
       success:
         type: boolean
     type: object
@@ -137,17 +73,17 @@ definitions:
       success:
         type: boolean
     type: object
-  ? houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel
-  : properties:
-      data:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel'
-      success:
-        type: boolean
-    type: object
   houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel:
     properties:
       data:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameConfigModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.GameConfigModel'
       success:
         type: boolean
     type: object
@@ -458,6 +394,42 @@ definitions:
         type: string
     required:
     - email
+    type: object
+  houseflowApi_internal_models_dtos.GameCatalogEntryModel:
+    properties:
+      configVersion:
+        type: integer
+      gameKey:
+        type: string
+      mode:
+        type: string
+      protocolVersion:
+        type: integer
+      rules:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.GameSessionRulesModel'
+      settings:
+        type: object
+    type: object
+  houseflowApi_internal_models_dtos.GameConfigModel:
+    properties:
+      enabled:
+        type: boolean
+      gameKey:
+        type: string
+      houseIds:
+        items:
+          type: string
+        type: array
+      mode:
+        type: string
+      protocolVersion:
+        type: integer
+      rules:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.GameSessionRulesModel'
+      settings:
+        type: object
+      version:
+        type: integer
     type: object
   houseflowApi_internal_models_dtos.GameSessionPlayerModel:
     properties:
@@ -826,6 +798,22 @@ definitions:
     required:
     - choreId
     - status
+    type: object
+  houseflowApi_internal_models_dtos.UpdateGameConfigModel:
+    properties:
+      enabled:
+        type: boolean
+      expectedVersion:
+        minimum: 0
+        type: integer
+      houseIds:
+        items:
+          type: string
+        type: array
+      rules:
+        type: object
+      settings:
+        type: object
     type: object
   houseflowApi_internal_models_dtos.UpdateHouseProfileModel:
     properties:
@@ -1309,6 +1297,58 @@ paths:
       summary: Update chore status
       tags:
       - Chore
+  /game/{gameKey}/config:
+    put:
+      consumes:
+      - application/json
+      description: Switches a game on or off, limits it to listed houses and changes
+        its rules and settings without a deploy. All instances apply it within seconds;
+        existing sessions keep the config they were created with.
+      parameters:
+      - description: Game key
+        example: houseRockets
+        in: path
+        name: gameKey
+        required: true
+        type: string
+      - description: New config
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.UpdateGameConfigModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameConfigModel'
+        "400":
+          description: Invalid config
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Super admin role required
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "404":
+          description: Game not found
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "409":
+          description: Config changed since expectedVersion
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a game config
+      tags:
+      - Game
   /game/{gameKey}/session:
     get:
       consumes:
@@ -1405,8 +1445,68 @@ paths:
       summary: Ensure an active game session
       tags:
       - Game
-  /game/{sessionId}/result:
+  /game/catalog:
     get:
+      description: Returns enabled games available to the house with the rules (capped
+        by house capacity) and client settings a new session would get. Running sessions
+        keep the config they were created with.
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Requester is not a house member
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List the games a house can start
+      tags:
+      - Game
+  /game/configs:
+    get:
+      description: Returns every game this deployment can run with its current config,
+        including switched-off games.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameConfigModel'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Super admin role required
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List game configs
+      tags:
+      - Game
+  /game/sessions/{sessionId}/result:
+    get:
+      description: Returns the committed result in its game's own wire model.
       parameters:
       - description: Game session ID
         in: path
@@ -1419,7 +1519,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
         "401":
           description: Unauthorized
           schema:
@@ -1434,7 +1534,7 @@ paths:
             $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get the immutable House Rockets match result
+      summary: Get the immutable match result
       tags:
       - Game
   /house/announcement:

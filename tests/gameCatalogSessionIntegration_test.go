@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"houseflowApi/internal/application/game/games"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
@@ -31,7 +31,7 @@ import (
 )
 
 func TestDefaultGameCatalogAdvertisesOnlyEnabledGames(t *testing.T) {
-	catalog, err := gameApplication.NewDefaultCatalog()
+	catalog, err := builtinCatalog(games.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,9 +94,9 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 		t.Fatalf("maximum players = %d, want house capacity 4", active.Rules.MaximumPlayers)
 	}
 	assertDocumentCount(t, fixture, database.GameSessionCollectionName, 1)
-	assertDocumentCount(t, fixture, database.ActiveGameSessionCollectionName, 1)
+	assertActiveSlotCount(t, fixture, 1)
 
-	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy())
+	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames(), nil)
 	if _, err := cancelHandler.Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{
 		CommandID: "cancel-active",
 		SessionID: active.SessionID,
@@ -104,7 +104,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	assertDocumentCount(t, fixture, database.ActiveGameSessionCollectionName, 0)
+	assertActiveSlotCount(t, fixture, 0)
 
 	replacement, err := handler.Handle(fixture.ctx, gameCommands.EnsureActiveGameSessionCommand{
 		CommandID: "ensure-replacement",
@@ -232,7 +232,9 @@ func TestGameSessionHTTPEnsuresAndDiscoversActiveSession(t *testing.T) {
 	}
 }
 
-func TestGameCatalogMigrationBackfillsExistingActiveSession(t *testing.T) {
+// Sessions written by the previous release during the rolling deploy lack
+// activeKey; retiring the outbox must keep them reachable.
+func TestRetireGameOutboxBackfillsActiveSlots(t *testing.T) {
 	fixture := newGameSessionApplicationFixture(t)
 	now := time.Now().UTC()
 	sessionID := uuid.NewString()
@@ -258,26 +260,23 @@ func TestGameCatalogMigrationBackfillsExistingActiveSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.db.Collection(database.ActiveGameSessionCollectionName).Drop(fixture.ctx); err != nil {
+	if _, err := fixture.db.Collection("OutboxMessage").InsertOne(fixture.ctx, bson.M{"aggregateId": sessionID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.db.Collection("_migrations").DeleteOne(fixture.ctx, bson.M{"version": "0040"}); err != nil {
+	if _, err := fixture.db.Collection("_migrations").DeleteOne(fixture.ctx, bson.M{"version": "0045"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrations.RunAll(fixture.ctx, fixture.db, migrations.AllMigrations()); err != nil {
 		t.Fatal(err)
 	}
 
-	active, err := fixture.repository.FindActive(
-		fixture.ctx,
-		fixture.houseID,
-		sessionTestGameKey,
-	)
-	if err != nil {
-		t.Fatal(err)
+	active, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, sessionTestGameKey)
+	if err != nil || active.Snapshot().SessionID != sessionID {
+		t.Fatalf("backfilled active session = %v", err)
 	}
-	if active.Snapshot().SessionID != sessionID {
-		t.Fatalf("backfilled session = %s, want %s", active.Snapshot().SessionID, sessionID)
+	collections, err := fixture.db.ListCollectionNames(fixture.ctx, bson.M{"name": "OutboxMessage"})
+	if err != nil || len(collections) != 0 {
+		t.Fatalf("outbox retained: %v %v", collections, err)
 	}
 }
 
@@ -311,9 +310,6 @@ func TestRetireFlappyBirdMigrationReleasesActiveSlots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.db.Collection(database.ActiveGameSessionCollectionName).InsertOne(fixture.ctx, bson.M{"houseId": fixture.houseID, "gameKey": "flappyBird", "sessionId": sessionID, "createdAt": now}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := fixture.db.Collection("_migrations").DeleteOne(fixture.ctx, bson.M{"version": "0043"}); err != nil {
 		t.Fatal(err)
 	}
@@ -331,6 +327,17 @@ func TestRetireFlappyBirdMigrationReleasesActiveSlots(t *testing.T) {
 	}
 	if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, "flappyBird"); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
 		t.Fatalf("retired active slot lookup = %v", err)
+	}
+}
+
+func assertActiveSlotCount(t *testing.T, fixture *gameSessionApplicationFixture, want int64) {
+	t.Helper()
+	count, err := fixture.db.Collection(database.GameSessionCollectionName).CountDocuments(fixture.ctx, bson.M{"activeKey": bson.M{"$exists": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("active slots = %d, want %d", count, want)
 	}
 }
 

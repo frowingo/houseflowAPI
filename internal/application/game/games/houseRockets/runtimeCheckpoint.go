@@ -2,7 +2,7 @@ package houseRockets
 
 import (
 	"encoding/json"
-	"fmt"
+	"strconv"
 	"time"
 
 	gameDomain "houseflowApi/internal/application/game/domain"
@@ -46,13 +46,33 @@ type RuntimeCheckpoint struct {
 
 // CriticalKey excludes movement/input ACK changes. A control handover, an
 // elimination or a terminal proposal must be protected before it is announced.
+// It is computed for every published frame, so it is built in one buffer.
 func (checkpoint RuntimeCheckpoint) CriticalKey() string {
-	key := ""
+	size := 16
 	for index, player := range checkpoint.World.Players {
-		key += fmt.Sprintf("%s:%t:%s:%s;", player.PlayerID, player.IsAlive, checkpoint.Controls[index].ConnectionID, checkpoint.Controls[index].Generation)
+		size += len(player.PlayerID) + len(checkpoint.Controls[index].ConnectionID) + len(checkpoint.Controls[index].Generation) + 5
 	}
-	payload, _ := json.Marshal(checkpoint.World.Outcome)
-	return key + string(payload)
+	key := make([]byte, 0, size)
+	for index, player := range checkpoint.World.Players {
+		key = append(key, player.PlayerID...)
+		key = append(key, ':')
+		key = strconv.AppendBool(key, player.IsAlive)
+		key = append(key, ':')
+		key = append(key, checkpoint.Controls[index].ConnectionID...)
+		key = append(key, ':')
+		key = append(key, checkpoint.Controls[index].Generation...)
+		key = append(key, ';')
+	}
+	if outcome := checkpoint.World.Outcome; outcome != nil {
+		key = append(key, outcome.Status...)
+		key = append(key, ':')
+		key = append(key, outcome.EndReason...)
+		if outcome.WinnerID != nil {
+			key = append(key, ':')
+			key = append(key, *outcome.WinnerID...)
+		}
+	}
+	return string(key)
 }
 
 func (runtime *Runtime) checkpointLocked() RuntimeCheckpoint {
@@ -73,7 +93,11 @@ func (runtime *Runtime) Checkpoint() RuntimeCheckpoint {
 // RestoreRuntime keeps physics frozen during ownership interruption. No queued
 // steering is replayed and no old connection generation survives the new epoch.
 func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*Runtime, error) {
-	if checkpoint.SchemaVersion != RuntimeCheckpointVersion || checkpoint.Epoch <= 0 || epoch <= checkpoint.Epoch || checkpoint.Sequence <= 0 || checkpoint.Sequence >= 1<<62 || checkpoint.CapturedAt.IsZero() || checkpoint.CapturedAt.Before(checkpoint.World.StartedAt) || now.IsZero() || checkpoint.Remainder < 0 || checkpoint.Remainder >= int64(time.Second) || len(checkpoint.Controls) != len(checkpoint.World.Players) {
+	return restoreRuntime(DefaultSettings(), checkpoint, epoch, now)
+}
+
+func restoreRuntime(settings Settings, checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*Runtime, error) {
+	if !validCheckpointHeader(checkpoint, epoch, now) {
 		return nil, ErrInvalidSimulationState
 	}
 	simulation, err := RestoreSimulation(checkpoint.World)
@@ -84,7 +108,7 @@ func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*
 	for index, player := range checkpoint.World.Players {
 		players[index] = PlayerIdentity{PlayerID: player.PlayerID, DisplayName: player.DisplayName}
 	}
-	runtime, err := NewRuntime(NewSimulationParams{SessionID: checkpoint.World.SessionID, HouseID: checkpoint.World.HouseID, StartedAt: checkpoint.World.StartedAt, Players: players}, epoch, now, checkpoint.Sequence)
+	runtime, err := newRuntime(settings, NewSimulationParams{SessionID: checkpoint.World.SessionID, HouseID: checkpoint.World.HouseID, StartedAt: checkpoint.World.StartedAt, Players: players}, epoch, now, checkpoint.Sequence)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +120,10 @@ func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*
 		}
 		deadline := saved.GraceEndsAt
 		if deadline.IsZero() {
-			deadline = saved.LastSeen.Add(ControlTimeout + ReconnectGraceDuration)
+			deadline = saved.LastSeen.Add(settings.presenceDeadline())
 		}
 		remaining := deadline.Sub(checkpoint.CapturedAt)
-		if remaining > ControlTimeout+ReconnectGraceDuration+maximumCatchUp {
+		if remaining > settings.presenceDeadline()+maximumCatchUp {
 			return nil, ErrInvalidSimulationState
 		}
 		runtime.controls[saved.PlayerID] = &controller{graceEndsAt: now.Add(max(0, remaining))}
@@ -120,6 +144,15 @@ func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*
 	}
 	runtime.publishFrame()
 	return runtime, nil
+}
+
+// validCheckpointHeader accepts a checkpoint only from an older epoch, with a
+// bounded sequence, a capture time inside the match and one control per player.
+func validCheckpointHeader(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) bool {
+	ordered := checkpoint.Epoch > 0 && epoch > checkpoint.Epoch && checkpoint.Sequence > 0 && checkpoint.Sequence < 1<<62
+	captured := !checkpoint.CapturedAt.IsZero() && !checkpoint.CapturedAt.Before(checkpoint.World.StartedAt) && !now.IsZero()
+	scheduler := checkpoint.Remainder >= 0 && checkpoint.Remainder < int64(time.Second)
+	return checkpoint.SchemaVersion == RuntimeCheckpointVersion && ordered && captured && scheduler && len(checkpoint.Controls) == len(checkpoint.World.Players)
 }
 
 // RecoveryFrame advertises frozen authoritative state while controls rebind.

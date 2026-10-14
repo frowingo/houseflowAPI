@@ -53,7 +53,7 @@ func genericMatchCompletionFixture(t *testing.T) (*gameSessionPersistenceFixture
 	}
 	payload := []byte(`{"winningTeam":"blue","rounds":4,"bonus":null}`)
 	digest := sha256.Sum256(payload)
-	completion := gameAbstract.MatchCompletion{ExpectedVersion: version, Session: session.Snapshot(), Events: session.PendingEvents(), Owner: owner, ResultEventType: "turnGame.result", Command: persistenceCommand("completeTurnGame", "turnGame.complete", hex.EncodeToString(digest[:])), Result: gameDomain.MatchResult{SessionID: session.Snapshot().SessionID, HouseID: "house", GameKey: "turnGame", SchemaVersion: 3, Status: gameDomain.MatchCompleted, EndReason: "roundsCompleted", StartedAt: session.Snapshot().StartedAt, EndedAt: endedAt, Payload: payload}}
+	completion := gameAbstract.MatchCompletion{ExpectedVersion: version, Session: session.Snapshot(), Events: session.PendingEvents(), Owner: &owner, ResultEventType: "turnGame.result", Command: persistenceCommand("completeTurnGame", "turnGame.complete", hex.EncodeToString(digest[:])), Result: gameDomain.MatchResult{SessionID: session.Snapshot().SessionID, HouseID: "house", GameKey: "turnGame", SchemaVersion: 3, Status: gameDomain.MatchCompleted, EndReason: "roundsCompleted", StartedAt: session.Snapshot().StartedAt, EndedAt: endedAt, Payload: payload}}
 	return fixture, database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name()), completion
 }
 

@@ -68,23 +68,32 @@ func (handler *EnsureActiveGameSessionHandler) Handle(
 	if err != nil {
 		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
 	}
-	rules := definition.Rules
-	if rules.MaximumPlayers > house.MaxMemberCount {
-		rules.MaximumPlayers = house.MaxMemberCount
-	}
-	if rules.MaximumPlayers < rules.MinimumPlayers {
-		return gameDomain.SessionSnapshot{}, helpers.NewConflictError("game.error.house_capacity_too_small")
-	}
 
 	if snapshot, found, err := processedSnapshot(ctx, handler.repository, descriptor); err != nil || found {
 		return snapshot, err
 	}
+	// An existing session stays reachable after its game is switched off;
+	// only a new session needs the game to be available to the house.
 	active, err := handler.repository.FindActive(ctx, command.HouseID, command.GameKey)
 	if err == nil {
 		return active.Snapshot(), nil
 	}
 	if !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
 		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
+	}
+	config, err := handler.catalog.Config(command.GameKey)
+	if err != nil {
+		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
+	}
+	if !config.AvailableTo(command.HouseID) {
+		return gameDomain.SessionSnapshot{}, gameApplication.MapError(gameAbstract.ErrGameUnavailable)
+	}
+	rules := config.Rules
+	if rules.MaximumPlayers > house.MaxMemberCount {
+		rules.MaximumPlayers = house.MaxMemberCount
+	}
+	if rules.MaximumPlayers < rules.MinimumPlayers {
+		return gameDomain.SessionSnapshot{}, helpers.NewConflictError("game.error.house_capacity_too_small")
 	}
 
 	now := time.Now().UTC()
@@ -95,6 +104,8 @@ func (handler *EnsureActiveGameSessionHandler) Handle(
 		ProtocolVersion: definition.ProtocolVersion,
 		Mode:            definition.Mode,
 		Rules:           rules,
+		ConfigVersion:   config.Version,
+		Settings:        config.Settings,
 		CreatedBy:       command.UserID,
 		CreatedAt:       now,
 	})

@@ -14,12 +14,10 @@ import (
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
-	rocketsQueries "houseflowApi/internal/application/game/gameSpesific/houseRockets/queries"
+	"houseflowApi/internal/application/game/games"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -53,6 +51,11 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 	t.Helper()
 	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret")}
 	enabled := len(enabledOptions) == 0 || enabledOptions[0]
+	// A disabled game keeps its catalog entry but has no realtime module.
+	fixtureGames, err := games.NewRegistry(games.Options{Realtime: enabled})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for index, id := range []string{fixture.ownerID, fixture.memberID, fixture.outsiderID} {
 		objectID, _ := primitive.ObjectIDFromHex(id)
 		_, err := fixture.db.Collection("User").InsertOne(fixture.ctx, entities.User{Id: objectID, Firstname: fmt.Sprintf("Player%d", index), Lastname: "House", Email: id + "@test.dev", IsActive: true, HouseIds: []string{}})
@@ -63,22 +66,21 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 	redisURL := prepareRedis(t)
 	definition := houseRockets.Definition()
 	definition.Rules = rules
-	catalog, err := gameApplication.NewCatalog(definition)
+	catalog, err := newDefinitionCatalog(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 0; index < 2; index++ {
 		mediator := newGameSessionMediator(fixture.gameSessionApplicationFixture)
 		matches := database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name())
-		cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](mediator, rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches))
-		cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsQueries.GetMatchResultQuery](mediator, rocketsQueries.NewGetMatchResultHandler(fixture.repository, matches, fixture.membershipPolicy()))
+		registerRocketsResults(mediator, fixture.repository, matches, fixture.membershipPolicy())
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](mediator, gameQueries.NewAuthorizeCancellationHandler(fixture.repository, fixture.membershipPolicy()))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](mediator, gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](mediator, gameQueries.NewGetActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
 		coordinator := newTestCoordinator(t, redisURL, fmt.Sprintf("rockets-gateway-%d", index))
 		service, err := realtime.NewService(coordinator, fixture.repository, mediator,
-			realtime.RoomManagerOptions{LeaseTTL: 10 * time.Second, RenewInterval: 500 * time.Millisecond, CommandTimeout: 2 * time.Second, ReconcileInterval: 100 * time.Millisecond, ParticipantDirectory: database.NewGameParticipantDirectory(fixture.db.Client(), fixture.db.Name()), MatchRepository: matches, MaxOwnedRooms: maxRooms},
-			realtime.GatewayOptions{EnableHouseRockets: enabled, AllowedOrigins: []string{"*"}, PingInterval: 100 * time.Millisecond, IdleTimeout: 3 * time.Second, WriteTimeout: time.Second, PresenceTTL: time.Second, PresenceRefresh: 200 * time.Millisecond, MaxConnections: maxConnections})
+			realtime.RoomManagerOptions{Games: fixtureGames, LeaseTTL: 10 * time.Second, RenewInterval: 500 * time.Millisecond, CommandTimeout: 2 * time.Second, ReconcileInterval: 100 * time.Millisecond, ParticipantDirectory: database.NewGameParticipantDirectory(fixture.db.Client(), fixture.db.Name()), MatchRepository: matches, MaxOwnedRooms: maxRooms},
+			realtime.GatewayOptions{AllowedOrigins: []string{"*"}, PingInterval: 100 * time.Millisecond, IdleTimeout: 3 * time.Second, WriteTimeout: time.Second, PresenceTTL: time.Second, PresenceRefresh: 200 * time.Millisecond, MaxConnections: maxConnections})
 		if err != nil {
 			t.Fatal(err)
 		}

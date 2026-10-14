@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"testing"
 	"time"
 )

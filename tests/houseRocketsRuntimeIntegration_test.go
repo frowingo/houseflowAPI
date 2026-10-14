@@ -15,7 +15,7 @@ import (
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	infrastructureCoordination "houseflowApi/internal/infrastructure/coordination"
 	"houseflowApi/internal/infrastructure/realtime"
 )
@@ -128,21 +128,21 @@ func TestHouseRocketsRuntimeRoutesAcrossTwoInstancesAndStopsOnLeaseLoss(t *testi
 	}
 	defer events.Close()
 	bind := houseRockets.RuntimeInput{Kind: houseRockets.InputBind, RuntimeEpoch: ownership.RuntimeEpoch}
-	if err := remoteManager.DispatchGameplay(fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", bind); err != nil {
+	if err := dispatchRockets(remoteManager, fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", bind); err != nil {
 		t.Fatal(err)
 	}
 	first := awaitRocketsGrant(t, events, "remote-connection")
-	if err := ownerManager.DispatchGameplay(fixture.ctx, session.SessionID, fixture.memberID, "local-connection", bind); err != nil {
+	if err := dispatchRockets(ownerManager, fixture.ctx, session.SessionID, fixture.memberID, "local-connection", bind); err != nil {
 		t.Fatal(err)
 	}
 	second := awaitRocketsGrant(t, events, "local-connection")
 	steer := houseRockets.RuntimeInput{Kind: houseRockets.InputSteer, RuntimeEpoch: first.RuntimeEpoch, ControlGeneration: first.ControlGeneration, InputSequence: 1, Heading: 0.4}
-	if err := remoteManager.DispatchGameplay(fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", steer); err != nil {
+	if err := dispatchRockets(remoteManager, fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", steer); err != nil {
 		t.Fatal(err)
 	}
 	steer.ControlGeneration = second.ControlGeneration
 	steer.Heading = -0.3
-	if err := ownerManager.DispatchGameplay(fixture.ctx, session.SessionID, fixture.memberID, "local-connection", steer); err != nil {
+	if err := dispatchRockets(ownerManager, fixture.ctx, session.SessionID, fixture.memberID, "local-connection", steer); err != nil {
 		t.Fatal(err)
 	}
 	frame := awaitRocketsFrame(t, events, func(frame houseRockets.RuntimeFrame) bool {
@@ -154,12 +154,12 @@ func TestHouseRocketsRuntimeRoutesAcrossTwoInstancesAndStopsOnLeaseLoss(t *testi
 	// Invalid/duplicate remote messages are published but never processed/ACKed.
 	steer.ControlGeneration = first.ControlGeneration
 	steer.Heading = 1.7
-	if err := remoteManager.DispatchGameplay(fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", steer); err != nil {
+	if err := dispatchRockets(remoteManager, fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", steer); err != nil {
 		t.Fatal(err)
 	}
 	steer.InputSequence = 99
 	steer.RuntimeEpoch--
-	if err := remoteManager.DispatchGameplay(fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", steer); err != nil {
+	if err := dispatchRockets(remoteManager, fixture.ctx, session.SessionID, fixture.ownerID, "remote-connection", steer); err != nil {
 		t.Fatal(err)
 	}
 	next := awaitRocketsFrame(t, events, func(candidate houseRockets.RuntimeFrame) bool { return candidate.World.Tick >= frame.World.Tick+12 })
@@ -304,7 +304,7 @@ func TestHouseRocketsRuntimeSlowPublishingDoesNotBlockPhysicsOrRenewal(t *testin
 	redisURL := prepareRedis(t)
 	base := newTestCoordinator(t, redisURL, "slow-publisher")
 	coordinator := &slowGamePublisher{RedisCoordinator: base, blocked: make(chan struct{}), release: make(chan struct{})}
-	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, newGameSessionMediator(fixture), realtime.RoomManagerOptions{LeaseTTL: 5 * time.Second, RenewInterval: 100 * time.Millisecond, CommandTimeout: time.Second})
+	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, newGameSessionMediator(fixture), realtime.RoomManagerOptions{Games: rocketsGames(), LeaseTTL: 5 * time.Second, RenewInterval: 100 * time.Millisecond, CommandTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

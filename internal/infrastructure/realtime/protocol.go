@@ -3,7 +3,6 @@ package realtime
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"time"
 
 	"houseflowApi/internal/helpers"
@@ -49,18 +48,6 @@ type ProtocolError struct {
 	Code      string   `json:"code"`
 	Args      []string `json:"args,omitempty"`
 	Retryable bool     `json:"retryable"`
-}
-
-func ensureJSONEnd(decoder *json.Decoder) error {
-	var trailing any
-	err := decoder.Decode(&trailing)
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-	if err == nil {
-		return errors.New("multiple JSON values are not allowed")
-	}
-	return err
 }
 
 func protocolErrorFrom(err error) ProtocolError {

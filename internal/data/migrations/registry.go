@@ -73,5 +73,10 @@ func AllMigrations() []Migration {
 		&retireFlappyBird{},
 		// --- Game Data Retention ---
 		&gameDataRetention{},
+		&retireGameOutbox{},
+		// --- Game Config Collection ---
+		&gameConfig{},
+		// --- Turn-Based Games ---
+		&turnGameLocalizations{},
 	}
 }

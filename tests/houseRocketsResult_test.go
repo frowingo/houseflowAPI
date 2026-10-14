@@ -6,7 +6,7 @@ import (
 	"time"
 
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 )
 
 func TestHouseRocketsRuntimePublishesOneProposalAndWinnerOnlyAfterCommit(t *testing.T) {

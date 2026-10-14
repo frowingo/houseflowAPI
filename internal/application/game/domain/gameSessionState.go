@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -65,13 +66,19 @@ type SessionPlayer struct {
 }
 
 type SessionSnapshot struct {
-	SessionID         string
-	HouseID           string
-	GameKey           string
-	ProtocolVersion   int
-	Mode              GameMode
-	State             SessionState
-	Rules             SessionRules
+	SessionID       string
+	HouseID         string
+	GameKey         string
+	ProtocolVersion int
+	Mode            GameMode
+	State           SessionState
+	Rules           SessionRules
+	ConfigVersion   int64
+	Settings        json.RawMessage
+	// GameState and TurnDeadline belong to turn-based games: the state its
+	// module keeps between moves and when the current turn expires.
+	GameState         json.RawMessage
+	TurnDeadline      time.Time
 	Players           []SessionPlayer
 	CreatedBy         string
 	CreatedAt         time.Time
@@ -107,6 +114,7 @@ var (
 	ErrTimestampRequired   = errors.New("operation timestamp is required")
 	ErrTimestampOutOfOrder = errors.New("operation timestamp cannot be earlier than the latest session change")
 	ErrSnapshotInvalid     = errors.New("game session snapshot is invalid")
+	ErrGameStateRequired   = errors.New("game state must be a JSON object")
 )
 
 func isSupportedGameMode(mode GameMode) bool {

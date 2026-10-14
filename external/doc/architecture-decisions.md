@@ -695,3 +695,217 @@ ve kalıcı fence Mongo generation'dır; uzun süre kullanılmayan bir odada say
 başlaması güvenlidir. Room üyelik listesi her reconcile turunda okunmaya devam eder, ancak
 socket'lere `gameRuntime.access` event'i yalnız üye kümesi değiştiğinde veya room yeni
 sahibinde ilk açıldığında gönderilir.
+
+Geçişin ikinci adımı v37 (1.3.10) tüm instance'larda çalıştıktan sonra uygulanmıştır:
+pointer yazımı ve pointer'a geri düşme kaldırılmış, recovery scanner `activeKey` partial
+index'ini `activeKey` imleciyle sayfalar. `0045_retireGameOutbox` önce 0044
+adımlarını tekrarlayarak rollout sırasında önceki sürümün yazdığı eksik alanları tamamlar,
+ardından yazanı kalmamış `OutboxMessage` collection'ını düşürür. `ActiveGameSession`
+bu sürümün rollout'u boyunca hâlâ önceki sürüm tarafından yazıldığından bir sonraki
+release'in migration'ında düşürülür; erken düşürmek collection'ı index'siz olarak yeniden
+oluştururdu.
+
+## ADR-018 — Oyun modülü sözleşmesi ve paylaşılan multiplayer core
+
+Yeni oyunlar core'u değiştirmeden eklenebilmelidir. Core; session lifecycle'ı, oda
+sahipliğini (lease + Mongo generation), kalıcılığı, WebSocket taşımasını ve fanout'u
+sahiplenir. Oyun yalnız kurallarını, wire modellerini ve simülasyonunu bilir. Sözleşme
+`internal/application/game/module` paketindedir; `module.Registry` bir süreçte etkin
+oyunları tutar ve core oyuna özgü her davranışı oradan çözer.
+
+İlk hat **tick** hattıdır (`TickModule` / `TickRuntime`): sabit hızlı scheduler, geçici
+gameplay girdisi, Redis checkpoint ile recovery. Control binding, epoch/generation fencing,
+faz enum'u ve kontrol hataları her tick oyunu için ortaktır ve `module` paketindedir.
+Client'a giden mesaj tipleri ve hata kodları oyun anahtarıyla türetilir
+(`<gameKey>.snapshot`, `<gameKey>.error.stale_control`); House Rockets için bunlar önceki
+değerlerin aynısıdır. Sıra tabanlı oyunlar için ikinci hat Faz 5'te eklenecektir; sözleşmesi
+kullanılmadan önce tanımlanmamıştır.
+
+Maç tamamlama (`CompleteMatchCommand`) ve sonuç sorgusu core'dadır; oyun yalnız sonucu
+doğrular ve normalleştirir (`FinalizeResult`) ve kendi wire modelini döndürür
+(`DecodeResult`). Somut oyun paketlerini yalnız `internal/application/game/games`
+(composition root) import eder; bu kural bir mimari testle zorunludur.
+
+Rolling deploy sırasında önceki sürümle Redis üzerinden değiş tokuş edilen formatlar
+(gameplay input, frame, control grant, checkpoint) değişmemiştir ve bir uyumluluk testiyle
+sabitlenmiştir. Frame başlığı hub başına bir kez decode edilir; bağlantıya özel
+projeksiyonu modül yapar.
+
+`realtime` paketi Go alt paketlerine bölünmemiştir: gateway ile oda yöneticisi birbirinin
+iç durumunu kullanır ve bölmek bu durumu dışa açmayı gerektirirdi. Sorumluluklar dosya ve
+tip düzeyinde ayrılmıştır (`room`, `roomLobby`, `tickHost`, `tickCheckpoint`,
+`roomCompletion`, `gatewayV2`). Oda durumu `lobbyState`, `tickState` ve `completionState`
+olarak gruplanmış, olay döngüsü olay başına küçük metotlara bölünmüştür. Tick oyunlarının
+ihtiyaç duyduğu owner repository, gameplay bus ve checkpoint store constructor'da çözülür;
+eksik bir yetenek ilk maçta değil başlatmada hata verir.
+
+## ADR-019 — Oyun config'i `Game` collection'ında, session'a dondurulur
+
+Bir oyunu açıp kapatmak, belirli evlere açmak veya kurallarını değiştirmek deploy
+gerektirmemelidir. Her oyun için `Game` collection'ında bir doküman tutulur (`_id` oyun
+anahtarı): `enabled`, `rollout.houseIds` (boş liste tüm evler demektir), `rules`,
+`settings`, `version`, `updatedAt`, `updatedBy`. `rules` ve `settings` kısmi nesnelerdir;
+dokümanda olmayan anahtar koddaki varsayılanı kullanır. Bilinmeyen anahtar reddedilir, böylece
+yazım hatası bir varsayılanı sessizce bırakmaz.
+
+**Ayarlanabilir / sözleşme ayrımı.** Lobby kuralları (oyuncu sayıları, ready window,
+countdown) ve oyunun ağ/presence ayarları ayarlanabilir. House Rockets için bunlar snapshot
+hızı, girdi ve steer limitleri, heartbeat, control timeout ve reconnect grace'tir. Fizik ve
+scheduler hızı, parkur, maç süresi ve protokol sürümleri sözleşme değerleridir. Checkpoint
+ve sonuç doğrulaması bu değerlere bağlı olduğundan kodda kalırlar. Sınırları modül belirler
+(`module.Game.ResolveConfig`); core yalnız dokümanı varsayılanların üzerine uygular.
+
+**Dondurma.** Session oluşturulurken çözülmüş kurallar (zaten olduğu gibi), `settings` ve
+`configVersion` session dokümanına kopyalanır. Runtime, recovery, gateway rate limit'i, lobby
+heartbeat'i ve `welcome.settings` session'daki kopyayı kullanır. Bu yüzden config değişikliği
+çalışan ya da lobby'deki maçlara hiçbir zaman ulaşmaz. `settings` alanı olmayan session'lar
+(önceki sürümün yazdıkları) varsayılanlarla çalışır. Kapatılan oyunun mevcut session'ları
+erişilebilir kalır ve bitebilir; yalnız yeni session açılamaz (`game.error.unavailable`).
+Kodda kayıtlı olup dokümanı olmayan oyun kapalıdır; yeni oyunlar böylece kapalı çıkar.
+
+**Cache ve yayılma.** Her instance config'i bellekte tutar ve 30 saniyede bir yeniden okur.
+Değişiklik `PUT /game/{gameKey}/config` (super admin, `expectedVersion` ile optimistic
+concurrency) ile yazılır. Yazan instance kendini hemen tazeler ve Redis Pub/Sub kanalı
+`houseflow:coordination:v1:gameConfig` üzerinden diğerlerine haber verir; ölçülen yayılma
+saniyenin altındadır. Duyuru kaybolursa periyodik okuma yakalar. Mongo'da elle yapılan
+düzenleme de en geç 30 saniyede uygulanır. Geçersiz bir doküman oyunu son geçerli config'iyle
+bırakır ve log'lanır. Başlangıçta hiç okunamazsa oyunlar kapalı başlar ve okuma 2 saniyede
+bir denenir.
+
+**Kapasite env'de kalır.** Hangi oyunların çalıştığı veri, instance kapasitesi altyapıdır:
+`REALTIME_MAX_OWNED_ROOMS` / `REALTIME_MAX_CONNECTIONS` production'da zorunludur, diğer
+ortamlarda verilmezse sınırsızdır. `HOUSE_ROCKETS_ENABLED` kaldırıldı. Tick oyunları Redis
+coordinator varsa kaydedilir.
+
+**Rolling deploy.** Session dokümanına yalnız opsiyonel alan eklendi. Rollout sırasında
+önceki sürüm bir session'ı yeniden yazarsa `settings`/`configVersion` düşer ve session
+varsayılanlarla devam eder. Seed değerleri varsayılanlarla aynı olduğundan davranış değişmez.
+Bu yüzden ayarlar rollout tamamlanmadan değiştirilmemelidir. Geri dönüşte önceki sürüm
+`Game` collection'ını yok sayar ve `HOUSE_ROCKETS_ENABLED` secret'ını okur. Bu nedenle Fly
+secret'ı Release 1 kararlı olana kadar silinmez.
+
+
+## ADR-020 — Tick hattında paylaşımlı projeksiyon ve local kısa yol
+
+Bu değişiklikle protokol değişmedi; client'a giden byte'lar öncekiyle birebir aynı ve bu bir
+testle sabitlendi.
+
+**Paylaşımlı projeksiyon.** Önceden her bağlantı yayınlanan frame'i ayrı ayrı decode ediyor,
+kendi snapshot modelini kuruyor ve marshal ediyordu. Şimdi hub frame'i bir kez çözüyor
+(`TickModule.PrepareFrame`). Modülün `FrameView`'u, aynı byte'ları görecek bağlantıları
+`ViewKey` ile gruplar; core her anahtar için bir kez kodlar ve byte'ları paylaştırır. House
+Rockets'ta bağlantıya özel tek alan kontrol eden oyuncunun `controlGeneration`'ıdır. Paylaşılan
+JSON bir kez üretilir, kontrol eden bağlantının varyantı bu alanın değerinin yerine
+yazılmasıyla elde edilir. Snapshot mesajının zarfı da frame başına bir kez kodlanır; payload
+son alan olduğu için yeniden taranmadan araya eklenir. Frame başlığı (`FrameHeader`) da
+modülün görünümünden gelir, frame hub başına tek kez decode edilir.
+
+**Local kısa yol.** Odayı yöneten instance tüm room event'lerini kendi socket'lerine bellekten
+teslim eder (`managedRoom.publish`). Hub, kendi instance'ının Redis'ten dönen kopyasını yok
+sayar. Redis yalnız iki durumda atlanır: local bir bağlantıya hedeflenmiş event'lerde ve başka
+instance'ta socket yokken periyodik frame'lerde. Session, sonuç ve erişim event'leri her zaman
+Redis'ten de gider. Uzak socket bilgisi:
+- presence'tan en fazla 1 saniyelik gecikmeyle okunur;
+- bir uzak socket gameplay bus'tan girdi gönderdiğinde hemen işaretlenir. Yeni bağlanan uzak
+  socket'in ilk işi snapshot istemek olduğundan frame kaçırmaz.
+
+Okunamayan veya bilinmeyen presence "uzakta socket var" sayılır. Redis publish'i Lua ile lease'i
+doğruluyordu; local teslimat aynı korumayı `leaseValid()` ile sağlar. Bu kontrol runtime'ı da
+yöneten, yerelde muhafazakâr hesaplanan lease süresidir. Publish'ler oda başına sıralıdır; local
+ve Redis teslimatı aynı sırayı görür.
+
+**`CriticalKey`.** Her frame'de `fmt.Sprintf` ve outcome için `json.Marshal` yerine tek
+buffer'da kurulur; anlamı aynıdır.
+
+**Ölçüm.** Süre histogramına 60 Hz adımı çevresinde ara bucket'lar (15, 17, 25, 33 ms) ve p99
+eklendi. Yük testi Redis publish ve yalnız local teslim edilen event sayısını raporlar.
+`HOUSEFLOW_LOAD_PLACEMENT=colocated` bir odanın tüm oyuncularını aynı instance'a yerleştirir.
+
+**Paylaşımlı scheduler yapılmadı.** Plan bunu yük testi sonucuna bağlıyordu:
+- Fizik adımı ortalama 0,05 ms sürüyor.
+- Tick aralığı 8 oda × 8 oyuncuda da ortalama 16,67 ms. p99 üst sınırı 20 ms bucket'ında,
+  yani 60 Hz adımının hemen üstünde.
+- Oda başına bir ticker, 8 odada saniyede ~480 uyanma demek; ölçülebilir bir maliyet değil.
+
+Fanout iyileştirmeleri fizik goroutine'inde çalışmadığı için tick aralığını değiştirmez.
+
+**Altyapı.** `min_machines_running` 0'da bırakıldı. Client oyuna gelmeden önce auth ve house
+endpoint'lerine istek attığı için makineyi zaten başlatmış olur. Açık WebSocket'ler Fly proxy'si
+için bağlantı sayıldığından maç sürerken makine otomatik durdurulmaz. Sürekli açık bir makine,
+canlıya çıkıştan sonra trafik ve cold start süresi ölçülerek değerlendirilecek. Performance CPU'ya
+geçilmedi.
+Yük testinde bir oda × 8 oyuncu, M serisi tek çekirdeğin ~%6-7'sini kullanıyor. Fly'ın paylaşımlı
+CPU'su sürekli yükte kotayla sınırlandığından production limitini (`REALTIME_MAX_OWNED_ROOMS=1`)
+artırmadan önce Fly metriklerinde CPU throttling izlenmeli.
+
+**Sonraki adım (yapılmadı).** Dağınık yerleşimde her frame Redis'ten geçmek zorunda. Bir odanın
+socket'leri hangi instance'a düştüyse orada kalıyor. Upgrade isteği, odanın sahibi olan makineye
+Fly'ın `fly-replay` header'ıyla yönlendirilirse bütün odalar colocated olur ve local kısa yol
+frame trafiğinin tamamını Redis'ten çıkarır. Bu, Fly'a bağımlı bir routing kararı olduğu için
+ayrıca değerlendirilmelidir.
+
+## ADR-021 — Turn hattı ve pilot oyun (`ticTacToe`)
+
+Sıra tabanlı oyunlar ikinci hat olarak eklendi (`module.TurnModule`). Tick hattının aksine
+bellekte runtime yok; oyunun tüm durumu session dokümanında tutuluyor (`gameState`,
+`turnDeadline`). Her değişiklik, onu doğuran komutun içinde commit ediliyor; recovery yalnızca
+Mongo'dan okumaktan ibaret.
+
+**Hamle dayanıklı bir komut.** Client `<gameKey>.<hamle>` mesajı gönderir, modül
+`DecodeMove` ile katı biçimde doğrulayıp kanonik payload'a çevirir. Mesaj lobby komutlarıyla
+aynı Redis stream'inden odanın sahibine gider. Oda döngüsü `ApplyTurnMoveCommand`'ı çalıştırır:
+yeni durum ve komutun receipt'i aynı transaction'da yazılır, yani tekrar gönderilen hamle bir
+kez uygulanır. Kurala aykırı hamle `game.error.invalid_move`, sırası olmayan oyuncunun hamlesi
+`game.error.not_your_turn` ile reddedilir. Hamle geçmişi saklanmaz; oyunun ihtiyacı olan her
+şey durumdadır.
+
+**Turn motoru (`TurnEngine`).** Session'ı değiştiren her komut (advance, hamle, ayrılma, üyelik
+uzlaştırma, iptal) motoru kullanır. Motor:
+- maç yeni başladıysa ilk durumu kurar (`Start`);
+- süresi geçmiş turları sırayla çözer (`Expire`, komut başına en fazla 32 tur);
+- artık oynamayan oyuncuları düşer (`Reconcile`).
+
+Durumlar sıralı anahtarlı kanonik JSON olarak karşılaştırılır; değişmeyen durum version
+artırmaz. Bunu sözleşme testi zorunlu kılar: değişmemiş oyuncu listesinde `Reconcile` aynı
+durumu döndürmelidir.
+
+**Tur süresi mevcut deadline timer'ıyla yönetilir.** `sessionDeadline` çalışan bir turn
+oyununda `turnDeadline`'ı döndürür; oda döngüsü bunu ready window ve countdown gibi
+`AdvanceGameSessionCommand` ile ilerletir. Turlar kendi deadline zamanında çözülür, sonuç
+belirleyicidir. Recovery tarayıcısı çalışan turn oyunlarının odasını da açar. Kimse bağlı olmasa
+bile süresi dolan tur çözülür ve evin aktif slotu boşalır.
+
+**Maç sonu.** Modülün döndürdüğü sonuç, session'ın terminal geçişi ve tetikleyen komutun
+receipt'iyle tek transaction'da yazılır. Tick oyunlarının runtime owner fence'i turn oyununda
+yoktur (`MatchCompletion.Owner` nil): bütün durum session'da olduğundan beklenen session
+version'ı fence'tir ve sonuç dokümanının `runtimeEpoch` alanına yazılır. Çalışan bir turn
+oyununun iptali, oyuncu listesinden kurulan iptal sonucuyla biter. Oda, terminal session
+snapshot'ının ardından `<gameKey>.result` mesajını yayınlar.
+
+**Gateway.** Bağlantı iki hattı da kabul eder. Turn oyununda frame, kontrol bağlama ve lobby
+heartbeat'i yoktur; ping yalnızca pong döndürür. Sessiz bir oyuncuyu tur süresi çözer. Her
+session snapshot'ını, o oyuncunun görebileceği durum (`<gameKey>.state`, `View`) izler; gizli
+bilgi bu yüzden bağlantı başına modülde süzülür. Resync session'ı ve durumu yeniden gönderir.
+
+**Pilot oyun.** `internal/application/game/games/ticTacToe` iki kişilik Tic-Tac-Toe:
+- kazanma, beraberlik, süre aşımında hükmen yenilgi ve rakip ayrılınca kazanma kurallarını
+  içerir;
+- ayarlanabilir tek değeri tur süresidir (`turnTimeoutMilliseconds`, 5 sn - 5 dk).
+
+Core'a eklenen tek satır composition root'taki kayıttır. Kod mimari testi, iki hattın sözleşme
+testlerini ve gerçek gateway üzerinden uçtan uca bir maçı geçer. `Game` dokümanı olmadığı için
+kapalı başlar; açmak için `PUT /game/ticTacToe/config` (`expectedVersion: 0`) yeterlidir.
+
+Client'a yönelik mesajlar:
+
+| Yön | Tip | Payload |
+|---|---|---|
+| client → server | `ticTacToe.move` | `{"cell": 0-8}`; kabulde `commandAccepted` gelir |
+| server → client | `ticTacToe.state` | `board` (9 hücre, `"x"`/`"o"`/`null`), `players`, `currentPlayerId`, `turnEndsAt`, `yourMark`, `moves`, `phase` |
+| server → client | `ticTacToe.result` | `winnerId`, oyuncu başına `outcome` (`won`/`lost`/`draw`), `endReason`, son tahta |
+
+Lobby (join/ready/leave/cancel), welcome, ping ve resync, House Rockets ile aynı v2 zarfını
+kullanır.
+
+**Rolling deploy.** Turn oyunu açılmadıkça yeni alan yazılmaz. Pilot kapalı çıktığı için önceki
+sürüm turn session'ı görmez. Tick oyunlarının davranışı ve wire formatları değişmedi.

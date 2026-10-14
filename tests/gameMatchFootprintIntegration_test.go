@@ -10,12 +10,10 @@ import (
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/data/database"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -79,7 +77,7 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
 	sessions := database.NewGameSessionRepository(client, fixture.db.Name())
 	matches := database.NewGameMatchRepository(client, fixture.db.Name())
-	catalog, err := gameApplication.NewCatalog(houseRockets.Definition())
+	catalog, err := newDefinitionCatalog(houseRockets.Definition())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +100,7 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	advance := gameCommands.NewAdvanceGameSessionHandler(sessions)
+	advance := gameCommands.NewAdvanceGameSessionHandler(sessions, nil)
 	for snapshot.State == gameDomain.SessionReadyWindow || snapshot.State == gameDomain.SessionCountdown {
 		at := snapshot.CountdownEndsAt
 		if snapshot.State == gameDomain.SessionReadyWindow {
@@ -139,16 +137,14 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rocketsCommands.NewCompleteMatchHandler(sessions, matches).Handle(fixture.ctx, rocketsCommands.CompleteMatchCommand{Result: result, Owner: owner}); err != nil {
+	if _, err := newRocketsCompletionHandler(sessions, matches).Handle(fixture.ctx, rocketsCompletion{Result: result, Owner: owner}); err != nil {
 		t.Fatal(err)
 	}
 	commands := counter.snapshot()
 
 	expected := map[string]int64{
 		"GameSession":               1,
-		"ActiveGameSession":         0,
 		"GameSessionCommandReceipt": 9,
-		"OutboxMessage":             0,
 		"GameRuntimeOwner":          1,
 		"GameMatchResult":           1,
 	}

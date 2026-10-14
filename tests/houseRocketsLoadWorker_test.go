@@ -16,12 +16,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
-	rocketsQueries "houseflowApi/internal/application/game/gameSpesific/houseRockets/queries"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -79,17 +76,16 @@ func TestHouseRocketsLoadWorker(t *testing.T) {
 	fixture := &gameSessionApplicationFixture{gameSessionPersistenceFixture: &gameSessionPersistenceFixture{ctx: ctx, db: db, repository: repository}}
 	mediator := newGameSessionMediator(fixture)
 	matches := database.NewGameMatchRepository(client, db.Name())
-	catalog, err := gameApplication.NewCatalog(houseRockets.Definition())
+	catalog, err := newDefinitionCatalog(houseRockets.Definition())
 	if err != nil {
 		t.Fatal(err)
 	}
-	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](mediator, rocketsCommands.NewCompleteMatchHandler(repository, matches))
-	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsQueries.GetMatchResultQuery](mediator, rocketsQueries.NewGetMatchResultHandler(repository, matches, fixture.membershipPolicy()))
+	registerRocketsResults(mediator, repository, matches, fixture.membershipPolicy())
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](mediator, gameQueries.NewAuthorizeCancellationHandler(repository, fixture.membershipPolicy()))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](mediator, gameCommands.NewEnsureActiveGameSessionHandler(repository, catalog, fixture.membershipPolicy()))
 	maxRooms, _ := strconv.Atoi(os.Getenv("HOUSEFLOW_LOAD_ROOMS"))
 	maxConnections, _ := strconv.Atoi(os.Getenv("HOUSEFLOW_LOAD_CONNECTIONS"))
-	service, err := realtime.NewService(coordinator, repository, mediator, realtime.RoomManagerOptions{ParticipantDirectory: database.NewGameParticipantDirectory(client, db.Name()), MatchRepository: matches, MaxOwnedRooms: maxRooms}, realtime.GatewayOptions{EnableHouseRockets: true, MaxConnections: maxConnections, AllowedOrigins: []string{"*"}})
+	service, err := realtime.NewService(coordinator, repository, mediator, realtime.RoomManagerOptions{Games: rocketsGames(), ParticipantDirectory: database.NewGameParticipantDirectory(client, db.Name()), MatchRepository: matches, MaxOwnedRooms: maxRooms}, realtime.GatewayOptions{MaxConnections: maxConnections, AllowedOrigins: []string{"*"}})
 	if err != nil {
 		t.Fatal(err)
 	}

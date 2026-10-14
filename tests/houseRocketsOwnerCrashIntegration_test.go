@@ -14,8 +14,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/infrastructure/coordination"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -121,8 +120,8 @@ func TestHouseRocketsOwnerProcessHelper(t *testing.T) {
 	coordinator.Start(ctx)
 	mediator := cqrs.New()
 	matches := database.NewGameMatchRepository(client, os.Getenv("HOUSEFLOW_RECOVERY_DB"))
-	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](mediator, rocketsCommands.NewCompleteMatchHandler(repository, matches))
-	manager, err := realtime.NewRoomManager(coordinator, repository, mediator, realtime.RoomManagerOptions{LeaseTTL: 2 * time.Second, RenewInterval: 100 * time.Millisecond, CommandTimeout: 300 * time.Millisecond, CheckpointInterval: 50 * time.Millisecond, RecoveryScanInterval: -1, MatchRepository: matches})
+	registerRocketsResults(mediator, repository, matches, nil)
+	manager, err := realtime.NewRoomManager(coordinator, repository, mediator, realtime.RoomManagerOptions{Games: rocketsGames(), LeaseTTL: 2 * time.Second, RenewInterval: 100 * time.Millisecond, CommandTimeout: 300 * time.Millisecond, CheckpointInterval: 50 * time.Millisecond, RecoveryScanInterval: -1, MatchRepository: matches})
 	if err != nil {
 		t.Fatal(err)
 	}

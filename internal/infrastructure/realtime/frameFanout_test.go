@@ -7,14 +7,14 @@ import (
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 )
 
 const fanoutBenchmarkPlayers = 8
 
 // playingFrame returns an authoritative frame after several seconds of play so
 // gates and speed fields have their steady-state sizes.
-func playingFrame(b *testing.B) (houseRockets.RuntimeFrame, []houseRockets.HouseRocketsControlGrantedModel) {
+func playingFrame(b testing.TB) (houseRockets.RuntimeFrame, []houseRockets.HouseRocketsControlGrantedModel) {
 	b.Helper()
 	now := time.Now()
 	players := make([]houseRockets.PlayerIdentity, fanoutBenchmarkPlayers)
@@ -99,7 +99,7 @@ func BenchmarkHouseRocketsFramePublish(b *testing.B) {
 // one runtime frame to every controlling connection of a full room.
 func BenchmarkHouseRocketsFrameFanout(b *testing.B) {
 	frame, grants := playingFrame(b)
-	payload, err := json.Marshal(gamePreviewFrame{RuntimeFrame: frame})
+	payload, err := json.Marshal(frame)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func BenchmarkHouseRocketsFrameFanout(b *testing.B) {
 	hub := &roomHub{clients: make(map[string]*gatewayClient, len(grants))}
 	clients := make([]*gatewayClient, len(grants))
 	for index := range grants {
-		client := &gatewayClient{id: connectionID(index), roomID: "fanout-session", userID: grants[index].PlayerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(1)}
+		client := &gatewayClient{id: connectionID(index), roomID: "fanout-session", userID: grants[index].PlayerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(houseRockets.Module(), nil, 1)}
 		client.v2.grant = &grants[index]
 		clients[index] = client
 		hub.clients[client.id] = client
@@ -137,4 +137,55 @@ func BenchmarkHouseRocketsFrameFanout(b *testing.B) {
 	}
 	b.ReportMetric(float64(len(payload)), "roomEventBytes")
 	b.ReportMetric(float64(wireBytes)/float64(len(clients)), "wireBytes/connection")
+}
+
+// Shared encoding must deliver exactly the bytes the previous per-connection
+// projection produced, including each controller's private generation.
+func TestSharedFrameEncodingMatchesPerConnectionProjection(t *testing.T) {
+	frame, grants := playingFrame(t)
+	payload, err := json.Marshal(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateway := &Gateway{options: GatewayOptions{Metrics: &Metrics{}}}
+	hub := &roomHub{clients: make(map[string]*gatewayClient)}
+	type viewer struct {
+		client *gatewayClient
+		grant  *houseRockets.HouseRocketsControlGrantedModel
+	}
+	var viewers []viewer
+	add := func(id, playerID string, grant *houseRockets.HouseRocketsControlGrantedModel) {
+		client := &gatewayClient{id: id, roomID: "fanout-session", userID: playerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(houseRockets.Module(), nil, 1)}
+		client.v2.grant = grant
+		hub.clients[id] = client
+		viewers = append(viewers, viewer{client, grant})
+	}
+	for index := range grants {
+		add(connectionID(index), grants[index].PlayerID, &grants[index])
+	}
+	stale := grants[0]
+	stale.RuntimeEpoch = 0
+	add("stale-connection", grants[0].PlayerID, &stale)
+	add("second-tab", grants[1].PlayerID, &grants[1])
+	add("spectator", "spectator", nil)
+
+	sentAt := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	hub.broadcastEvent(coordinationAbstract.MessageEnvelope{MessageID: "frame", Type: GameRuntimeSnapshotEventType, Sequence: frame.StateSequence, CreatedAt: sentAt, Payload: payload})
+	distinct := map[string]bool{}
+	for _, viewer := range viewers {
+		var delivered []byte
+		select {
+		case delivered = <-viewer.client.v2.snapshots:
+		default:
+			t.Fatalf("%s received no frame", viewer.client.id)
+		}
+		expected, _ := json.Marshal(NewV2ServerMessage(houseRockets.SnapshotMessageType, "", &frame.StateSequence, sentAt, houseRockets.SnapshotForConnection(frame, viewer.client.userID, viewer.client.id, viewer.grant)))
+		if string(delivered) != string(expected) {
+			t.Fatalf("%s:\n got %s\nwant %s", viewer.client.id, delivered, expected)
+		}
+		distinct[string(delivered)] = true
+	}
+	if len(distinct) != len(grants)+1 {
+		t.Fatalf("distinct snapshots = %d, want one per controller plus the shared view", len(distinct))
+	}
 }

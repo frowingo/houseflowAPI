@@ -96,6 +96,82 @@ Aynı ölçüm testleriyle; değişiklikler ADR-017'dedir.
 | Oda temizliği sonrası TTL'siz Redis anahtarı | 1 (fence) | 0 |
 | Değişiklik yokken `access` event'i | her reconcile turunda | yok |
 
+Faz 1B'de legacy `ActiveGameSession` pointer'ının kullanımı ve `OutboxMessage` collection'ı kaldırıldı;
+aktif session okuması tek sorgudur ve maç başına Mongo yazma komutu 25'ten 23'e iner
+(pointer insert ve delete yok).
+
 Yük matrisi, Faz 0 ve Faz 1A aynı oturumda art arda çalıştırıldığında CPU, Redis
 komut sayısı ve socket byte'larında ölçüm gürültüsünü aşan bir fark göstermez; Faz 1A
 frame başına çalışan koda dokunmaz.
+
+## 6. Faz 2 sonrası — 14 Ekim 2026
+
+Core soyutlaması (ADR-018) davranışı ve wire formatını değiştirmez; frame başlığı artık hub
+başına bir kez decode edilir, bağlantıya özel projeksiyonu oyun modülü yapar.
+
+| Benchmark (8 oyuncu) | Faz 0 | Faz 2 |
+|---|---|---|
+| `FramePublish` ns/frame | 8.461 | 8.289 |
+| `FrameFanout` ns/frame | 337.243 | 363.145 |
+| `FrameFanout` alloc/frame | 817 | 885 |
+| Wire byte/bağlantı | 3.805 | 3.805 |
+
+Fanout'taki ~%8'lik artış modül projeksiyonunun `any` modeli ve generic sunucu mesajından
+gelir; Faz 4'ün hedefidir. Yük matrisi Faz 1B ve Faz 2 aynı oturumda art arda
+çalıştırıldığında CPU'da ölçüm gürültüsünü aşan bir fark göstermez; Redis komut sayısı ve
+socket byte'ları aynıdır, ACK p95 üst sınırları aynı veya daha düşüktür.
+
+## 7. Faz 3 sonrası — 14 Ekim 2026
+
+Oyun config'i `Game` collection'ına taşındı (ADR-019). Frame başına çalışan kod değişmedi.
+Runtime ayarları session'dan bir kez okunur. Gateway her bağlantıda, lobby her heartbeat'te
+küçük bir JSON nesnesi çözer.
+
+| Benchmark (8 oyuncu) | Faz 2 | Faz 3 |
+|---|---|---|
+| `FramePublish` ns/frame | 8.289 | 8.167 |
+| `FrameFanout` ns/frame | 363.145 | 360.105 |
+| `FrameFanout` alloc/frame | 885 | 885 |
+| Wire byte/bağlantı | 3.805 | 3.805 |
+
+İki instance'lı yük matrisi yeşil: `rooms8Players8` worker başına ~%25,6 CPU,
+`runtimeOverloads` 0, `framesCoalesced` 0. Config değişikliğinin diğer instance'a
+Redis üzerinden ulaşması testte saniyenin altında ölçüldü.
+
+Kalıcı veri değişimi:
+- Session dokümanı `configVersion` ve ~200 byte'lık `settings` alır.
+- `Game` collection'ında oyun başına bir doküman tutulur.
+- Instance başına config okuması 30 saniyede bir sorgudur.
+
+## 8. Faz 4 sonrası — 14 Ekim 2026
+
+Protokol ve wire byte'ları değişmedi (ADR-020, byte eşitliği testi).
+
+| Benchmark (8 oyuncu) | Faz 0 | Faz 3 | Faz 4 |
+|---|---|---|---|
+| `FramePublish` ns/frame | 8.461 | 8.167 | ~7.000 |
+| `FramePublish` alloc/frame | 44 | 44 | 6 |
+| `FrameFanout` ns/frame | 337.243 | 360.105 | ~61.000 |
+| `FrameFanout` alloc/frame | 817 | 885 | 151 |
+| Wire byte/bağlantı | 3.805 | 3.805 | 3.805 |
+
+Yük testi Faz 3 (HEAD worktree) ve Faz 4 aynı oturumda, 5 saniyelik koşularla dönüşümlü
+çalıştırıldı. Değerler iki worker'ın toplamı ve koşuların ortalamasıdır.
+
+| Yerleşim | Senaryo | CPU % (F3 → F4) | Redis komut/s (F3 → F4) |
+|---|---|---|---|
+| colocated | 1 oda × 8 | 7,7 → 6,3 | 25 → 6 |
+| colocated | 4 oda × 8 | 24,3 → 18,7 | 90 → 14 |
+| colocated | 8 oda × 8 | 40,3 → 31,0 | 175 → 23 |
+| split | 4 oda × 8 | 30,2 → 28,0 | 733 → 734 |
+| split | 8 oda × 8 | 38,4 → 40,0 | 1.448 → 1.459 |
+
+- **Colocated** (odanın tüm socket'leri aynı instance'ta): frame'ler Redis'e hiç gitmiyor
+  (`roomPublishesPerSecond=0`). Redis komutları ~%87, CPU ~%23 düşüyor.
+- **Split** (oyuncular instance'lara dönüşümlü): her odada uzak socket olduğu için frame'ler Redis'ten
+  gitmek zorunda; Redis hacmi aynı. CPU farkı bu makinede ölçüm gürültüsünün içinde. Fanout
+  kazancı oda başına saniyede birkaç ms; toplam CPU'yu Redis ve socket I/O belirliyor.
+- **Tick aralığı p99**: iki sürümde de 20 ms bucket'ında, ortalama 16,67 ms. Fanout fizik
+  goroutine'inde çalışmadığından bu değer değişmedi. İlk turda iki sürümde de iki worker'da aynı
+  anda görülen 40-77 ms'lik tekil boşluklar makine kaynaklıydı; dönüşümlü tekrar koşularında
+  görülmedi (maksimum 18-28 ms).

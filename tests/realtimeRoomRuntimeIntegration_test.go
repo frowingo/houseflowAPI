@@ -8,10 +8,10 @@ import (
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
+	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
 	infrastructureCoordination "houseflowApi/internal/infrastructure/coordination"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -213,6 +213,7 @@ func newTestRoomManager(
 	t.Helper()
 	mediator := newGameSessionMediator(fixture)
 	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, mediator, realtime.RoomManagerOptions{
+		Games:          rocketsGames(),
 		LeaseTTL:       5 * time.Second,
 		RenewInterval:  500 * time.Millisecond,
 		CommandTimeout: time.Second,
@@ -229,8 +230,11 @@ func newTestRoomManager(
 
 func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediator {
 	mediator := cqrs.New()
-	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](mediator, gameCommands.NewReconcileGameSessionPlayersHandler(fixture.repository))
+	// The turn engine leaves every other game untouched.
+	turns := gameCommands.NewTurnEngine(rocketsGames(), database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name()))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ReconcileGameSessionPlayersCommand](mediator, gameCommands.NewReconcileGameSessionPlayersHandler(fixture.repository, turns))
 	membershipPolicy := fixture.membershipPolicy()
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyTurnMoveCommand](mediator, gameCommands.NewApplyTurnMoveHandler(fixture.repository, membershipPolicy, turns))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.JoinGameSessionCommand](
 		mediator,
 		gameCommands.NewJoinGameSessionHandler(fixture.repository, membershipPolicy),
@@ -241,15 +245,15 @@ func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediat
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.LeaveGameSessionCommand](
 		mediator,
-		gameCommands.NewLeaveGameSessionHandler(fixture.repository, membershipPolicy),
+		gameCommands.NewLeaveGameSessionHandler(fixture.repository, membershipPolicy, turns),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](
 		mediator,
-		gameCommands.NewCancelGameSessionHandler(fixture.repository, membershipPolicy),
+		gameCommands.NewCancelGameSessionHandler(fixture.repository, membershipPolicy, rocketsGames(), turns),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](
 		mediator,
-		gameCommands.NewAdvanceGameSessionHandler(fixture.repository),
+		gameCommands.NewAdvanceGameSessionHandler(fixture.repository, turns),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetGameSessionQuery](
 		mediator,
@@ -273,7 +277,7 @@ func createRuntimeSession(
 	rules gameDomain.SessionRules,
 ) gameDomain.SessionSnapshot {
 	t.Helper()
-	catalog, err := gameApplication.NewCatalog(gameDomain.GameDefinition{
+	catalog, err := newDefinitionCatalog(gameDomain.GameDefinition{
 		GameKey:         "runtimeGame",
 		ProtocolVersion: 1,
 		Mode:            gameDomain.RealtimeGame,

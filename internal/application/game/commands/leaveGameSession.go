@@ -23,13 +23,15 @@ type LeaveGameSessionCommand struct {
 type LeaveGameSessionHandler struct {
 	repository       gameAbstract.GameSessionRepository
 	membershipPolicy *housePolicies.MembershipPolicy
+	turns            *TurnEngine
 }
 
 func NewLeaveGameSessionHandler(
 	repository gameAbstract.GameSessionRepository,
 	membershipPolicy *housePolicies.MembershipPolicy,
+	turns *TurnEngine,
 ) *LeaveGameSessionHandler {
-	return &LeaveGameSessionHandler{repository: repository, membershipPolicy: membershipPolicy}
+	return &LeaveGameSessionHandler{repository: repository, membershipPolicy: membershipPolicy, turns: turns}
 }
 
 func (handler *LeaveGameSessionHandler) Handle(
@@ -54,10 +56,16 @@ func (handler *LeaveGameSessionHandler) Handle(
 	}
 
 	expectedVersion := session.Version()
-	if err := session.LeavePlayer(command.UserID, time.Now().UTC()); err != nil {
+	now := time.Now().UTC()
+	if err := session.LeavePlayer(command.UserID, now); err != nil {
 		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
 	}
-	return saveSession(ctx, handler.repository, session, expectedVersion, descriptor)
+	// A turn game continues without the player, or ends, in the same commit.
+	result, err := handler.turns.settle(session, now)
+	if err != nil {
+		return gameDomain.SessionSnapshot{}, mapTurnError(err)
+	}
+	return handler.turns.commit(ctx, handler.repository, session, expectedVersion, descriptor, result)
 }
 
 var _ cqrs.CommandHandler[LeaveGameSessionCommand, gameDomain.SessionSnapshot] = (*LeaveGameSessionHandler)(nil)

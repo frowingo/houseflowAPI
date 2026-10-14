@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/module"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -42,7 +43,6 @@ var (
 )
 
 type GatewayOptions struct {
-	EnableHouseRockets  bool
 	MaximumMessageBytes int64
 	OutboundQueueSize   int
 	PingInterval        time.Duration
@@ -100,8 +100,8 @@ func NewGateway(
 	if options.MaxConnections < 0 {
 		return nil, errors.New("maximum connections must not be negative")
 	}
-	if options.EnableHouseRockets && manager.options.ParticipantDirectory == nil {
-		return nil, errors.New("House Rockets requires a participant directory")
+	if manager.options.Games.HasRealtimeGames() && manager.options.ParticipantDirectory == nil {
+		return nil, errors.New("realtime games require a participant directory")
 	}
 	if options.PingInterval >= options.IdleTimeout {
 		return nil, errors.New("ping interval must be shorter than idle timeout")
@@ -109,7 +109,7 @@ func NewGateway(
 	if options.PresenceRefresh >= options.PresenceTTL {
 		return nil, errors.New("presence refresh interval must be shorter than presence TTL")
 	}
-	return &Gateway{
+	gateway := &Gateway{
 		coordinator:  coordinator,
 		manager:      manager,
 		sender:       sender,
@@ -118,7 +118,33 @@ func NewGateway(
 		clients:      make(map[string]*gatewayClient),
 		reservations: make(map[*connectionReservation]struct{}),
 		errors:       make(chan RuntimeError, 32),
-	}, nil
+	}
+	manager.attachAudience(gateway)
+	return gateway, nil
+}
+
+// deliverLocal hands an event published by a room this instance owns to the
+// room's local sockets; the Redis copy of the same event is ignored.
+func (gateway *Gateway) deliverLocal(event coordinationAbstract.MessageEnvelope) {
+	gateway.mutex.Lock()
+	hub := gateway.hubs[event.RoomID]
+	gateway.mutex.Unlock()
+	if hub != nil {
+		hub.broadcastEvent(event)
+	}
+}
+
+func (gateway *Gateway) hasConnection(roomID, connectionID string) bool {
+	gateway.mutex.Lock()
+	hub := gateway.hubs[roomID]
+	gateway.mutex.Unlock()
+	if hub == nil {
+		return false
+	}
+	hub.mutex.RLock()
+	defer hub.mutex.RUnlock()
+	_, exists := hub.clients[connectionID]
+	return exists
 }
 
 func (gateway *Gateway) Start(ctx context.Context) error {
@@ -175,10 +201,11 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
 		version, _ := strconv.Atoi(c.Query("protocolVersion"))
-		if version != V2ProtocolVersion || snapshot.ProtocolVersion != V2ProtocolVersion || snapshot.GameKey != houseRockets.GameKey {
+		if version != V2ProtocolVersion || snapshot.ProtocolVersion != V2ProtocolVersion {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewLocalizedError(unsupportedProtocolErrorCode))
 		}
-		if !gateway.options.EnableHouseRockets {
+		game := gateway.manager.realtimeGame(snapshot.GameKey)
+		if game == nil {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewNotFoundError("game.error.definition_not_found"))
 		}
 		if err := gateway.requireActiveMember(requestCtx, snapshot.HouseID, userID); err != nil {
@@ -204,6 +231,8 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
 		c.Locals("realtimeEpoch", ownership.RuntimeEpoch)
+		c.Locals("realtimeGame", game)
+		c.Locals("realtimeSettings", snapshot.Settings)
 		c.Locals("realtimeReservation", reservation)
 		if err := c.Next(); err != nil {
 			reservation.release()
@@ -562,7 +591,9 @@ func newGatewayClient(
 	}
 	client.expiresAt, _ = socket.Locals("tokenExpiresAt").(time.Time)
 	epoch, _ := socket.Locals("realtimeEpoch").(int64)
-	client.v2 = newV2ClientState(epoch)
+	game, _ := socket.Locals("realtimeGame").(module.Game)
+	settings, _ := socket.Locals("realtimeSettings").(json.RawMessage)
+	client.v2 = newV2ClientState(game, settings, epoch)
 	return client
 }
 
@@ -703,6 +734,10 @@ func (hub *roomHub) run() {
 		case event, open := <-hub.subscription.Messages():
 			if !open {
 				return
+			}
+			// This instance's own rooms already delivered it from memory.
+			if event.SourceInstanceID == hub.gateway.coordinator.InstanceID() {
+				continue
 			}
 			hub.broadcastEvent(event)
 		case err, open := <-hub.subscription.Errors():

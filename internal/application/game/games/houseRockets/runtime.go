@@ -2,31 +2,30 @@ package houseRockets
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	gameAbstract "houseflowApi/internal/application/game/abstract"
+	"houseflowApi/internal/application/game/module"
 )
 
 const (
-	InputBind        = "bind"
+	InputBind        = module.InputBind
 	InputSteer       = "steer"
-	InputHeartbeat   = "heartbeat"
-	InputDisconnect  = "disconnect"
-	InputSnapshot    = "snapshot"
+	InputHeartbeat   = module.InputHeartbeat
+	InputDisconnect  = module.InputDisconnect
+	InputSnapshot    = module.InputSnapshot
 	InputLifetime    = time.Second
 	RuntimeQueueSize = 64
 	maximumCatchUp   = 250 * time.Millisecond
 )
 
 var (
-	ErrControlRequired = errors.New("current controller binding is required")
-	ErrStaleInput      = errors.New("input sequence or runtime epoch is stale")
-	ErrInputExpired    = errors.New("gameplay input has expired")
-	ErrRuntimeBusy     = errors.New("runtime mailbox is full")
-	ErrInputRate       = errors.New("steering input rate exceeded")
+	ErrControlRequired = module.ErrControlRequired
+	ErrStaleInput      = module.ErrStaleInput
+	ErrInputExpired    = module.ErrInputExpired
+	ErrRuntimeBusy     = module.ErrRuntimeBusy
+	ErrInputRate       = module.ErrInputRate
 )
 
 // RuntimeInput comes from a trusted authenticated transport, never directly from
@@ -92,6 +91,7 @@ type queuedInput struct {
 // deterministic scheduler tests. No external callback is invoked under mutex.
 type Runtime struct {
 	mutex           sync.Mutex
+	settings        Settings
 	simulation      *Simulation
 	epoch           int64
 	controls        map[string]*controller
@@ -112,29 +112,31 @@ type Runtime struct {
 	terminal        bool
 	stopped         bool
 	runOnce         sync.Once
-	observer        gameAbstract.RuntimeObserver
+	observer        module.RuntimeObserver
 	framesCoalesced uint64
 }
 
+// NewRuntime starts a match with the default settings.
 func NewRuntime(params NewSimulationParams, epoch int64, now time.Time, initialSequences ...int64) (*Runtime, error) {
-	if epoch <= 0 || now.IsZero() {
+	baseSequence := int64(0)
+	if len(initialSequences) > 0 {
+		baseSequence = initialSequences[0]
+	}
+	return newRuntime(DefaultSettings(), params, epoch, now, baseSequence)
+}
+
+func newRuntime(settings Settings, params NewSimulationParams, epoch int64, now time.Time, baseSequence int64) (*Runtime, error) {
+	if epoch <= 0 || now.IsZero() || baseSequence < 0 || settings.Validate() != nil {
 		return nil, ErrInvalidSimulation
 	}
 	simulation, err := NewSimulation(params)
 	if err != nil {
 		return nil, err
 	}
-	baseSequence := int64(0)
-	if len(initialSequences) > 0 {
-		baseSequence = initialSequences[0]
-		if baseSequence < 0 {
-			return nil, ErrInvalidSimulation
-		}
-	}
-	runtime := &Runtime{simulation: simulation, epoch: epoch, controls: make(map[string]*controller), pending: make(map[string]queuedInput), eliminations: make(map[string]EliminationReason), sequence: baseSequence,
-		commands: make(chan queuedInput, RuntimeQueueSize), frames: make(chan RuntimeFrame, 1), events: make(chan RuntimeEvent, RuntimeQueueSize), results: make(chan HouseRocketsResultModel, 1), lastAdvance: now, nextFrame: now.Add(time.Second / SnapshotRateHz)}
+	runtime := &Runtime{settings: settings, simulation: simulation, epoch: epoch, controls: make(map[string]*controller), pending: make(map[string]queuedInput), eliminations: make(map[string]EliminationReason), sequence: baseSequence,
+		commands: make(chan queuedInput, RuntimeQueueSize), frames: make(chan RuntimeFrame, 1), events: make(chan RuntimeEvent, RuntimeQueueSize), results: make(chan HouseRocketsResultModel, 1), lastAdvance: now, nextFrame: now.Add(settings.snapshotInterval())}
 	for _, player := range params.Players {
-		runtime.controls[player.PlayerID] = &controller{graceEndsAt: now.Add(ControlTimeout + ReconnectGraceDuration)}
+		runtime.controls[player.PlayerID] = &controller{graceEndsAt: now.Add(settings.presenceDeadline())}
 	}
 	runtime.publishFrame()
 	return runtime, nil
@@ -144,7 +146,7 @@ func (runtime *Runtime) Frames() <-chan RuntimeFrame             { return runtim
 func (runtime *Runtime) Events() <-chan RuntimeEvent             { return runtime.events }
 func (runtime *Runtime) Results() <-chan HouseRocketsResultModel { return runtime.results }
 
-func (runtime *Runtime) SetObserver(observer gameAbstract.RuntimeObserver) {
+func (runtime *Runtime) SetObserver(observer module.RuntimeObserver) {
 	runtime.mutex.Lock()
 	defer runtime.mutex.Unlock()
 	runtime.observer = observer
@@ -162,7 +164,7 @@ func (runtime *Runtime) CommittedFrame(result HouseRocketsResultModel) RuntimeFr
 // confirm actual processing. Gaps are expected when newer headings coalesce.
 func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 	runtime.mutex.Lock()
-	observation := gameAbstract.RuntimeObservation{}
+	observation := module.RuntimeObservation{}
 	observer, framesBefore := runtime.observer, runtime.framesCoalesced
 	defer func() {
 		observation.FramesCoalesced = runtime.framesCoalesced - framesBefore
@@ -212,7 +214,7 @@ func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 	if control.connectionID != input.ConnectionID || control.generation == "" || control.generation != input.ControlGeneration {
 		return ErrControlRequired
 	}
-	if !control.graceEndsAt.IsZero() || now.Sub(control.lastSeen) >= ControlTimeout {
+	if !control.graceEndsAt.IsZero() || now.Sub(control.lastSeen) >= runtime.settings.controlTimeout() {
 		return ErrControlRequired
 	}
 	if input.Kind == InputSteer {
@@ -226,7 +228,7 @@ func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 			control.rateStartedAt = now
 			control.rateCount = 0
 		}
-		if control.rateCount >= MaximumSteerMessagesPerSecond {
+		if control.rateCount >= runtime.settings.MaximumSteerMessagesPerSecond {
 			return ErrInputRate
 		}
 		control.rateCount++
@@ -258,10 +260,10 @@ func (runtime *Runtime) Run(ctx context.Context, leaseValid func() bool) {
 		defer func() { runtime.mutex.Lock(); runtime.stopped = true; runtime.mutex.Unlock() }()
 		runtime.mutex.Lock()
 		runtime.lastAdvance = time.Now()
-		runtime.nextFrame = runtime.lastAdvance.Add(time.Second / SnapshotRateHz)
+		runtime.nextFrame = runtime.lastAdvance.Add(runtime.settings.snapshotInterval())
 		for _, control := range runtime.controls {
 			if control.lastSeen.IsZero() && !runtime.restored {
-				control.graceEndsAt = runtime.lastAdvance.Add(ControlTimeout + ReconnectGraceDuration)
+				control.graceEndsAt = runtime.lastAdvance.Add(runtime.settings.presenceDeadline())
 			}
 		}
 		runtime.mutex.Unlock()
@@ -285,7 +287,7 @@ func (runtime *Runtime) Advance(now time.Time) error {
 	started := time.Now()
 	runtime.mutex.Lock()
 	observer, framesBefore := runtime.observer, runtime.framesCoalesced
-	observation := gameAbstract.RuntimeObservation{StepGap: now.Sub(runtime.lastAdvance)}
+	observation := module.RuntimeObservation{StepGap: now.Sub(runtime.lastAdvance)}
 	measureStep := !runtime.terminal && !runtime.stopped && !now.Before(runtime.lastAdvance)
 	defer func() {
 		observation.FramesCoalesced = runtime.framesCoalesced - framesBefore
@@ -344,7 +346,7 @@ func (runtime *Runtime) Advance(now time.Time) error {
 				continue
 			}
 			if input.Kind == InputBind {
-				if (!control.graceEndsAt.IsZero() && !now.Before(control.graceEndsAt)) || (control.graceEndsAt.IsZero() && !now.Before(control.lastSeen.Add(ControlTimeout+ReconnectGraceDuration))) {
+				if (!control.graceEndsAt.IsZero() && !now.Before(control.graceEndsAt)) || (control.graceEndsAt.IsZero() && !now.Before(control.lastSeen.Add(runtime.settings.presenceDeadline()))) {
 					runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Err: ErrControlRequired})
 					continue
 				}
@@ -362,7 +364,7 @@ func (runtime *Runtime) Advance(now time.Time) error {
 			} else if control.connectionID == input.ConnectionID && control.generation == input.ControlGeneration {
 				changed = true
 				control.connectionID, control.generation = "", ""
-				control.graceEndsAt = queued.receivedAt.Add(ReconnectGraceDuration)
+				control.graceEndsAt = queued.receivedAt.Add(runtime.settings.reconnectGrace())
 				delete(runtime.pending, input.PlayerID)
 			}
 		default:
@@ -371,8 +373,8 @@ func (runtime *Runtime) Advance(now time.Time) error {
 	}
 commandsDrained:
 	for id, control := range runtime.controls {
-		if control.graceEndsAt.IsZero() && now.Sub(control.lastSeen) >= ControlTimeout {
-			control.graceEndsAt = control.lastSeen.Add(ControlTimeout + ReconnectGraceDuration)
+		if control.graceEndsAt.IsZero() && now.Sub(control.lastSeen) >= runtime.settings.controlTimeout() {
+			control.graceEndsAt = control.lastSeen.Add(runtime.settings.presenceDeadline())
 			control.connectionID, control.generation = "", ""
 			changed = true
 			delete(runtime.pending, id)
@@ -410,7 +412,7 @@ commandsDrained:
 		runtime.terminal = true
 	}
 	if changed || runtime.terminal || !now.Before(runtime.nextFrame) {
-		interval := time.Second / SnapshotRateHz
+		interval := runtime.settings.snapshotInterval()
 		if !now.Before(runtime.nextFrame) {
 			runtime.nextFrame = runtime.nextFrame.Add((now.Sub(runtime.nextFrame)/interval + 1) * interval)
 		}

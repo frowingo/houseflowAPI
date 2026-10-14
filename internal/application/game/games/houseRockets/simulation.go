@@ -2,6 +2,7 @@ package houseRockets
 
 import (
 	"errors"
+	"houseflowApi/internal/application/game/module"
 	"math"
 	"sort"
 	"strconv"
@@ -20,16 +21,13 @@ var (
 	ErrInvalidSimulation      = errors.New("invalid House Rockets simulation parameters")
 	ErrInvalidSimulationState = errors.New("invalid House Rockets simulation state")
 	ErrInvalidAdvance         = errors.New("physics batch must be between zero and thirty ticks")
-	ErrSimulationFinished     = errors.New("House Rockets simulation is terminal")
+	ErrSimulationFinished     = module.ErrFinished
 	ErrSimulationNotFinished  = errors.New("House Rockets simulation has no result")
-	ErrPlayerNotFound         = errors.New("House Rockets player was not found")
-	ErrPlayerEliminated       = errors.New("House Rockets player was eliminated")
+	ErrPlayerNotFound         = module.ErrPlayerNotFound
+	ErrPlayerEliminated       = module.ErrPlayerEliminated
 )
 
-type PlayerIdentity struct {
-	PlayerID    string
-	DisplayName string
-}
+type PlayerIdentity = module.Player
 
 type NewSimulationParams struct {
 	SessionID string

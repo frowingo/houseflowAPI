@@ -9,6 +9,8 @@ import (
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	"houseflowApi/internal/application/game/module"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
@@ -61,7 +63,19 @@ func (processor commandProcessor) Process(
 			UserID:    envelope.ActorID,
 		})
 	default:
-		return gameDomain.SessionSnapshot{}, ErrUnsupportedRoomCommand
+		// Any other type can only be a turn game's move; the module decides.
+		snapshot, err := cqrs.Send[gameDomain.SessionSnapshot](ctx, processor.sender, gameCommands.ApplyTurnMoveCommand{
+			CommandID: envelope.MessageID,
+			SessionID: envelope.RoomID,
+			UserID:    envelope.ActorID,
+			MoveType:  envelope.Type,
+			Payload:   envelope.Payload,
+		})
+		var missing *cqrs.HandlerNotFoundError
+		if errors.Is(err, module.ErrUnsupportedIntent) || errors.As(err, &missing) {
+			return gameDomain.SessionSnapshot{}, ErrUnsupportedRoomCommand
+		}
+		return snapshot, err
 	}
 }
 
@@ -75,7 +89,7 @@ func decodePayload[T any](payload json.RawMessage) (T, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return value, err
 	}
-	if err := ensureJSONEnd(decoder); err != nil {
+	if err := helpers.EnsureJSONEnd(decoder); err != nil {
 		return value, err
 	}
 	return value, nil

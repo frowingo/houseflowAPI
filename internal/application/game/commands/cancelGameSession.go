@@ -7,6 +7,7 @@ import (
 	gameApplication "houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	"houseflowApi/internal/application/game/module"
 	housePolicies "houseflowApi/internal/application/house/policies"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -24,13 +25,17 @@ type CancelGameSessionCommand struct {
 type CancelGameSessionHandler struct {
 	repository       gameAbstract.GameSessionRepository
 	membershipPolicy *housePolicies.MembershipPolicy
+	games            *module.Registry
+	turns            *TurnEngine
 }
 
 func NewCancelGameSessionHandler(
 	repository gameAbstract.GameSessionRepository,
 	membershipPolicy *housePolicies.MembershipPolicy,
+	games *module.Registry,
+	turns *TurnEngine,
 ) *CancelGameSessionHandler {
-	return &CancelGameSessionHandler{repository: repository, membershipPolicy: membershipPolicy}
+	return &CancelGameSessionHandler{repository: repository, membershipPolicy: membershipPolicy, games: games, turns: turns}
 }
 
 func (handler *CancelGameSessionHandler) Handle(
@@ -58,12 +63,22 @@ func (handler *CancelGameSessionHandler) Handle(
 	if processed, found, err := processedSnapshot(ctx, handler.repository, descriptor); err != nil || found {
 		return processed, err
 	}
-	if snapshot.GameKey == "houseRockets" && snapshot.State == gameDomain.SessionRunning {
-		return gameDomain.SessionSnapshot{}, helpers.NewConflictError("houseRockets.error.runtime_completion_required")
+	// A running match ends through its runtime, which owns the result.
+	if snapshot.State == gameDomain.SessionRunning && handler.games.HasRuntime(snapshot.GameKey) {
+		return gameDomain.SessionSnapshot{}, helpers.NewConflictError(module.ErrorCode(snapshot.GameKey, "runtime_completion_required"))
 	}
 
 	expectedVersion := session.Version()
-	if err := session.Cancel(gameDomain.EndReasonCancelledByUser, time.Now().UTC()); err != nil {
+	now := time.Now().UTC()
+	// A running turn game ends with a cancelled result, like a tick match.
+	if _, turnGame := handler.turns.game(snapshot.GameKey); turnGame && snapshot.State == gameDomain.SessionRunning {
+		result, err := handler.turns.cancel(session, now)
+		if err != nil {
+			return gameDomain.SessionSnapshot{}, mapTurnError(err)
+		}
+		return handler.turns.commit(ctx, handler.repository, session, expectedVersion, descriptor, result)
+	}
+	if err := session.Cancel(gameDomain.EndReasonCancelledByUser, now); err != nil {
 		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
 	}
 	return saveSession(ctx, handler.repository, session, expectedVersion, descriptor)

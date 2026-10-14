@@ -4,6 +4,8 @@ import (
 	"time"
 
 	gameDomain "houseflowApi/internal/application/game/domain"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const GameSessionCollectionName = "GameSession"
@@ -28,13 +30,19 @@ type gameSessionPlayerDocument struct {
 }
 
 type gameSessionDocument struct {
-	SessionID         string                      `bson:"_id"`
-	HouseID           string                      `bson:"houseId"`
-	GameKey           string                      `bson:"gameKey"`
-	ProtocolVersion   int                         `bson:"protocolVersion"`
-	Mode              gameDomain.GameMode         `bson:"mode"`
-	State             gameDomain.SessionState     `bson:"state"`
-	Rules             gameSessionRulesDocument    `bson:"rules"`
+	SessionID       string                   `bson:"_id"`
+	HouseID         string                   `bson:"houseId"`
+	GameKey         string                   `bson:"gameKey"`
+	ProtocolVersion int                      `bson:"protocolVersion"`
+	Mode            gameDomain.GameMode      `bson:"mode"`
+	State           gameDomain.SessionState  `bson:"state"`
+	Rules           gameSessionRulesDocument `bson:"rules"`
+	// ConfigVersion and Settings are the game config frozen at creation;
+	// sessions written by an older release have neither.
+	ConfigVersion     int64                       `bson:"configVersion,omitempty"`
+	Settings          bson.M                      `bson:"settings,omitempty"`
+	GameState         bson.M                      `bson:"gameState,omitempty"`
+	TurnDeadline      *time.Time                  `bson:"turnDeadline,omitempty"`
 	Players           []gameSessionPlayerDocument `bson:"players"`
 	CreatedBy         string                      `bson:"createdBy"`
 	CreatedAt         time.Time                   `bson:"createdAt"`
@@ -68,6 +76,11 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 			LeftAt:   optionalTime(player.LeftAt),
 		})
 	}
+	// Settings were resolved from a valid object when the session was created.
+	settings, _ := jsonDocument(snapshot.Settings)
+	// A module's state is a JSON object; storing it as a subdocument keeps it
+	// readable. Its key order is not preserved, its content is.
+	gameState, _ := jsonDocument(snapshot.GameState)
 	activeKey := ""
 	if !isTerminalSession(snapshot.State) {
 		activeKey = activeSessionKey(snapshot.HouseID, snapshot.GameKey)
@@ -85,6 +98,10 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 			ReadyWindowMilliseconds: snapshot.Rules.ReadyWindowDuration.Milliseconds(),
 			CountdownMilliseconds:   snapshot.Rules.CountdownDuration.Milliseconds(),
 		},
+		ConfigVersion:     snapshot.ConfigVersion,
+		Settings:          settings,
+		GameState:         gameState,
+		TurnDeadline:      optionalTime(snapshot.TurnDeadline),
 		Players:           players,
 		CreatedBy:         snapshot.CreatedBy,
 		CreatedAt:         snapshot.CreatedAt,
@@ -131,6 +148,10 @@ func (document gameSessionDocument) snapshot() gameDomain.SessionSnapshot {
 			ReadyWindowDuration: time.Duration(document.Rules.ReadyWindowMilliseconds) * time.Millisecond,
 			CountdownDuration:   time.Duration(document.Rules.CountdownMilliseconds) * time.Millisecond,
 		},
+		ConfigVersion:     document.ConfigVersion,
+		Settings:          documentJSON(document.Settings),
+		GameState:         documentJSON(document.GameState),
+		TurnDeadline:      dereferenceTime(document.TurnDeadline),
 		Players:           players,
 		CreatedBy:         document.CreatedBy,
 		CreatedAt:         document.CreatedAt,

@@ -9,13 +9,13 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 )
 
-// ListActiveSessions pages the legacy pointer, which every running release
-// still writes. It moves to GameSession.activeKey once the pointer is retired.
-func (repository *GameSessionRepository) ListActiveSessions(ctx context.Context, afterSessionID string, limit int) ([]gameAbstract.ActiveGameSession, error) {
+// ListActiveSessions pages the unique partial activeKey index, so history is
+// never scanned; the activeKey itself is the page cursor.
+func (repository *GameSessionRepository) ListActiveSessions(ctx context.Context, after string, limit int) ([]gameAbstract.ActiveGameSession, error) {
 	if limit < 1 || limit > 1000 {
 		return nil, errors.New("invalid active session page size")
 	}
-	cursor, err := repository.activeSessions.Collection().Find(ctx, bson.M{"sessionId": bson.M{"$gt": afterSessionID}}, options.Find().SetHint("uqActiveGameSessionSession").SetSort(bson.D{{Key: "sessionId", Value: 1}}).SetLimit(int64(limit)).SetProjection(bson.M{"sessionId": 1, "gameKey": 1}))
+	cursor, err := repository.sessions.Collection().Find(ctx, bson.M{"activeKey": bson.M{"$exists": true, "$gt": after}}, options.Find().SetHint("uqGameSessionActiveKey").SetSort(bson.D{{Key: "activeKey", Value: 1}}).SetLimit(int64(limit)).SetProjection(bson.M{"gameKey": 1, "activeKey": 1}))
 	if err != nil {
 		return nil, err
 	}
@@ -23,13 +23,14 @@ func (repository *GameSessionRepository) ListActiveSessions(ctx context.Context,
 	result := make([]gameAbstract.ActiveGameSession, 0, limit)
 	for cursor.Next(ctx) {
 		var document struct {
-			SessionID string `bson:"sessionId"`
+			SessionID string `bson:"_id"`
 			GameKey   string `bson:"gameKey"`
+			ActiveKey string `bson:"activeKey"`
 		}
 		if err := cursor.Decode(&document); err != nil {
 			return nil, err
 		}
-		result = append(result, gameAbstract.ActiveGameSession{SessionID: document.SessionID, GameKey: document.GameKey})
+		result = append(result, gameAbstract.ActiveGameSession{SessionID: document.SessionID, GameKey: document.GameKey, Cursor: document.ActiveKey})
 	}
 	return result, cursor.Err()
 }

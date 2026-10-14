@@ -17,8 +17,7 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
@@ -31,9 +30,10 @@ func newRecoveryManager(t *testing.T, fixture *gameSessionApplicationFixture, co
 	t.Helper()
 	mediator := newGameSessionMediator(fixture)
 	matches := database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name())
-	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](mediator, rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches))
+	registerRocketsResults(mediator, fixture.repository, matches, nil)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](mediator, gameQueries.NewAuthorizeCancellationHandler(fixture.repository, fixture.membershipPolicy()))
 	options.MatchRepository = matches
+	options.Games = rocketsGames()
 	if options.RecoveryScanInterval == 0 {
 		options.RecoveryScanInterval = -1
 	}

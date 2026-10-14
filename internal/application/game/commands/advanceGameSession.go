@@ -24,10 +24,11 @@ type AdvanceGameSessionCommand struct {
 
 type AdvanceGameSessionHandler struct {
 	repository gameAbstract.GameSessionRepository
+	turns      *TurnEngine
 }
 
-func NewAdvanceGameSessionHandler(repository gameAbstract.GameSessionRepository) *AdvanceGameSessionHandler {
-	return &AdvanceGameSessionHandler{repository: repository}
+func NewAdvanceGameSessionHandler(repository gameAbstract.GameSessionRepository, turns *TurnEngine) *AdvanceGameSessionHandler {
+	return &AdvanceGameSessionHandler{repository: repository, turns: turns}
 }
 
 func (handler *AdvanceGameSessionHandler) Handle(
@@ -55,10 +56,19 @@ func (handler *AdvanceGameSessionHandler) Handle(
 	}
 
 	expectedVersion := session.Version()
-	if err := session.Advance(command.AdvanceAt.UTC()); err != nil {
-		return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
+	advanceAt := command.AdvanceAt.UTC()
+	// A running session has no lobby deadline left; its deadline is a turn
+	// game's, which the engine resolves at the turn's own time.
+	if session.State() != gameDomain.SessionRunning {
+		if err := session.Advance(advanceAt); err != nil {
+			return gameDomain.SessionSnapshot{}, gameApplication.MapError(err)
+		}
 	}
-	return saveSession(ctx, handler.repository, session, expectedVersion, descriptor)
+	result, err := handler.turns.settle(session, advanceAt)
+	if err != nil {
+		return gameDomain.SessionSnapshot{}, mapTurnError(err)
+	}
+	return handler.turns.commit(ctx, handler.repository, session, expectedVersion, descriptor, result)
 }
 
 var _ cqrs.CommandHandler[AdvanceGameSessionCommand, gameDomain.SessionSnapshot] = (*AdvanceGameSessionHandler)(nil)
