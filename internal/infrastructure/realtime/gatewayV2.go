@@ -52,9 +52,10 @@ type v2ClientState struct {
 	pingLimit       connectionRateLimit
 }
 
-func newV2ClientState(game module.TickModule, epoch int64) *v2ClientState {
+// settings are the session's frozen game settings.
+func newV2ClientState(game module.TickModule, settings json.RawMessage, epoch int64) *v2ClientState {
 	return &v2ClientState{game: game, epoch: epoch, snapshots: make(chan []byte, 1), controlSignal: make(chan struct{}, 1), needSnapshot: true, needBind: true,
-		intentLimit: connectionRateLimit{window: time.Second, maximum: game.Timing().MaximumIntentRate}, pingLimit: connectionRateLimit{window: time.Second, maximum: 5}}
+		intentLimit: connectionRateLimit{window: time.Second, maximum: game.Timing(settings).MaximumIntentRate}, pingLimit: connectionRateLimit{window: time.Second, maximum: 5}}
 }
 
 func (state *v2ClientState) gameKey() string { return state.game.Definition().GameKey }
@@ -115,7 +116,7 @@ func (client *gatewayClient) enqueueV2(message any, kind string, sequence int64)
 }
 
 func (client *gatewayClient) activateV2(snapshot gameDomain.SessionSnapshot) bool {
-	welcome := NewV2ServerMessage(WelcomeMessageType, "", nil, time.Now(), client.v2.game.Welcome(client.roomID, client.id))
+	welcome := NewV2ServerMessage(WelcomeMessageType, "", nil, time.Now(), client.v2.game.Welcome(client.roomID, client.id, snapshot.Settings))
 	initial := NewV2ServerMessage(GameSessionSnapshotEventType, "", &snapshot.Version, time.Now(), dtos.GameSessionToResponseModel(snapshot))
 	welcomeBytes, _ := json.Marshal(welcome)
 	initialBytes, _ := json.Marshal(initial)

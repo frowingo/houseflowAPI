@@ -7,24 +7,13 @@ import (
 
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
-	"houseflowApi/internal/config"
 )
 
-func TestHouseRocketsActivationIsExplicitAndIndependentOfAppEnvironment(t *testing.T) {
-	for _, environment := range []string{"", "local", "development", "staging", "production", "prod", "unknown"} {
-		for _, flag := range []string{"", "false", "true"} {
-			t.Setenv("APP_ENV", environment)
-			t.Setenv("HOUSE_ROCKETS_ENABLED", flag)
-			if config.HouseRocketsEnabled() != (flag == "true") {
-				t.Fatalf("env=%q flag=%q", environment, flag)
-			}
-		}
-	}
-}
-
-func TestHouseRocketsCatalogActivationIsExplicit(t *testing.T) {
+// Without the realtime coordinator no tick game is registered, whatever its
+// Game document says.
+func TestHouseRocketsIsRegisteredOnlyWithTickGames(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
-		catalog, err := builtinCatalog(games.Options{EnableHouseRockets: enabled})
+		catalog, err := builtinCatalog(games.Options{TickGames: enabled})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -3,6 +3,7 @@ package module
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	gameDomain "houseflowApi/internal/application/game/domain"
 )
@@ -23,6 +24,9 @@ func NewRegistry(ticks ...TickModule) (*Registry, error) {
 		if _, exists := registry.ticks[definition.GameKey]; exists {
 			return nil, errors.New("duplicate game module " + definition.GameKey)
 		}
+		if _, err := game.ResolveConfig(Config{Rules: definition.Rules}); err != nil {
+			return nil, fmt.Errorf("game %q defaults: %w", definition.GameKey, err)
+		}
 		registry.ticks[definition.GameKey] = game
 	}
 	return registry, nil
@@ -35,6 +39,24 @@ func (registry *Registry) Tick(gameKey string) (TickModule, bool) {
 	}
 	game, exists := registry.ticks[gameKey]
 	return game, exists
+}
+
+// Game returns the lane-independent part of a registered module.
+func (registry *Registry) Game(gameKey string) (Game, bool) {
+	return registry.Tick(gameKey)
+}
+
+// Games lists every registered module ordered by game key.
+func (registry *Registry) Games() []Game {
+	if registry == nil {
+		return nil
+	}
+	games := make([]Game, 0, len(registry.ticks))
+	for _, game := range registry.ticks {
+		games = append(games, game)
+	}
+	sort.Slice(games, func(i, j int) bool { return games[i].Definition().GameKey < games[j].Definition().GameKey })
+	return games
 }
 
 // HasRuntime reports whether running sessions of the game are completed by a
@@ -51,11 +73,9 @@ func (registry *Registry) Results(gameKey string) (ResultCodec, bool) {
 }
 
 func (registry *Registry) Definitions() []gameDomain.GameDefinition {
-	if registry == nil {
-		return nil
-	}
-	definitions := make([]gameDomain.GameDefinition, 0, len(registry.ticks))
-	for _, game := range registry.ticks {
+	games := registry.Games()
+	definitions := make([]gameDomain.GameDefinition, 0, len(games))
+	for _, game := range games {
 		definitions = append(definitions, game.Definition())
 	}
 	return definitions

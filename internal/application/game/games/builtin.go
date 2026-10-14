@@ -1,5 +1,6 @@
-// Package games assembles the game modules enabled in this process. It is the
-// only place outside a game's own package that names concrete games.
+// Package games assembles the game modules this process can run. It is the
+// only place outside a game's own package that names concrete games. Whether
+// a game accepts new sessions is decided by its Game document, not here.
 package games
 
 import (
@@ -7,11 +8,12 @@ import (
 	"houseflowApi/internal/application/game/module"
 )
 
-type Options struct{ EnableHouseRockets bool }
+// Options.TickGames registers realtime games; they need the Redis coordinator.
+type Options struct{ TickGames bool }
 
 func NewRegistry(options Options) (*module.Registry, error) {
 	var ticks []module.TickModule
-	if options.EnableHouseRockets {
+	if options.TickGames {
 		ticks = append(ticks, houseRockets.Module())
 	}
 	return module.NewRegistry(ticks...)

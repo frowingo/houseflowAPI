@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	"houseflowApi/internal/application/game/games"
@@ -53,7 +52,7 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret")}
 	enabled := len(enabledOptions) == 0 || enabledOptions[0]
 	// A disabled game keeps its catalog entry but has no realtime module.
-	fixtureGames, err := games.NewRegistry(games.Options{EnableHouseRockets: enabled})
+	fixtureGames, err := games.NewRegistry(games.Options{TickGames: enabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +66,7 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 	redisURL := prepareRedis(t)
 	definition := houseRockets.Definition()
 	definition.Rules = rules
-	catalog, err := gameApplication.NewCatalog(definition)
+	catalog, err := newDefinitionCatalog(definition)
 	if err != nil {
 		t.Fatal(err)
 	}

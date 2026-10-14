@@ -77,7 +77,7 @@ func (room *managedRoom) recordLobbyHeartbeat(input module.ControlInput) error {
 	if input.RuntimeEpoch != room.runtimeOwner.Generation {
 		return module.ErrStaleInput
 	}
-	if time.Since(input.CreatedAt) > room.tick.game.Timing().InputLifetime {
+	if time.Since(input.CreatedAt) > room.timing().InputLifetime {
 		return module.ErrInputExpired
 	}
 	room.lobby.mutex.Lock()
@@ -118,7 +118,7 @@ func (room *managedRoom) reconcilePlayers(snapshot gameDomain.SessionSnapshot, a
 	if at.Before(snapshot.UpdatedAt) {
 		at = snapshot.UpdatedAt
 	}
-	controlTimeout := room.tick.game.Timing().ControlTimeout
+	controlTimeout := room.tick.game.Timing(snapshot.Settings).ControlTimeout
 	groups := map[string][]string{"membershipRevoked": {}, "connectionExpired": {}}
 	room.lobby.mutex.Lock()
 	for _, player := range snapshot.Players {
@@ -206,4 +206,13 @@ func (room *managedRoom) freezePlayers(snapshot gameDomain.SessionSnapshot) {
 		}
 		room.lobby.frozen = append(room.lobby.frozen, module.Player{PlayerID: player.PlayerID, DisplayName: name})
 	}
+}
+
+// timing is the transport limits frozen into this room's session.
+func (room *managedRoom) timing() module.TickTiming {
+	var settings json.RawMessage
+	if snapshot := room.snapshot.Load(); snapshot != nil {
+		settings = snapshot.Settings
+	}
+	return room.tick.game.Timing(settings)
 }

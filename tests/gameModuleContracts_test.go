@@ -75,17 +75,37 @@ func TestTickModulesHonourTheCoreContract(t *testing.T) {
 
 func verifyTickModule(t *testing.T, game module.TickModule) {
 	definition := game.Definition()
-	timing := game.Timing()
+	timing := game.Timing(nil)
 	if definition.ProtocolVersion != realtime.V2ProtocolVersion || definition.Mode != gameDomain.RealtimeGame {
 		t.Fatalf("definition = %+v", definition)
 	}
 	if timing.ControlTimeout <= 0 || timing.InputLifetime <= 0 || timing.MaximumIntentRate <= 0 {
 		t.Fatalf("timing = %+v", timing)
 	}
+	// The defaults must resolve; a session without stored settings (written by
+	// the previous release) behaves exactly like one created with them.
+	defaults, err := game.ResolveConfig(module.Config{Rules: definition.Rules})
+	if err != nil || defaults.Rules != definition.Rules || len(defaults.Settings) == 0 {
+		t.Fatalf("default config = %+v %v", defaults, err)
+	}
+	if resolved := game.Timing(defaults.Settings); resolved != timing {
+		t.Fatalf("default settings timing = %+v, want %+v", resolved, timing)
+	}
+	if _, err := game.ResolveConfig(module.Config{Rules: definition.Rules, Settings: json.RawMessage(`{"unknownSetting":1}`)}); !errors.Is(err, module.ErrInvalidConfig) {
+		t.Fatalf("unknown setting accepted: %v", err)
+	}
+	tooFew := definition.Rules
+	tooFew.MinimumPlayers = 1
+	if _, err := game.ResolveConfig(module.Config{Rules: tooFew}); err == nil {
+		t.Fatal("rules below the core minimum accepted")
+	}
+	if settings, err := json.Marshal(game.ClientSettings(defaults.Settings)); err != nil || len(settings) < 2 || settings[0] != '{' {
+		t.Fatalf("client settings = %s %v", settings, err)
+	}
 	if _, err := game.DecodeIntent(definition.GameKey+".unknownIntent", json.RawMessage(`{}`)); !errors.Is(err, module.ErrUnsupportedIntent) {
 		t.Fatalf("unknown intent: %v", err)
 	}
-	if welcome, err := json.Marshal(game.Welcome("contract-session", "contract-connection")); err != nil || len(welcome) < 2 || welcome[0] != '{' {
+	if welcome, err := json.Marshal(game.Welcome("contract-session", "contract-connection", nil)); err != nil || len(welcome) < 2 || welcome[0] != '{' {
 		t.Fatalf("welcome = %s %v", welcome, err)
 	}
 	session := runningContractSession(t, definition)

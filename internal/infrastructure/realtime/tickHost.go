@@ -185,7 +185,7 @@ func (room *managedRoom) startRuntimeLocked(snapshot gameDomain.SessionSnapshot)
 	} else if time.Since(snapshot.StartedAt) > room.manager.options.RecoveryMaxAge && room.manager.options.MatchRepository != nil {
 		return room.abandonUnstartedMatch(snapshot)
 	} else {
-		runtime, err = room.tick.game.NewRuntime(module.RuntimeParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.lobby.frozen, Epoch: room.runtimeOwner.Generation, Now: time.Now(), InitialSequence: room.tick.previewSequence})
+		runtime, err = room.tick.game.NewRuntime(module.RuntimeParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.lobby.frozen, Epoch: room.runtimeOwner.Generation, Now: time.Now(), InitialSequence: room.tick.previewSequence, Settings: snapshot.Settings})
 	}
 	if err != nil || runtime == nil {
 		return err

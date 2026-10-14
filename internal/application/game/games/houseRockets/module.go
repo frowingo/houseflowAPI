@@ -21,12 +21,29 @@ var _ module.TickModule = gameModule{}
 
 func (gameModule) Definition() gameDomain.GameDefinition { return Definition() }
 
-func (gameModule) Timing() module.TickTiming {
-	return module.TickTiming{ControlTimeout: ControlTimeout, InputLifetime: InputLifetime, MaximumIntentRate: MaximumSteerMessagesPerSecond}
+func (gameModule) ResolveConfig(override module.Config) (module.Config, error) {
+	if !validRules(override) {
+		return module.Config{}, ErrInvalidSettings
+	}
+	settings, err := resolveSettings(override.Settings)
+	if err != nil {
+		return module.Config{}, err
+	}
+	encoded, err := json.Marshal(settings)
+	return module.Config{Rules: override.Rules, Settings: encoded}, err
 }
 
-func (gameModule) Welcome(sessionID, connectionID string) any {
-	return HouseRocketsWelcomeModel{SessionID: sessionID, GameKey: GameKey, ConnectionID: connectionID, ProtocolVersion: ProtocolVersion, CourseVersion: CourseVersion, Settings: HouseRocketsRuntimeSettings()}
+func (gameModule) ClientSettings(settings json.RawMessage) any {
+	return sessionSettings(settings).clientModel()
+}
+
+func (gameModule) Timing(settings json.RawMessage) module.TickTiming {
+	resolved := sessionSettings(settings)
+	return module.TickTiming{ControlTimeout: resolved.controlTimeout(), InputLifetime: InputLifetime, MaximumIntentRate: resolved.MaximumSteerMessagesPerSecond}
+}
+
+func (gameModule) Welcome(sessionID, connectionID string, settings json.RawMessage) any {
+	return HouseRocketsWelcomeModel{SessionID: sessionID, GameKey: GameKey, ConnectionID: connectionID, ProtocolVersion: ProtocolVersion, CourseVersion: CourseVersion, Settings: sessionSettings(settings).clientModel()}
 }
 
 func (gameModule) DecodeIntent(messageType string, payload json.RawMessage) (module.Intent, error) {
@@ -52,7 +69,7 @@ func (intent steerIntent) RuntimeInput(control module.ControlInput) any {
 }
 
 func (gameModule) NewRuntime(params module.RuntimeParams) (module.TickRuntime, error) {
-	runtime, err := NewRuntime(NewSimulationParams{SessionID: params.SessionID, HouseID: params.HouseID, StartedAt: params.StartedAt, Players: params.Players}, params.Epoch, params.Now, params.InitialSequence)
+	runtime, err := newRuntime(sessionSettings(params.Settings), NewSimulationParams{SessionID: params.SessionID, HouseID: params.HouseID, StartedAt: params.StartedAt, Players: params.Players}, params.Epoch, params.Now, params.InitialSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +84,7 @@ func (gameModule) RestoreRuntime(payload json.RawMessage, params module.RestoreP
 	if !checkpointMatches(checkpoint, params) {
 		return nil, ErrInvalidSimulationState
 	}
-	runtime, err := RestoreRuntime(checkpoint, params.Epoch, params.Now)
+	runtime, err := restoreRuntime(sessionSettings(params.Session.Settings), checkpoint, params.Epoch, params.Now)
 	if err != nil {
 		return nil, err
 	}

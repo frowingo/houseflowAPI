@@ -99,16 +99,25 @@ Gerekirse test ortamına özel base URL enjeksiyonu kullan; bütün uygulamanın
 production adresini sabit bir local IP'yle değiştirme. HTTP URL `/api/v1`
 path'ini korur, socket için HTTPS→WSS / HTTP→WS dönüşümü yapılır.
 
+14 Ekim 2026 güncellemesi (Faz 3): `HOUSE_ROCKETS_ENABLED` kaldırıldı. Oyunun
+açık olup olmadığı, hangi evlere açıldığı, lobby kuralları ve ağ ayarları `Game`
+collection'ındaki `houseRockets` dokümanından okunur (ADR-019). `0046_gameConfig`
+migration'ı dokümanı önceki sürümün değerleriyle ve açık olarak oluşturur.
+Değişiklik `PUT /api/v1/game/houseRockets/config` (super admin) ile deploy
+gerekmeden yapılır. Client etkin oyunları ve ayarlarını
+`GET /api/v1/game/catalog?houseId=...` ile okur. Bağlantı başına ayarlar yine
+`welcome.settings` içinde gelir ve session'ın oluşturulduğu andaki değerlerdir.
+
 Backend tarafında canlı deneme için:
 
 ```text
-HOUSE_ROCKETS_ENABLED=true
-REALTIME_MAX_OWNED_ROOMS=<pozitif tamsayı>
-REALTIME_MAX_CONNECTIONS=<pozitif tamsayı>
+REALTIME_MAX_OWNED_ROOMS=<pozitif tamsayı>   # production'da zorunlu
+REALTIME_MAX_CONNECTIONS=<pozitif tamsayı>   # production'da zorunlu
 ```
 
-Çalışan Redis coordinator ve migration'ları uygulanmış transaction destekli
-Mongo gerekir. Son test tesliminde local container'lar durdurulmuştur; bu belge
+Çalışan Redis coordinator, migration'ları uygulanmış transaction destekli
+Mongo ve `Game` collection'ında `enabled: true` olan bir `houseRockets`
+dokümanı gerekir. Son test tesliminde local container'lar durdurulmuştur; bu belge
 çalışan server/adres/secret sağlamaz. Ortam açılması ve limit seçimi backend
 sorumluluğudur. Mobil limitleri seçmez ve backend aktivasyon ayarını değiştirmez.
 Base URL, geçerli test hesapları ve aynı house üyelikleri güvenli yoldan

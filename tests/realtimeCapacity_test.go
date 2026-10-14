@@ -12,13 +12,14 @@ import (
 	"houseflowApi/internal/infrastructure/telemetry"
 )
 
-func TestRealtimeLimitsRequireExplicitRolloutCapacity(t *testing.T) {
+// Which games run is stored in the Game collection; production instances must
+// still state their own capacity.
+func TestRealtimeLimitsRequireExplicitProductionCapacity(t *testing.T) {
 	t.Setenv("APP_ENV", "staging")
-	t.Setenv("HOUSE_ROCKETS_ENABLED", "true")
 	t.Setenv("REALTIME_MAX_OWNED_ROOMS", "")
 	t.Setenv("REALTIME_MAX_CONNECTIONS", "")
-	if _, err := config.LoadRealtimeLimits(); err == nil {
-		t.Fatal("enabled rollout has no limits")
+	if limits, err := config.LoadRealtimeLimits(); err != nil || limits.MaxOwnedRooms != 0 || limits.MaxConnections != 0 {
+		t.Fatalf("non-production limits: %+v %v", limits, err)
 	}
 	t.Setenv("REALTIME_MAX_OWNED_ROOMS", "4")
 	t.Setenv("REALTIME_MAX_CONNECTIONS", "32")
@@ -35,13 +36,11 @@ func TestRealtimeLimitsRequireExplicitRolloutCapacity(t *testing.T) {
 	t.Setenv("REALTIME_MAX_CONNECTIONS", "")
 	t.Setenv("REALTIME_MAX_OWNED_ROOMS", "")
 	t.Setenv("APP_ENV", "production")
-	if !config.HouseRocketsEnabled() {
-		t.Fatal("explicit flag ignored in production")
-	}
 	if _, err := config.LoadRealtimeLimits(); err == nil {
-		t.Fatal("enabled production rollout has no limits")
+		t.Fatal("production realtime has no limits")
 	}
-	t.Setenv("HOUSE_ROCKETS_ENABLED", "false")
+	t.Setenv("REALTIME_MAX_OWNED_ROOMS", "1")
+	t.Setenv("REALTIME_MAX_CONNECTIONS", "8")
 	if _, err := config.LoadRealtimeLimits(); err != nil {
 		t.Fatal(err)
 	}

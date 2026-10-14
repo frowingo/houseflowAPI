@@ -107,7 +107,7 @@ func BenchmarkHouseRocketsFrameFanout(b *testing.B) {
 	hub := &roomHub{clients: make(map[string]*gatewayClient, len(grants))}
 	clients := make([]*gatewayClient, len(grants))
 	for index := range grants {
-		client := &gatewayClient{id: connectionID(index), roomID: "fanout-session", userID: grants[index].PlayerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(houseRockets.Module(), 1)}
+		client := &gatewayClient{id: connectionID(index), roomID: "fanout-session", userID: grants[index].PlayerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(houseRockets.Module(), nil, 1)}
 		client.v2.grant = &grants[index]
 		clients[index] = client
 		hub.clients[client.id] = client

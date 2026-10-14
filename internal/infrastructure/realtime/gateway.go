@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -205,6 +206,7 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		}
 		c.Locals("realtimeEpoch", ownership.RuntimeEpoch)
 		c.Locals("realtimeGame", game)
+		c.Locals("realtimeSettings", snapshot.Settings)
 		c.Locals("realtimeReservation", reservation)
 		if err := c.Next(); err != nil {
 			reservation.release()
@@ -564,7 +566,8 @@ func newGatewayClient(
 	client.expiresAt, _ = socket.Locals("tokenExpiresAt").(time.Time)
 	epoch, _ := socket.Locals("realtimeEpoch").(int64)
 	game, _ := socket.Locals("realtimeGame").(module.TickModule)
-	client.v2 = newV2ClientState(game, epoch)
+	settings, _ := socket.Locals("realtimeSettings").(json.RawMessage)
+	client.v2 = newV2ClientState(game, settings, epoch)
 	return client
 }
 

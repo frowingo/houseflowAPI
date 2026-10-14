@@ -5,6 +5,7 @@ import (
 
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	"houseflowApi/internal/application/game/module"
 	"houseflowApi/internal/helpers"
 )
 
@@ -16,6 +17,12 @@ func MapError(err error) error {
 		return helpers.NewNotFoundError("game.error.session_not_found")
 	case errors.Is(err, gameAbstract.ErrGameDefinitionNotFound):
 		return helpers.NewNotFoundError("game.error.definition_not_found")
+	case errors.Is(err, gameAbstract.ErrGameUnavailable):
+		return helpers.NewConflictError("game.error.unavailable")
+	case errors.Is(err, gameAbstract.ErrGameConfigConflict):
+		return helpers.NewConflictError("game.error.config_conflict")
+	case errors.Is(err, module.ErrInvalidConfig):
+		return helpers.NewLocalizedError("game.error.invalid_config")
 	case errors.Is(err, gameAbstract.ErrGameSessionAlreadyExists):
 		return helpers.NewConflictError("game.error.session_already_exists")
 	case errors.Is(err, gameAbstract.ErrConcurrentSessionUpdate):

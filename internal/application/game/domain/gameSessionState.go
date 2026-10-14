@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -72,6 +73,8 @@ type SessionSnapshot struct {
 	Mode              GameMode
 	State             SessionState
 	Rules             SessionRules
+	ConfigVersion     int64
+	Settings          json.RawMessage
 	Players           []SessionPlayer
 	CreatedBy         string
 	CreatedAt         time.Time

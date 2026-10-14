@@ -73,6 +73,10 @@ func (runtime *Runtime) Checkpoint() RuntimeCheckpoint {
 // RestoreRuntime keeps physics frozen during ownership interruption. No queued
 // steering is replayed and no old connection generation survives the new epoch.
 func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*Runtime, error) {
+	return restoreRuntime(DefaultSettings(), checkpoint, epoch, now)
+}
+
+func restoreRuntime(settings Settings, checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*Runtime, error) {
 	if !validCheckpointHeader(checkpoint, epoch, now) {
 		return nil, ErrInvalidSimulationState
 	}
@@ -84,7 +88,7 @@ func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*
 	for index, player := range checkpoint.World.Players {
 		players[index] = PlayerIdentity{PlayerID: player.PlayerID, DisplayName: player.DisplayName}
 	}
-	runtime, err := NewRuntime(NewSimulationParams{SessionID: checkpoint.World.SessionID, HouseID: checkpoint.World.HouseID, StartedAt: checkpoint.World.StartedAt, Players: players}, epoch, now, checkpoint.Sequence)
+	runtime, err := newRuntime(settings, NewSimulationParams{SessionID: checkpoint.World.SessionID, HouseID: checkpoint.World.HouseID, StartedAt: checkpoint.World.StartedAt, Players: players}, epoch, now, checkpoint.Sequence)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +100,10 @@ func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*
 		}
 		deadline := saved.GraceEndsAt
 		if deadline.IsZero() {
-			deadline = saved.LastSeen.Add(ControlTimeout + ReconnectGraceDuration)
+			deadline = saved.LastSeen.Add(settings.presenceDeadline())
 		}
 		remaining := deadline.Sub(checkpoint.CapturedAt)
-		if remaining > ControlTimeout+ReconnectGraceDuration+maximumCatchUp {
+		if remaining > settings.presenceDeadline()+maximumCatchUp {
 			return nil, ErrInvalidSimulationState
 		}
 		runtime.controls[saved.PlayerID] = &controller{graceEndsAt: now.Add(max(0, remaining))}

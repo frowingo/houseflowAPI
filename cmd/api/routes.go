@@ -135,15 +135,22 @@ func SetupRoutes(
 	imageCache := helpers.NewInMemoryCache[[]dtos.ImageAssetResultModel]()
 	gameSessionRepository := database.NewGameSessionRepository(client, dbName)
 	matchRepository := database.NewGameMatchRepository(client, dbName)
-	// Realtime games need the coordinator; without it no game module is enabled.
-	gameRegistry, err := games.NewRegistry(games.Options{EnableHouseRockets: coordinator != nil && config.HouseRocketsEnabled()})
+	// Realtime games need the coordinator; without it no game module is registered.
+	gameRegistry, err := games.NewRegistry(games.Options{TickGames: coordinator != nil})
 	if err != nil {
 		return nil, err
 	}
-	gameCatalog, err := gameApplication.NewCatalog(gameRegistry.Definitions()...)
-	if err != nil {
-		return nil, err
+	gameConfigRepository := database.NewGameConfigRepository(client, dbName)
+	gameConfigBus, _ := coordinator.(coordinationAbstract.GameConfigBus)
+	gameCatalog := gameApplication.NewCatalog(gameRegistry, gameConfigRepository, gameConfigBus)
+	reportGameConfig := func(err error) { log.Println("game config:", err) }
+	if err := gameCatalog.Refresh(ctx); err != nil {
+		reportGameConfig(err)
 	}
+	go gameCatalog.Run(ctx, reportGameConfig)
+	cqrs.MustRegister[[]gameApplication.CatalogEntry, gameQueries.GetGameCatalogQuery](applicationMediator, gameQueries.NewGetGameCatalogHandler(gameCatalog, houseMembershipPolicy))
+	cqrs.MustRegister[[]gameApplication.CatalogEntry, gameQueries.GetGameConfigsQuery](applicationMediator, gameQueries.NewGetGameConfigsHandler(gameCatalog))
+	cqrs.MustRegister[gameApplication.CatalogEntry, gameCommands.UpdateGameConfigCommand](applicationMediator, gameCommands.NewUpdateGameConfigHandler(gameCatalog, gameConfigRepository, reportGameConfig))
 	cqrs.MustRegister[gameDomain.MatchResult, gameCommands.CompleteMatchCommand](applicationMediator, gameCommands.NewCompleteMatchHandler(gameSessionRepository, matchRepository, gameRegistry))
 	cqrs.MustRegister[any, gameQueries.GetMatchResultQuery](applicationMediator, gameQueries.NewGetMatchResultHandler(gameSessionRepository, matchRepository, gameRegistry, houseMembershipPolicy))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](applicationMediator, gameQueries.NewAuthorizeCancellationHandler(gameSessionRepository, houseMembershipPolicy))
@@ -328,6 +335,9 @@ func SetupRoutes(
 		"/game",
 		middleware.AuthRequired(jwtService, localizationCache),
 	)
+	gameRoutes.Get("/catalog", middleware.UserRateLimit(localizationCache), gameController.GetCatalog)
+	gameRoutes.Get("/configs", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), gameController.GetConfigs)
+	gameRoutes.Put("/:gameKey/config", middleware.UserRateLimit(localizationCache), middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), gameController.UpdateConfig)
 	gameRoutes.Put(
 		"/:gameKey/session",
 		middleware.UserRateLimit(localizationCache),

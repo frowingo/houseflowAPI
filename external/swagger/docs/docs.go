@@ -65,11 +65,6 @@ const docTemplate = `{
         },
         "/auth/isAuth": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Returns true if the token has not expired, false otherwise",
                 "produces": [
                     "application/json"
@@ -91,7 +86,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_dtos.IsAuthResponseModel"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/auth/login": {
@@ -242,11 +242,6 @@ const docTemplate = `{
         },
         "/auth/validate-email": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Sends a 6-character verification code to the authenticated user's email address.",
                 "produces": [
                     "application/json"
@@ -275,14 +270,14 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "description": "Verifies the authenticated user's email address with the submitted 6-character code.",
                 "consumes": [
                     "application/json"
@@ -325,7 +320,12 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/base/health": {
@@ -352,11 +352,6 @@ const docTemplate = `{
         },
         "/chore": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Create a new chore in a house",
                 "consumes": [
                     "application/json"
@@ -400,16 +395,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/chore/review": {
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/chore/review": {
+            "put": {
                 "description": "Approve or reject a chore that is in review",
                 "consumes": [
                     "application/json"
@@ -460,16 +455,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/chore/status": {
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/chore/status": {
+            "put": {
                 "description": "Update the status of multiple chores",
                 "consumes": [
                     "application/json"
@@ -523,16 +518,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/chore/{id}": {
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/chore/{id}": {
+            "put": {
                 "description": "Update an existing chore",
                 "consumes": [
                     "application/json"
@@ -590,16 +585,234 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/game/{gameKey}/session": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
+                ]
+            }
+        },
+        "/game/catalog": {
+            "get": {
+                "description": "Returns enabled games available to the house with the rules (capped by house capacity) and client settings a new session would get. Running sessions keep the config they were created with.",
+                "produces": [
+                    "application/json"
                 ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "List the games a house can start",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Requester is not a house member",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/game/configs": {
+            "get": {
+                "description": "Returns every game this deployment can run with its current config, including switched-off games.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "List game configs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameConfigModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Super admin role required",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/game/sessions/{sessionId}/result": {
+            "get": {
+                "description": "Returns the committed result in its game's own wire model.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "Get the immutable match result",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Game session ID",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Current house membership required",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Session or committed result not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/game/{gameKey}/config": {
+            "put": {
+                "description": "Switches a game on or off, limits it to listed houses and changes its rules and settings without a deploy. All instances apply it within seconds; existing sessions keep the config they were created with.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "Replace a game config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "houseRockets",
+                        "description": "Game key",
+                        "name": "gameKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New config",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.UpdateGameConfigModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameConfigModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid config",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Super admin role required",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Game not found",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Config changed since expectedVersion",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/game/{gameKey}/session": {
+            "get": {
                 "description": "Returns the current non-terminal session for the selected house and game without creating one.",
                 "consumes": [
                     "application/json"
@@ -659,14 +872,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "description": "Returns the current active session for the house and game, or atomically creates one from the server-side game catalog.",
                 "consumes": [
                     "application/json"
@@ -734,67 +947,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/game/{sessionId}/result": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Game"
-                ],
-                "summary": "Get the immutable House Rockets match result",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Game session ID",
-                        "name": "sessionId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_games_houseRockets_HouseRocketsResultModel"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Current house membership required",
-                        "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Session or committed result not found",
-                        "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/house/announcement": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Create an announcement that is displayed for 24 hours",
                 "consumes": [
                     "application/json"
@@ -836,16 +998,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/create": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/create": {
+            "post": {
                 "consumes": [
                     "application/json"
                 ],
@@ -886,16 +1048,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/details": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/details": {
+            "get": {
                 "consumes": [
                     "application/json"
                 ],
@@ -934,16 +1096,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/exit": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/exit": {
+            "post": {
                 "description": "A member can leave the house; the owner can remove another member.",
                 "consumes": [
                     "application/json"
@@ -1003,16 +1165,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/infos": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/infos": {
+            "get": {
                 "consumes": [
                     "application/json"
                 ],
@@ -1063,16 +1225,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/inviteCode": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/inviteCode": {
+            "post": {
                 "description": "Generates an 8-character invite code that expires after the configured validity period.",
                 "consumes": [
                     "application/json"
@@ -1114,16 +1276,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/join": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/join": {
+            "post": {
                 "consumes": [
                     "application/json"
                 ],
@@ -1164,16 +1326,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/house/profile": {
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/house/profile": {
+            "put": {
                 "description": "Only the house owner can update fields. Each field can be changed once every 48 hours.",
                 "consumes": [
                     "application/json"
@@ -1246,16 +1408,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/language": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/language": {
+            "post": {
                 "consumes": [
                     "application/json"
                 ],
@@ -1305,16 +1467,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/localization/language": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/localization/language": {
+            "post": {
                 "consumes": [
                     "application/json"
                 ],
@@ -1361,16 +1523,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/localization/language/{prefix}": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/localization/language/{prefix}": {
+            "get": {
                 "produces": [
                     "application/json"
                 ],
@@ -1400,16 +1562,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/localization/languages": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/localization/languages": {
+            "get": {
                 "produces": [
                     "application/json"
                 ],
@@ -1430,7 +1592,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/localization/plaintext/{language}": {
@@ -1469,11 +1636,6 @@ const docTemplate = `{
         },
         "/user": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Create a new user in the system",
                 "consumes": [
                     "application/json"
@@ -1517,16 +1679,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/user/getByEmail": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/getByEmail": {
+            "get": {
                 "description": "Retrieve a user by their email address",
                 "consumes": [
                     "application/json"
@@ -1566,16 +1728,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/user/getImage": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/getImage": {
+            "get": {
                 "description": "Retrieve an image asset by its public ID",
                 "consumes": [
                     "application/json"
@@ -1615,16 +1777,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/user/getImages": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/getImages": {
+            "get": {
                 "description": "Retrieve all image assets for a given category",
                 "consumes": [
                     "application/json"
@@ -1664,16 +1826,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/user/getUsersByHouse": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/getUsersByHouse": {
+            "get": {
                 "description": "Get all members of a house with their full details",
                 "consumes": [
                     "application/json"
@@ -1716,16 +1878,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/user/images": {
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/images": {
+            "put": {
                 "description": "Update fileURL and/or isActive of an image asset by publicId (SuperAdmin only)",
                 "consumes": [
                     "application/json"
@@ -1773,14 +1935,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "description": "Create a new image asset (SuperAdmin only)",
                 "consumes": [
                     "application/json"
@@ -1828,16 +1990,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/user/profile/{id}": {
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/profile/{id}": {
+            "put": {
                 "description": "Update user profile fields. Only provided (non-null) fields will be updated.",
                 "consumes": [
                     "application/json"
@@ -1886,16 +2048,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/user/usersList": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/usersList": {
+            "get": {
                 "description": "Get a list of all users in the system",
                 "consumes": [
                     "application/json"
@@ -1931,16 +2093,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
-            }
-        },
-        "/user/{id}": {
-            "delete": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/user/{id}": {
+            "delete": {
                 "description": "Delete a user by their ID",
                 "consumes": [
                     "application/json"
@@ -1979,124 +2141,16 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         }
     },
     "definitions": {
-        "houseflowApi_internal_application_game_games_houseRockets.EliminationReason": {
-            "type": "string",
-            "enum": [
-                "behindCamera",
-                "forfeit",
-                "connectionExpired",
-                "membershipRevoked"
-            ],
-            "x-enum-varnames": [
-                "EliminationBehindCamera",
-                "EliminationForfeit",
-                "EliminationConnectionExpired",
-                "EliminationMembershipRevoked"
-            ]
-        },
-        "houseflowApi_internal_application_game_games_houseRockets.EndReason": {
-            "type": "string",
-            "enum": [
-                "lastSurvivor",
-                "simultaneousElimination",
-                "insufficientPlayers",
-                "cancelledByUser",
-                "sessionExpired",
-                "recoveryFailed",
-                "coordinationUnavailable",
-                "runtimeOverloaded"
-            ],
-            "x-enum-varnames": [
-                "EndLastSurvivor",
-                "EndSimultaneousElimination",
-                "EndInsufficientPlayers",
-                "EndCancelledByUser",
-                "EndSessionExpired",
-                "EndRecoveryFailed",
-                "EndCoordinationUnavailable",
-                "EndRuntimeOverloaded"
-            ]
-        },
-        "houseflowApi_internal_application_game_games_houseRockets.HouseRocketsPlayerResultModel": {
-            "type": "object",
-            "properties": {
-                "distance": {
-                    "type": "number"
-                },
-                "eliminatedAtTick": {
-                    "type": "integer"
-                },
-                "eliminationReason": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.EliminationReason"
-                },
-                "playerId": {
-                    "type": "string"
-                },
-                "rank": {
-                    "type": "integer"
-                }
-            }
-        },
-        "houseflowApi_internal_application_game_games_houseRockets.HouseRocketsResultModel": {
-            "type": "object",
-            "properties": {
-                "courseVersion": {
-                    "type": "integer"
-                },
-                "durationSeconds": {
-                    "type": "number"
-                },
-                "endReason": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.EndReason"
-                },
-                "endedAt": {
-                    "type": "string"
-                },
-                "gameKey": {
-                    "type": "string"
-                },
-                "houseId": {
-                    "type": "string"
-                },
-                "players": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.HouseRocketsPlayerResultModel"
-                    }
-                },
-                "protocolVersion": {
-                    "type": "integer"
-                },
-                "sessionId": {
-                    "type": "string"
-                },
-                "startedAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.ResultStatus"
-                },
-                "winnerId": {
-                    "type": "string"
-                }
-            }
-        },
-        "houseflowApi_internal_application_game_games_houseRockets.ResultStatus": {
-            "type": "string",
-            "enum": [
-                "completed",
-                "cancelled"
-            ],
-            "x-enum-varnames": [
-                "ResultCompleted",
-                "ResultCancelled"
-            ]
-        },
         "houseflowApi_internal_data_entities.ChoreLevel": {
             "type": "integer",
             "enum": [
@@ -2129,6 +2183,34 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "data": {},
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameCatalogEntryModel"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameConfigModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameConfigModel"
+                    }
+                },
                 "success": {
                     "type": "boolean"
                 }
@@ -2176,22 +2258,22 @@ const docTemplate = `{
                 }
             }
         },
-        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_games_houseRockets_HouseRocketsResultModel": {
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.HouseRocketsResultModel"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel"
                 },
                 "success": {
                     "type": "boolean"
                 }
             }
         },
-        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_AnnouncementResponseModel": {
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameConfigModel": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.AnnouncementResponseModel"
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameConfigModel"
                 },
                 "success": {
                     "type": "boolean"
@@ -2655,6 +2737,61 @@ const docTemplate = `{
             "properties": {
                 "email": {
                     "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.GameCatalogEntryModel": {
+            "type": "object",
+            "properties": {
+                "configVersion": {
+                    "type": "integer"
+                },
+                "gameKey": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "protocolVersion": {
+                    "type": "integer"
+                },
+                "rules": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameSessionRulesModel"
+                },
+                "settings": {
+                    "type": "object"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.GameConfigModel": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "gameKey": {
+                    "type": "string"
+                },
+                "houseIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "protocolVersion": {
+                    "type": "integer"
+                },
+                "rules": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.GameSessionRulesModel"
+                },
+                "settings": {
+                    "type": "object"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -3202,6 +3339,30 @@ const docTemplate = `{
                             "$ref": "#/definitions/houseflowApi_internal_data_entities.ChoreStatus"
                         }
                     ]
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.UpdateGameConfigModel": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "houseIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rules": {
+                    "type": "object"
+                },
+                "settings": {
+                    "type": "object"
                 }
             }
         },

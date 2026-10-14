@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
@@ -65,9 +64,9 @@ func (fixture *gameSessionApplicationFixture) membershipPolicy() *housePolicies.
 // sessionTestGameKey exercises the game-agnostic session layer without a runtime.
 const sessionTestGameKey = "sessionTestGame"
 
-func sessionTestCatalog(t *testing.T) *gameApplication.Catalog {
+func sessionTestCatalog(t *testing.T) definitionCatalog {
 	t.Helper()
-	catalog, err := gameApplication.NewCatalog(gameDomain.GameDefinition{
+	catalog, err := newDefinitionCatalog(gameDomain.GameDefinition{
 		GameKey:         sessionTestGameKey,
 		ProtocolVersion: 1,
 		Mode:            gameDomain.RealtimeGame,

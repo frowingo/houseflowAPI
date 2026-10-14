@@ -31,18 +31,9 @@ type HouseRocketsRuntimeSettingsModel struct {
 	MaximumMatchMilliseconds      int64 `json:"maximumMatchMilliseconds"`
 }
 
+// HouseRocketsRuntimeSettings is the client view of the default settings.
 func HouseRocketsRuntimeSettings() HouseRocketsRuntimeSettingsModel {
-	return HouseRocketsRuntimeSettingsModel{
-		PhysicsRateHz:                 PhysicsRateHz,
-		SchedulingRateHz:              SchedulingRateHz,
-		SnapshotRateHz:                SnapshotRateHz,
-		MaximumInputRateHz:            MaximumInputRateHz,
-		MaximumSteerMessagesPerSecond: MaximumSteerMessagesPerSecond,
-		ControlHeartbeatMilliseconds:  ControlHeartbeatInterval.Milliseconds(),
-		ControlTimeoutMilliseconds:    ControlTimeout.Milliseconds(),
-		ReconnectGraceMilliseconds:    ReconnectGraceDuration.Milliseconds(),
-		MaximumMatchMilliseconds:      MaximumMatchDuration.Milliseconds(),
-	}
+	return DefaultSettings().clientModel()
 }
 
 type HouseRocketsWelcomeModel struct {

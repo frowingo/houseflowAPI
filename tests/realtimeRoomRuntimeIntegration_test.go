@@ -8,7 +8,6 @@ import (
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	gameQueries "houseflowApi/internal/application/game/queries"
@@ -274,7 +273,7 @@ func createRuntimeSession(
 	rules gameDomain.SessionRules,
 ) gameDomain.SessionSnapshot {
 	t.Helper()
-	catalog, err := gameApplication.NewCatalog(gameDomain.GameDefinition{
+	catalog, err := newDefinitionCatalog(gameDomain.GameDefinition{
 		GameKey:         "runtimeGame",
 		ProtocolVersion: 1,
 		Mode:            gameDomain.RealtimeGame,

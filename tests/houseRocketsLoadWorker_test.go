@@ -16,7 +16,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
@@ -77,7 +76,7 @@ func TestHouseRocketsLoadWorker(t *testing.T) {
 	fixture := &gameSessionApplicationFixture{gameSessionPersistenceFixture: &gameSessionPersistenceFixture{ctx: ctx, db: db, repository: repository}}
 	mediator := newGameSessionMediator(fixture)
 	matches := database.NewGameMatchRepository(client, db.Name())
-	catalog, err := gameApplication.NewCatalog(houseRockets.Definition())
+	catalog, err := newDefinitionCatalog(houseRockets.Definition())
 	if err != nil {
 		t.Fatal(err)
 	}

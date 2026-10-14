@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -20,8 +21,12 @@ type NewSessionParams struct {
 	ProtocolVersion int
 	Mode            GameMode
 	Rules           SessionRules
-	CreatedBy       string
-	CreatedAt       time.Time
+	// ConfigVersion and Settings freeze the game config the session was
+	// created with; a later config change never reaches it.
+	ConfigVersion int64
+	Settings      json.RawMessage
+	CreatedBy     string
+	CreatedAt     time.Time
 }
 
 type GameSession struct {
@@ -32,6 +37,8 @@ type GameSession struct {
 	mode              GameMode
 	state             SessionState
 	rules             SessionRules
+	configVersion     int64
+	settings          json.RawMessage
 	players           []SessionPlayer
 	createdBy         string
 	createdAt         time.Time
@@ -58,6 +65,8 @@ func NewGameSession(params NewSessionParams) (*GameSession, error) {
 		mode:            params.Mode,
 		state:           SessionLobby,
 		rules:           params.Rules,
+		configVersion:   params.ConfigVersion,
+		settings:        append(json.RawMessage(nil), params.Settings...),
 		players:         make([]SessionPlayer, 0, params.Rules.MaximumPlayers),
 		createdBy:       params.CreatedBy,
 		createdAt:       createdAt,
@@ -80,6 +89,8 @@ func RestoreGameSession(snapshot SessionSnapshot) (*GameSession, error) {
 		mode:              snapshot.Mode,
 		state:             snapshot.State,
 		rules:             snapshot.Rules,
+		configVersion:     snapshot.ConfigVersion,
+		settings:          append(json.RawMessage(nil), snapshot.Settings...),
 		players:           players,
 		createdBy:         snapshot.CreatedBy,
 		createdAt:         snapshot.CreatedAt.UTC(),
@@ -102,6 +113,8 @@ func (session *GameSession) Snapshot() SessionSnapshot {
 		Mode:              session.mode,
 		State:             session.state,
 		Rules:             session.rules,
+		ConfigVersion:     session.configVersion,
+		Settings:          append(json.RawMessage(nil), session.settings...),
 		Players:           append([]SessionPlayer(nil), session.players...),
 		CreatedBy:         session.createdBy,
 		CreatedAt:         session.createdAt,

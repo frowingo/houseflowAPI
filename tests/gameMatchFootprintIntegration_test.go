@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
@@ -78,7 +77,7 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
 	sessions := database.NewGameSessionRepository(client, fixture.db.Name())
 	matches := database.NewGameMatchRepository(client, fixture.db.Name())
-	catalog, err := gameApplication.NewCatalog(houseRockets.Definition())
+	catalog, err := newDefinitionCatalog(houseRockets.Definition())
 	if err != nil {
 		t.Fatal(err)
 	}

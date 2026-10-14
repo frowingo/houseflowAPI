@@ -18,7 +18,7 @@ import (
 
 // rocketsGames is the registry of a process with House Rockets enabled.
 func rocketsGames() *module.Registry {
-	registry, err := games.NewRegistry(games.Options{EnableHouseRockets: true})
+	registry, err := games.NewRegistry(games.Options{TickGames: true})
 	if err != nil {
 		panic(err)
 	}
@@ -31,7 +31,35 @@ func builtinCatalog(options games.Options) (*gameApplication.Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gameApplication.NewCatalog(registry.Definitions()...)
+	return gameApplication.NewCatalog(registry, nil, nil), nil
+}
+
+// definitionCatalog serves fixed definitions, enabled with their own rules and
+// default settings, for tests of the game-agnostic session layer.
+type definitionCatalog map[string]gameDomain.GameDefinition
+
+func newDefinitionCatalog(definitions ...gameDomain.GameDefinition) (definitionCatalog, error) {
+	catalog := make(definitionCatalog, len(definitions))
+	for _, definition := range definitions {
+		if err := definition.Validate(); err != nil {
+			return nil, err
+		}
+		catalog[definition.GameKey] = definition
+	}
+	return catalog, nil
+}
+
+func (catalog definitionCatalog) Find(gameKey string) (gameDomain.GameDefinition, error) {
+	definition, exists := catalog[gameKey]
+	if !exists {
+		return gameDomain.GameDefinition{}, gameAbstract.ErrGameDefinitionNotFound
+	}
+	return definition, nil
+}
+
+func (catalog definitionCatalog) Config(gameKey string) (gameDomain.GameConfig, error) {
+	definition, err := catalog.Find(gameKey)
+	return gameDomain.GameConfig{Enabled: true, Rules: definition.Rules}, err
 }
 
 // registerRocketsResults adds the shared completion and result handlers.

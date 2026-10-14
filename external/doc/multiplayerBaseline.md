@@ -120,3 +120,25 @@ Fanout'taki ~%8'lik artış modül projeksiyonunun `any` modeli ve generic sunuc
 gelir; Faz 4'ün hedefidir. Yük matrisi Faz 1B ve Faz 2 aynı oturumda art arda
 çalıştırıldığında CPU'da ölçüm gürültüsünü aşan bir fark göstermez; Redis komut sayısı ve
 socket byte'ları aynıdır, ACK p95 üst sınırları aynı veya daha düşüktür.
+
+## 7. Faz 3 sonrası — 14 Ekim 2026
+
+Oyun config'i `Game` collection'ına taşındı (ADR-019). Frame başına çalışan kod değişmedi.
+Runtime ayarları session'dan bir kez okunur. Gateway her bağlantıda, lobby her heartbeat'te
+küçük bir JSON nesnesi çözer.
+
+| Benchmark (8 oyuncu) | Faz 2 | Faz 3 |
+|---|---|---|
+| `FramePublish` ns/frame | 8.289 | 8.167 |
+| `FrameFanout` ns/frame | 363.145 | 360.105 |
+| `FrameFanout` alloc/frame | 885 | 885 |
+| Wire byte/bağlantı | 3.805 | 3.805 |
+
+İki instance'lı yük matrisi yeşil: `rooms8Players8` worker başına ~%25,6 CPU,
+`runtimeOverloads` 0, `framesCoalesced` 0. Config değişikliğinin diğer instance'a
+Redis üzerinden ulaşması testte saniyenin altında ölçüldü.
+
+Kalıcı veri değişimi:
+- Session dokümanı `configVersion` ve ~200 byte'lık `settings` alır.
+- `Game` collection'ında oyun başına bir doküman tutulur.
+- Instance başına config okuması 30 saniyede bir sorgudur.

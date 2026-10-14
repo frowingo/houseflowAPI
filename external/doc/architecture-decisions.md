@@ -738,3 +738,49 @@ tip düzeyinde ayrılmıştır (`room`, `roomLobby`, `tickHost`, `tickCheckpoint
 olarak gruplanmış, olay döngüsü olay başına küçük metotlara bölünmüştür. Tick oyunlarının
 ihtiyaç duyduğu owner repository, gameplay bus ve checkpoint store constructor'da çözülür;
 eksik bir yetenek ilk maçta değil başlatmada hata verir.
+
+## ADR-019 — Oyun config'i `Game` collection'ında, session'a dondurulur
+
+Bir oyunu açıp kapatmak, belirli evlere açmak veya kurallarını değiştirmek deploy
+gerektirmemelidir. Her oyun için `Game` collection'ında bir doküman tutulur (`_id` oyun
+anahtarı): `enabled`, `rollout.houseIds` (boş liste tüm evler demektir), `rules`,
+`settings`, `version`, `updatedAt`, `updatedBy`. `rules` ve `settings` kısmi nesnelerdir;
+dokümanda olmayan anahtar koddaki varsayılanı kullanır. Bilinmeyen anahtar reddedilir, böylece
+yazım hatası bir varsayılanı sessizce bırakmaz.
+
+**Ayarlanabilir / sözleşme ayrımı.** Lobby kuralları (oyuncu sayıları, ready window,
+countdown) ve oyunun ağ/presence ayarları ayarlanabilir. House Rockets için bunlar snapshot
+hızı, girdi ve steer limitleri, heartbeat, control timeout ve reconnect grace'tir. Fizik ve
+scheduler hızı, parkur, maç süresi ve protokol sürümleri sözleşme değerleridir. Checkpoint
+ve sonuç doğrulaması bu değerlere bağlı olduğundan kodda kalırlar. Sınırları modül belirler
+(`module.Game.ResolveConfig`); core yalnız dokümanı varsayılanların üzerine uygular.
+
+**Dondurma.** Session oluşturulurken çözülmüş kurallar (zaten olduğu gibi), `settings` ve
+`configVersion` session dokümanına kopyalanır. Runtime, recovery, gateway rate limit'i, lobby
+heartbeat'i ve `welcome.settings` session'daki kopyayı kullanır. Bu yüzden config değişikliği
+çalışan ya da lobby'deki maçlara hiçbir zaman ulaşmaz. `settings` alanı olmayan session'lar
+(önceki sürümün yazdıkları) varsayılanlarla çalışır. Kapatılan oyunun mevcut session'ları
+erişilebilir kalır ve bitebilir; yalnız yeni session açılamaz (`game.error.unavailable`).
+Kodda kayıtlı olup dokümanı olmayan oyun kapalıdır; yeni oyunlar böylece kapalı çıkar.
+
+**Cache ve yayılma.** Her instance config'i bellekte tutar ve 30 saniyede bir yeniden okur.
+Değişiklik `PUT /game/{gameKey}/config` (super admin, `expectedVersion` ile optimistic
+concurrency) ile yazılır. Yazan instance kendini hemen tazeler ve Redis Pub/Sub kanalı
+`houseflow:coordination:v1:gameConfig` üzerinden diğerlerine haber verir; ölçülen yayılma
+saniyenin altındadır. Duyuru kaybolursa periyodik okuma yakalar. Mongo'da elle yapılan
+düzenleme de en geç 30 saniyede uygulanır. Geçersiz bir doküman oyunu son geçerli config'iyle
+bırakır ve log'lanır. Başlangıçta hiç okunamazsa oyunlar kapalı başlar ve okuma 2 saniyede
+bir denenir.
+
+**Kapasite env'de kalır.** Hangi oyunların çalıştığı veri, instance kapasitesi altyapıdır:
+`REALTIME_MAX_OWNED_ROOMS` / `REALTIME_MAX_CONNECTIONS` production'da zorunludur, diğer
+ortamlarda verilmezse sınırsızdır. `HOUSE_ROCKETS_ENABLED` kaldırıldı. Tick oyunları Redis
+coordinator varsa kaydedilir.
+
+**Rolling deploy.** Session dokümanına yalnız opsiyonel alan eklendi. Rollout sırasında
+önceki sürüm bir session'ı yeniden yazarsa `settings`/`configVersion` düşer ve session
+varsayılanlarla devam eder. Seed değerleri varsayılanlarla aynı olduğundan davranış değişmez.
+Bu yüzden ayarlar rollout tamamlanmadan değiştirilmemelidir. Geri dönüşte önceki sürüm
+`Game` collection'ını yok sayar ve `HOUSE_ROCKETS_ENABLED` secret'ını okur. Bu nedenle Fly
+secret'ı Release 1 kararlı olana kadar silinmez.
+

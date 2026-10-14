@@ -55,6 +55,7 @@ var (
 	ErrRuntimeBusy      = errors.New("runtime mailbox is full")
 	ErrInputRate        = errors.New("gameplay input rate exceeded")
 	ErrFinished         = errors.New("runtime is terminal")
+	ErrInvalidConfig    = errors.New("game config is invalid")
 )
 
 // Phase is the transient presentation state of a tick runtime, independent of
@@ -206,6 +207,7 @@ type RuntimeParams struct {
 	Now       time.Time
 	// InitialSequence continues countdown preview frame numbering.
 	InitialSequence int64
+	Settings        json.RawMessage
 }
 
 type RestoreParams struct {
@@ -228,19 +230,43 @@ type PreviewParams struct {
 	Sequence        int64
 }
 
-// TickModule is a server-authoritative realtime game advanced by a fixed-rate
-// scheduler. Its runtime never performs database, Redis or socket I/O.
-type TickModule interface {
+// Config is the operator-tunable part of a game, kept in the Game collection.
+// Rules start from Definition().Rules; Settings is the module's own JSON
+// object. A resolved config is frozen into each session at creation, so a
+// change never reaches a session that already exists.
+type Config struct {
+	Rules    gameDomain.SessionRules
+	Settings json.RawMessage
+}
+
+// Game is what every module provides, whatever lane runs it.
+type Game interface {
 	ResultCodec
 	Definition() gameDomain.GameDefinition
-	Timing() TickTiming
-	Welcome(sessionID, connectionID string) any
+	// ResolveConfig overlays operator settings on the module defaults, checks
+	// rules and settings against the module's hard limits and returns the
+	// canonical config. Contract values (physics, course, protocol) are never
+	// configurable.
+	ResolveConfig(override Config) (Config, error)
+	// ClientSettings is the public view of resolved settings a client needs
+	// before it connects.
+	ClientSettings(settings json.RawMessage) any
+}
+
+// TickModule is a server-authoritative realtime game advanced by a fixed-rate
+// scheduler. Its runtime never performs database, Redis or socket I/O.
+// Settings arguments are the session's frozen settings; empty means defaults.
+type TickModule interface {
+	Game
+	Timing(settings json.RawMessage) TickTiming
+	Welcome(sessionID, connectionID string, settings json.RawMessage) any
 	// DecodeIntent strictly decodes a client gameplay message type the module
 	// owns; unknown types return ErrUnsupportedIntent.
 	DecodeIntent(messageType string, payload json.RawMessage) (Intent, error)
 	NewRuntime(params RuntimeParams) (TickRuntime, error)
 	// RestoreRuntime validates a stored checkpoint against the session and
-	// resumes it under a newer epoch with physics frozen.
+	// resumes it under a newer epoch with physics frozen and the session's
+	// settings.
 	RestoreRuntime(checkpoint json.RawMessage, params RestoreParams) (TickRuntime, error)
 	PreviewFrame(params PreviewParams) (Frame, error)
 	ProjectFrame(payload json.RawMessage, viewer Viewer) (any, error)

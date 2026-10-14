@@ -12,7 +12,9 @@ type RealtimeLimits struct {
 	MaxConnections int
 }
 
-// Enabling House Rockets requires explicit per-instance operational limits.
+// Which games run is stored in the Game collection; per-instance capacity is
+// infrastructure. Production must state it explicitly; elsewhere an unset
+// limit means unlimited.
 func LoadRealtimeLimits() (RealtimeLimits, error) {
 	var result RealtimeLimits
 	for _, setting := range []struct {
@@ -29,13 +31,8 @@ func LoadRealtimeLimits() (RealtimeLimits, error) {
 		}
 		*setting.value = value
 	}
-	if HouseRocketsEnabled() && (result.MaxOwnedRooms == 0 || result.MaxConnections == 0) {
-		return result, fmt.Errorf("enabled House Rockets requires REALTIME_MAX_OWNED_ROOMS and REALTIME_MAX_CONNECTIONS")
+	if !isDebugMode() && (result.MaxOwnedRooms == 0 || result.MaxConnections == 0) {
+		return result, fmt.Errorf("production realtime requires REALTIME_MAX_OWNED_ROOMS and REALTIME_MAX_CONNECTIONS")
 	}
 	return result, nil
-}
-
-// HouseRocketsEnabled is controlled independently of the application's environment.
-func HouseRocketsEnabled() bool {
-	return os.Getenv("HOUSE_ROCKETS_ENABLED") == "true"
 }

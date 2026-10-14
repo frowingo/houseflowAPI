@@ -74,5 +74,7 @@ func AllMigrations() []Migration {
 		// --- Game Data Retention ---
 		&gameDataRetention{},
 		&retireGameOutbox{},
+		// --- Game Config Collection ---
+		&gameConfig{},
 	}
 }
