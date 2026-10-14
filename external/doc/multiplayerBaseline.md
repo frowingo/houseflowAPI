@@ -103,3 +103,20 @@ aktif session okuması tek sorgudur ve maç başına Mongo yazma komutu 25'ten 2
 Yük matrisi, Faz 0 ve Faz 1A aynı oturumda art arda çalıştırıldığında CPU, Redis
 komut sayısı ve socket byte'larında ölçüm gürültüsünü aşan bir fark göstermez; Faz 1A
 frame başına çalışan koda dokunmaz.
+
+## 6. Faz 2 sonrası — 14 Ekim 2026
+
+Core soyutlaması (ADR-018) davranışı ve wire formatını değiştirmez; frame başlığı artık hub
+başına bir kez decode edilir, bağlantıya özel projeksiyonu oyun modülü yapar.
+
+| Benchmark (8 oyuncu) | Faz 0 | Faz 2 |
+|---|---|---|
+| `FramePublish` ns/frame | 8.461 | 8.289 |
+| `FrameFanout` ns/frame | 337.243 | 363.145 |
+| `FrameFanout` alloc/frame | 817 | 885 |
+| Wire byte/bağlantı | 3.805 | 3.805 |
+
+Fanout'taki ~%8'lik artış modül projeksiyonunun `any` modeli ve generic sunucu mesajından
+gelir; Faz 4'ün hedefidir. Yük matrisi Faz 1B ve Faz 2 aynı oturumda art arda
+çalıştırıldığında CPU'da ölçüm gürültüsünü aşan bir fark göstermez; Redis komut sayısı ve
+socket byte'ları aynıdır, ACK p95 üst sınırları aynı veya daha düşüktür.

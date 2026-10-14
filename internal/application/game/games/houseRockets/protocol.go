@@ -1,6 +1,6 @@
 package houseRockets
 
-import "errors"
+import "houseflowApi/internal/application/game/module"
 
 const (
 	SteerMessageType            = "houseRockets.steer"
@@ -16,4 +16,4 @@ const (
 	ResultNotFoundErrorCode     = "houseRockets.error.result_not_found"
 )
 
-var ErrInvalidInput = errors.New(InvalidInputErrorCode)
+var ErrInvalidInput = module.ErrInvalidInput

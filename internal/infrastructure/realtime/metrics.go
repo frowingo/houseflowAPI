@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	gameAbstract "houseflowApi/internal/application/game/abstract"
+	"houseflowApi/internal/application/game/module"
 	"houseflowApi/internal/infrastructure/telemetry"
 )
 
@@ -54,7 +54,7 @@ type MetricsSnapshot struct {
 	Errors                    uint64                    `json:"errors"`
 }
 
-func (metrics *Metrics) ObserveRuntime(observation gameAbstract.RuntimeObservation) {
+func (metrics *Metrics) ObserveRuntime(observation module.RuntimeObservation) {
 	if observation.StepDuration > 0 {
 		metrics.stepGap.Observe(observation.StepGap)
 		metrics.stepDuration.Observe(observation.StepDuration)

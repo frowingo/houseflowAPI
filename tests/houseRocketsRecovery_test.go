@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 )
 
 func TestHouseRocketsCheckpointRestoresPhysicsWithoutReplayingInput(t *testing.T) {

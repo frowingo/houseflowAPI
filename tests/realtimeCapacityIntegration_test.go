@@ -11,7 +11,7 @@ import (
 
 	ws "github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v2"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/infrastructure/middleware"
 	"houseflowApi/internal/infrastructure/realtime"
 )

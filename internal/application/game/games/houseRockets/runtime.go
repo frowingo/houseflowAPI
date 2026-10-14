@@ -2,31 +2,30 @@ package houseRockets
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	gameAbstract "houseflowApi/internal/application/game/abstract"
+	"houseflowApi/internal/application/game/module"
 )
 
 const (
-	InputBind        = "bind"
+	InputBind        = module.InputBind
 	InputSteer       = "steer"
-	InputHeartbeat   = "heartbeat"
-	InputDisconnect  = "disconnect"
-	InputSnapshot    = "snapshot"
+	InputHeartbeat   = module.InputHeartbeat
+	InputDisconnect  = module.InputDisconnect
+	InputSnapshot    = module.InputSnapshot
 	InputLifetime    = time.Second
 	RuntimeQueueSize = 64
 	maximumCatchUp   = 250 * time.Millisecond
 )
 
 var (
-	ErrControlRequired = errors.New("current controller binding is required")
-	ErrStaleInput      = errors.New("input sequence or runtime epoch is stale")
-	ErrInputExpired    = errors.New("gameplay input has expired")
-	ErrRuntimeBusy     = errors.New("runtime mailbox is full")
-	ErrInputRate       = errors.New("steering input rate exceeded")
+	ErrControlRequired = module.ErrControlRequired
+	ErrStaleInput      = module.ErrStaleInput
+	ErrInputExpired    = module.ErrInputExpired
+	ErrRuntimeBusy     = module.ErrRuntimeBusy
+	ErrInputRate       = module.ErrInputRate
 )
 
 // RuntimeInput comes from a trusted authenticated transport, never directly from
@@ -112,7 +111,7 @@ type Runtime struct {
 	terminal        bool
 	stopped         bool
 	runOnce         sync.Once
-	observer        gameAbstract.RuntimeObserver
+	observer        module.RuntimeObserver
 	framesCoalesced uint64
 }
 
@@ -144,7 +143,7 @@ func (runtime *Runtime) Frames() <-chan RuntimeFrame             { return runtim
 func (runtime *Runtime) Events() <-chan RuntimeEvent             { return runtime.events }
 func (runtime *Runtime) Results() <-chan HouseRocketsResultModel { return runtime.results }
 
-func (runtime *Runtime) SetObserver(observer gameAbstract.RuntimeObserver) {
+func (runtime *Runtime) SetObserver(observer module.RuntimeObserver) {
 	runtime.mutex.Lock()
 	defer runtime.mutex.Unlock()
 	runtime.observer = observer
@@ -162,7 +161,7 @@ func (runtime *Runtime) CommittedFrame(result HouseRocketsResultModel) RuntimeFr
 // confirm actual processing. Gaps are expected when newer headings coalesce.
 func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 	runtime.mutex.Lock()
-	observation := gameAbstract.RuntimeObservation{}
+	observation := module.RuntimeObservation{}
 	observer, framesBefore := runtime.observer, runtime.framesCoalesced
 	defer func() {
 		observation.FramesCoalesced = runtime.framesCoalesced - framesBefore
@@ -285,7 +284,7 @@ func (runtime *Runtime) Advance(now time.Time) error {
 	started := time.Now()
 	runtime.mutex.Lock()
 	observer, framesBefore := runtime.observer, runtime.framesCoalesced
-	observation := gameAbstract.RuntimeObservation{StepGap: now.Sub(runtime.lastAdvance)}
+	observation := module.RuntimeObservation{StepGap: now.Sub(runtime.lastAdvance)}
 	measureStep := !runtime.terminal && !runtime.stopped && !now.Before(runtime.lastAdvance)
 	defer func() {
 		observation.FramesCoalesced = runtime.framesCoalesced - framesBefore

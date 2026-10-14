@@ -73,7 +73,8 @@ func (repository *GameMatchRepository) Complete(ctx context.Context, completion 
 	if err := validateCommandDescriptor(command); err != nil {
 		return gameDomain.MatchResult{}, err
 	}
-	if result.Validate() != nil || result.SessionID != snapshot.SessionID || result.HouseID != snapshot.HouseID || result.GameKey != snapshot.GameKey || owner.SessionID != result.SessionID || owner.Generation <= 0 || owner.OwnerInstanceID == "" || owner.LeaseID == "" || strings.TrimSpace(completion.ResultEventType) == "" || (result.Status == gameDomain.MatchCompleted && snapshot.State != gameDomain.SessionFinished) || (result.Status == gameDomain.MatchCancelled && snapshot.State != gameDomain.SessionCancelled) || snapshot.EndReason != result.EndReason || !snapshot.StartedAt.Truncate(time.Millisecond).Equal(result.StartedAt.Truncate(time.Millisecond)) || !snapshot.EndedAt.Truncate(time.Millisecond).Equal(result.EndedAt.Truncate(time.Millisecond)) {
+	if result.Validate() != nil || strings.TrimSpace(completion.ResultEventType) == "" ||
+		!resultBelongsToSession(result, snapshot) || !ownerCompletesResult(owner, result) {
 		return gameDomain.MatchResult{}, gameAbstract.ErrInvalidPersistenceBatch
 	}
 	if completion.TriggerCommand != nil {
@@ -152,8 +153,29 @@ func (repository *GameMatchRepository) Complete(ctx context.Context, completion 
 	return repository.FindResult(ctx, result.SessionID)
 }
 
+// resultBelongsToSession requires the result to describe exactly the terminal
+// transition being written. BSON keeps dates at millisecond precision.
+func resultBelongsToSession(result gameDomain.MatchResult, session gameDomain.SessionSnapshot) bool {
+	sameIdentity := result.SessionID == session.SessionID && result.HouseID == session.HouseID && result.GameKey == session.GameKey
+	matchingState := (result.Status == gameDomain.MatchCompleted && session.State == gameDomain.SessionFinished) ||
+		(result.Status == gameDomain.MatchCancelled && session.State == gameDomain.SessionCancelled)
+	sameEnding := result.EndReason == session.EndReason && sameMillisecond(result.EndedAt, session.EndedAt)
+	return sameIdentity && matchingState && sameEnding && sameMillisecond(result.StartedAt, session.StartedAt)
+}
+
+func ownerCompletesResult(owner gameAbstract.RuntimeOwner, result gameDomain.MatchResult) bool {
+	return owner.SessionID == result.SessionID && owner.Generation > 0 && owner.OwnerInstanceID != "" && owner.LeaseID != ""
+}
+
+func sameMillisecond(first, second time.Time) bool {
+	return first.Truncate(time.Millisecond).Equal(second.Truncate(time.Millisecond))
+}
+
 func sameMatchResult(first, second gameMatchResultDocument) bool {
-	return first.SessionID == second.SessionID && first.HouseID == second.HouseID && first.GameKey == second.GameKey && first.SchemaVersion == second.SchemaVersion && first.Status == second.Status && first.EndReason == second.EndReason && first.StartedAt.Truncate(time.Millisecond).Equal(second.StartedAt.Truncate(time.Millisecond)) && first.EndedAt.Truncate(time.Millisecond).Equal(second.EndedAt.Truncate(time.Millisecond)) && first.ResultEventType == second.ResultEventType && first.PayloadHash == second.PayloadHash
+	sameIdentity := first.SessionID == second.SessionID && first.HouseID == second.HouseID && first.GameKey == second.GameKey
+	sameOutcome := first.SchemaVersion == second.SchemaVersion && first.Status == second.Status && first.EndReason == second.EndReason && first.ResultEventType == second.ResultEventType
+	return sameIdentity && sameOutcome && first.PayloadHash == second.PayloadHash &&
+		sameMillisecond(first.StartedAt, second.StartedAt) && sameMillisecond(first.EndedAt, second.EndedAt)
 }
 
 var _ gameAbstract.GameMatchRepository = (*GameMatchRepository)(nil)

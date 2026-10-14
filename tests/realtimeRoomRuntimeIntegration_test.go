@@ -213,6 +213,7 @@ func newTestRoomManager(
 	t.Helper()
 	mediator := newGameSessionMediator(fixture)
 	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, mediator, realtime.RoomManagerOptions{
+		Games:          rocketsGames(),
 		LeaseTTL:       5 * time.Second,
 		RenewInterval:  500 * time.Millisecond,
 		CommandTimeout: time.Second,
@@ -245,7 +246,7 @@ func newGameSessionMediator(fixture *gameSessionApplicationFixture) *cqrs.Mediat
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.CancelGameSessionCommand](
 		mediator,
-		gameCommands.NewCancelGameSessionHandler(fixture.repository, membershipPolicy),
+		gameCommands.NewCancelGameSessionHandler(fixture.repository, membershipPolicy, rocketsGames()),
 	)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.AdvanceGameSessionCommand](
 		mediator,

@@ -2,11 +2,11 @@ package tests
 
 import (
 	"errors"
+	"houseflowApi/internal/application/game/games"
 	"testing"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/config"
 )
 
@@ -24,7 +24,7 @@ func TestHouseRocketsActivationIsExplicitAndIndependentOfAppEnvironment(t *testi
 
 func TestHouseRocketsCatalogActivationIsExplicit(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
-		catalog, err := gameApplication.NewDefaultCatalog(gameApplication.CatalogOptions{EnableHouseRockets: enabled})
+		catalog, err := builtinCatalog(games.Options{EnableHouseRockets: enabled})
 		if err != nil {
 			t.Fatal(err)
 		}

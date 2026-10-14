@@ -9,7 +9,7 @@ import (
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/module"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -23,13 +23,24 @@ type v2PendingMessage struct {
 	kind     string
 	sequence int64
 }
+
+// tickFrame is a published runtime frame with its header decoded once per hub.
+type tickFrame struct {
+	header  module.FrameHeader
+	payload json.RawMessage
+}
+
+// v2ClientState is one connection's view of its room's runtime: the newest
+// frame and epoch it has seen, its control grant and the work it still owes
+// the runtime (a snapshot request or a control bind).
 type v2ClientState struct {
+	game            module.TickModule
 	epoch           int64
 	sequence        int64
 	sessionVersion  int64
-	phase           houseRockets.Phase
-	grant           *houseRockets.HouseRocketsControlGrantedModel
-	frame           *gamePreviewFrame
+	phase           module.Phase
+	grant           *module.ControlGrant
+	frame           *tickFrame
 	snapshots       chan []byte
 	pending         []v2PendingMessage
 	pendingSnapshot []byte
@@ -37,14 +48,16 @@ type v2ClientState struct {
 	needSnapshot    bool
 	needBind        bool
 	lastBind        time.Time
-	steerLimit      connectionRateLimit
+	intentLimit     connectionRateLimit
 	pingLimit       connectionRateLimit
 }
 
-func newV2ClientState(epoch int64) *v2ClientState {
-	return &v2ClientState{epoch: epoch, snapshots: make(chan []byte, 1), controlSignal: make(chan struct{}, 1), needSnapshot: true, needBind: true,
-		steerLimit: connectionRateLimit{window: time.Second, maximum: houseRockets.MaximumSteerMessagesPerSecond}, pingLimit: connectionRateLimit{window: time.Second, maximum: 5}}
+func newV2ClientState(game module.TickModule, epoch int64) *v2ClientState {
+	return &v2ClientState{game: game, epoch: epoch, snapshots: make(chan []byte, 1), controlSignal: make(chan struct{}, 1), needSnapshot: true, needBind: true,
+		intentLimit: connectionRateLimit{window: time.Second, maximum: game.Timing().MaximumIntentRate}, pingLimit: connectionRateLimit{window: time.Second, maximum: 5}}
 }
+
+func (state *v2ClientState) gameKey() string { return state.game.Definition().GameKey }
 
 func (gateway *Gateway) requireActiveMember(ctx context.Context, houseID, userID string) error {
 	participants, err := gateway.manager.options.ParticipantDirectory.ReadHouseParticipants(ctx, houseID)
@@ -102,7 +115,7 @@ func (client *gatewayClient) enqueueV2(message any, kind string, sequence int64)
 }
 
 func (client *gatewayClient) activateV2(snapshot gameDomain.SessionSnapshot) bool {
-	welcome := NewV2ServerMessage(WelcomeMessageType, "", nil, time.Now(), houseRockets.HouseRocketsWelcomeModel{SessionID: client.roomID, GameKey: houseRockets.GameKey, ConnectionID: client.id, ProtocolVersion: 2, CourseVersion: houseRockets.CourseVersion, Settings: houseRockets.HouseRocketsRuntimeSettings()})
+	welcome := NewV2ServerMessage(WelcomeMessageType, "", nil, time.Now(), client.v2.game.Welcome(client.roomID, client.id))
 	initial := NewV2ServerMessage(GameSessionSnapshotEventType, "", &snapshot.Version, time.Now(), dtos.GameSessionToResponseModel(snapshot))
 	welcomeBytes, _ := json.Marshal(welcome)
 	initialBytes, _ := json.Marshal(initial)
@@ -153,16 +166,24 @@ func (hub *roomHub) broadcastEvent(event coordinationAbstract.MessageEnvelope) {
 		}
 	}
 	hub.mutex.RUnlock()
+	var frame *tickFrame
+	if event.Type == GameRuntimeSnapshotEventType {
+		frame = &tickFrame{payload: event.Payload}
+		if json.Unmarshal(event.Payload, &frame.header) != nil {
+			return
+		}
+	}
 	for _, client := range clients {
-		client.handleV2Event(event)
+		client.handleV2Event(event, frame)
 	}
 }
 
-func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnvelope) {
+func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnvelope, frame *tickFrame) {
 	sentAt := event.CreatedAt
 	if sentAt.IsZero() {
 		sentAt = time.Now()
 	}
+	gameKey := client.v2.gameKey()
 	switch event.Type {
 	case GameRoomAccessEventType:
 		var members []string
@@ -184,22 +205,22 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 		client.enqueueV2(NewV2ServerMessage(event.Type, event.MessageID, &snapshot.Version, sentAt, dtos.GameSessionToResponseModel(snapshot)), event.Type, snapshot.Version)
 		client.signalControl()
 	case GameRuntimeSnapshotEventType:
-		var frame gamePreviewFrame
-		if json.Unmarshal(event.Payload, &frame) != nil {
-			return
+		if frame != nil {
+			client.enqueueGameFrame(*frame, event.MessageID, event.ConnectionID != "", sentAt)
 		}
-		client.enqueueGameFrame(frame, event.MessageID, event.ConnectionID != "", sentAt)
-	case houseRockets.ResultMessageType:
-		var result houseRockets.HouseRocketsResultModel
+	case module.ResultMessageType(gameKey):
+		var result struct {
+			SessionID string `json:"sessionId"`
+		}
 		if json.Unmarshal(event.Payload, &result) != nil || result.SessionID != client.roomID {
 			return
 		}
-		client.enqueueV2(NewV2ServerMessage(event.Type, event.MessageID, nil, sentAt, result), "", 0)
-	case houseRockets.ControlGrantedMessageType:
+		client.enqueueV2(NewV2ServerMessage(event.Type, event.MessageID, nil, sentAt, json.RawMessage(event.Payload)), "", 0)
+	case module.ControlGrantedMessageType(gameKey):
 		if event.ConnectionID != client.id {
 			return
 		}
-		var grant houseRockets.HouseRocketsControlGrantedModel
+		var grant module.ControlGrant
 		if json.Unmarshal(event.Payload, &grant) != nil || grant.PlayerID != client.userID || grant.SessionID != client.roomID {
 			return
 		}
@@ -227,13 +248,13 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 	}
 }
 
-func (client *gatewayClient) enqueueGameFrame(frame gamePreviewFrame, messageID string, targeted bool, sentAt time.Time) {
+func (client *gatewayClient) enqueueGameFrame(frame tickFrame, messageID string, targeted bool, sentAt time.Time) {
 	client.mutex.Lock()
-	if frame.World.SessionID != client.roomID || frame.RuntimeEpoch < client.v2.epoch {
+	if frame.header.World.SessionID != client.roomID || frame.header.RuntimeEpoch < client.v2.epoch {
 		client.mutex.Unlock()
 		return
 	}
-	if frame.RuntimeEpoch == client.v2.epoch && frame.StateSequence <= client.v2.sequence {
+	if frame.header.RuntimeEpoch == client.v2.epoch && frame.header.StateSequence <= client.v2.sequence {
 		// A periodic frame may win the publisher select ahead of a targeted
 		// resync response. Reply with the already newer authoritative frame;
 		// never roll state back or silently lose the request correlation.
@@ -243,24 +264,22 @@ func (client *gatewayClient) enqueueGameFrame(frame gamePreviewFrame, messageID 
 		}
 		frame = *client.v2.frame
 	}
-	if frame.RuntimeEpoch > client.v2.epoch {
+	if frame.header.RuntimeEpoch > client.v2.epoch {
 		client.v2.grant = nil
 		client.v2.sequence = 0
 		client.v2.needBind = true
 		client.v2.lastBind = time.Time{}
 	}
-	client.v2.epoch, client.v2.sequence, client.v2.phase = frame.RuntimeEpoch, frame.StateSequence, frame.Phase
+	client.v2.epoch, client.v2.sequence, client.v2.phase = frame.header.RuntimeEpoch, frame.header.StateSequence, frame.header.Phase
 	client.v2.frame = &frame
-	model := houseRockets.SnapshotForConnection(frame.RuntimeFrame, client.userID, client.id, client.v2.grant)
-	model.CountdownEndsAt = frame.CountdownEndsAt
 	if !targeted {
 		messageID = ""
 	}
-	payload, err := json.Marshal(NewV2ServerMessage(houseRockets.SnapshotMessageType, messageID, &frame.StateSequence, sentAt, model))
+	payload, err := client.projectFrame(frame, messageID, sentAt)
 	if err == nil {
 		if !client.active {
 			client.v2.pendingSnapshot = payload
-		} else if targeted || frame.Phase == houseRockets.PhaseEnded || frame.Phase == houseRockets.PhaseCancelled {
+		} else if targeted || frame.header.Phase == module.PhaseEnded || frame.header.Phase == module.PhaseCancelled {
 			// Terminal snapshots are control messages, not disposable motion
 			// samples. Keep them ordered before the committed result event.
 			select {
@@ -287,6 +306,16 @@ func (client *gatewayClient) enqueueGameFrame(frame gamePreviewFrame, messageID 
 	client.signalControl()
 }
 
+// projectFrame renders the frame as this connection's public snapshot; only
+// its own control generation is ever included. Called with client.mutex held.
+func (client *gatewayClient) projectFrame(frame tickFrame, messageID string, sentAt time.Time) ([]byte, error) {
+	model, err := client.v2.game.ProjectFrame(frame.payload, module.Viewer{PlayerID: client.userID, ConnectionID: client.id, Grant: client.v2.grant})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(NewV2ServerMessage(module.SnapshotMessageType(client.v2.gameKey()), messageID, &frame.header.StateSequence, sentAt, model))
+}
+
 func (client *gatewayClient) readV2Loop() {
 	for {
 		if client.ctx.Err() != nil {
@@ -305,25 +334,16 @@ func (client *gatewayClient) readV2Loop() {
 			}
 			continue
 		}
-		decoded, err := DecodeV2ClientMessage(payload)
+		decoded, err := DecodeV2ClientMessage(payload, client.v2.game)
 		if err != nil {
-			client.reject(decoded.Envelope.MessageID, protocolErrorFromV2(err))
+			client.reject(decoded.Envelope.MessageID, tickProtocolError(client.v2.gameKey(), err))
 			if client.recordViolation() {
 				return
 			}
 			continue
 		}
 		message := decoded.Envelope
-		allowed := false
-		switch message.Type {
-		case houseRockets.SteerMessageType:
-			allowed = client.v2.steerLimit.allow(time.Now())
-		case PingMessageType:
-			allowed = client.v2.pingLimit.allow(time.Now())
-		default:
-			allowed = client.rateLimit.allow(time.Now())
-		}
-		if !allowed {
+		if !client.allow(decoded) {
 			client.reject(message.MessageID, ProtocolError{Code: messageRateLimitErrorCode, Retryable: true})
 			if client.recordViolation() {
 				return
@@ -335,7 +355,7 @@ func (client *gatewayClient) readV2Loop() {
 		err = client.handleV2Message(ctx, decoded)
 		cancel()
 		if err != nil {
-			client.reject(message.MessageID, protocolErrorFromV2(err))
+			client.reject(message.MessageID, tickProtocolError(client.v2.gameKey(), err))
 			if helpers.IsApplicationError(err, "house.error.user_not_member") {
 				client.stop(websocket.ClosePolicyViolation, "house membership revoked")
 				return
@@ -344,28 +364,23 @@ func (client *gatewayClient) readV2Loop() {
 	}
 }
 
-func protocolErrorFromV2(err error) ProtocolError {
-	code := ""
+// allow applies the gameplay, clock and command rate limits separately, so
+// steering cannot starve lobby commands and vice versa.
+func (client *gatewayClient) allow(decoded DecodedV2ClientMessage) bool {
+	now := time.Now()
 	switch {
-	case errors.Is(err, houseRockets.ErrStaleInput), errors.Is(err, houseRockets.ErrControlRequired):
-		code = houseRockets.StaleControlErrorCode
-	case errors.Is(err, houseRockets.ErrPlayerEliminated):
-		code = houseRockets.PlayerEliminatedErrorCode
-	case errors.Is(err, houseRockets.ErrPlayerNotFound):
-		code = houseRockets.ControlUnavailableErrorCode
-	case errors.Is(err, houseRockets.ErrSimulationFinished), errors.Is(err, ErrRoomRuntimeNotStarted):
-		code = houseRockets.NotRunningErrorCode
-	case errors.Is(err, houseRockets.ErrInputRate):
-		code = messageRateLimitErrorCode
-	case errors.Is(err, houseRockets.ErrRuntimeBusy):
-		return ProtocolError{Code: roomUnavailableErrorCode, Retryable: true}
-	case errors.Is(err, houseRockets.ErrInvalidInput), errors.Is(err, houseRockets.ErrInputExpired):
-		code = houseRockets.InvalidInputErrorCode
+	case decoded.Intent != nil:
+		return client.v2.intentLimit.allow(now)
+	case decoded.Envelope.Type == PingMessageType:
+		return client.v2.pingLimit.allow(now)
+	default:
+		return client.rateLimit.allow(now)
 	}
-	if code != "" {
-		return ProtocolError{Code: code}
-	}
-	return protocolErrorFrom(err)
+}
+
+// controlInput is the authenticated identity of this connection for one input.
+func (client *gatewayClient) controlInput(kind, messageID string, epoch int64) module.ControlInput {
+	return module.ControlInput{MessageID: messageID, Kind: kind, PlayerID: client.userID, ConnectionID: client.id, RuntimeEpoch: epoch}
 }
 
 func (client *gatewayClient) handleV2Message(ctx context.Context, decoded DecodedV2ClientMessage) error {
@@ -374,31 +389,26 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 	epoch := client.v2.epoch
 	grant := client.v2.grant
 	phase := client.v2.phase
-	controlsOwnPlayer := false
-	if client.v2.frame != nil && grant != nil && phase == houseRockets.PhasePlaying {
-		for index, player := range client.v2.frame.World.Players {
-			if player.PlayerID == client.userID && player.IsAlive && index < len(client.v2.frame.Controls) && client.v2.frame.Controls[index].ConnectionID == client.id {
-				controlsOwnPlayer = true
-			}
-		}
-	}
+	controlsOwnPlayer := client.v2.frame != nil && grant != nil && client.v2.frame.header.ControlledBy(client.userID, client.id)
 	client.mutex.Unlock()
-	switch message.Type {
-	case houseRockets.SteerMessageType:
+	switch {
+	case decoded.Intent != nil:
 		if grant == nil {
-			return houseRockets.ErrControlRequired
+			return module.ErrControlRequired
 		}
-		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputSteer, RuntimeEpoch: epoch, ControlGeneration: decoded.Steer.ControlGeneration, InputSequence: decoded.Steer.InputSequence, Heading: decoded.Steer.Heading}, message.MessageID)
-	case PingMessageType:
+		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput("", message.MessageID, epoch), decoded.Intent)
+	case message.Type == PingMessageType:
 		client.enqueueV2(NewV2ServerMessage(PongMessageType, message.MessageID, nil, time.Now(), dtos.RealtimePongModel{PingID: decoded.Ping.PingID, ServerTime: time.Now().UTC()}), "", 0)
 		if controlsOwnPlayer {
-			return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputHeartbeat, RuntimeEpoch: epoch, ControlGeneration: grant.ControlGeneration}, message.MessageID)
+			control := client.controlInput(module.InputHeartbeat, message.MessageID, epoch)
+			control.ControlGeneration = grant.ControlGeneration
+			return client.gateway.manager.DispatchGameplay(ctx, client.roomID, control, nil)
 		}
-		if phase == houseRockets.PhasePlaying || phase == houseRockets.PhaseFinalizing || phase == houseRockets.PhaseEnded || phase == houseRockets.PhaseCancelled {
+		if phase == module.PhasePlaying || phase == module.PhaseFinalizing || phase == module.PhaseEnded || phase == module.PhaseCancelled {
 			return nil
 		}
-		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: lobbyHeartbeatInput, RuntimeEpoch: epoch}, message.MessageID)
-	case houseRockets.ResyncMessageType:
+		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(lobbyHeartbeatInput, message.MessageID, epoch), nil)
+	case message.Type == module.ResyncMessageType(client.v2.gameKey()):
 		snapshot, err := client.verifyV2Access(ctx)
 		if err != nil {
 			return err
@@ -408,13 +418,13 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 		client.v2.needBind = true
 		client.v2.lastBind = time.Time{}
 		client.mutex.Unlock()
-		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputSnapshot, RuntimeEpoch: epoch}, message.MessageID)
+		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(module.InputSnapshot, message.MessageID, epoch), nil)
 	default:
 		if _, err := client.verifyV2Access(ctx); err != nil {
 			return err
 		}
 		if message.Type == gameCommands.SetPlayerReadyCommandType {
-			if err := client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: lobbyHeartbeatInput, RuntimeEpoch: epoch}); err != nil {
+			if err := client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(lobbyHeartbeatInput, "", epoch), nil); err != nil {
 				return err
 			}
 		}
@@ -435,68 +445,73 @@ func (client *gatewayClient) controlLoop(presence coordinationAbstract.Presence)
 		case <-client.ctx.Done():
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(client.ctx, client.gateway.options.WriteTimeout)
-			err := client.gateway.coordinator.TouchPresence(ctx, presence, client.gateway.options.PresenceTTL)
-			cancel()
-			if err != nil {
-				client.stop(websocket.CloseTryAgainLater, "presence unavailable")
+			if !client.refreshPresence(presence) {
 				return
 			}
-			ctx, cancel = context.WithTimeout(client.ctx, client.gateway.options.CommandTimeout)
-			_, exists, ownerErr := client.gateway.coordinator.CurrentRoomOwner(ctx, client.roomID)
-			if ownerErr == nil && !exists {
-				ownership, err := client.gateway.manager.EnsureRoom(ctx, client.roomID)
-				if err == nil {
-					client.mutex.Lock()
-					if ownership.RuntimeEpoch > client.v2.epoch {
-						client.v2.epoch, client.v2.sequence = ownership.RuntimeEpoch, 0
-						client.v2.grant, client.v2.frame = nil, nil
-						client.v2.phase = houseRockets.PhaseRecovering
-						client.v2.needSnapshot, client.v2.needBind = true, true
-						client.v2.lastBind = time.Time{}
-					}
-					client.mutex.Unlock()
-				}
-			}
-			cancel()
-			client.signalControl()
 		case <-client.v2.controlSignal:
+			client.requestOwedControl()
+		}
+	}
+}
+
+// refreshPresence keeps this socket visible and re-elects an owner for a room
+// whose owner disappeared; a newer epoch requires a fresh snapshot and bind.
+func (client *gatewayClient) refreshPresence(presence coordinationAbstract.Presence) bool {
+	ctx, cancel := context.WithTimeout(client.ctx, client.gateway.options.WriteTimeout)
+	err := client.gateway.coordinator.TouchPresence(ctx, presence, client.gateway.options.PresenceTTL)
+	cancel()
+	if err != nil {
+		client.stop(websocket.CloseTryAgainLater, "presence unavailable")
+		return false
+	}
+	ctx, cancel = context.WithTimeout(client.ctx, client.gateway.options.CommandTimeout)
+	_, exists, ownerErr := client.gateway.coordinator.CurrentRoomOwner(ctx, client.roomID)
+	if ownerErr == nil && !exists {
+		ownership, err := client.gateway.manager.EnsureRoom(ctx, client.roomID)
+		if err == nil {
 			client.mutex.Lock()
-			epoch := client.v2.epoch
-			needSnapshot := client.v2.needSnapshot
-			client.v2.needSnapshot = false
-			needBind := client.v2.needBind && client.v2.phase == houseRockets.PhasePlaying && time.Since(client.v2.lastBind) >= time.Second
-			if needBind {
-				alive := false
-				if client.v2.frame != nil {
-					for _, player := range client.v2.frame.World.Players {
-						if player.PlayerID == client.userID && player.IsAlive {
-							alive = true
-						}
-					}
-				}
-				needBind = alive
-			}
-			if needBind {
-				client.v2.lastBind = time.Now()
+			if ownership.RuntimeEpoch > client.v2.epoch {
+				client.v2.epoch, client.v2.sequence = ownership.RuntimeEpoch, 0
+				client.v2.grant, client.v2.frame = nil, nil
+				client.v2.phase = module.PhaseRecovering
+				client.v2.needSnapshot, client.v2.needBind = true, true
+				client.v2.lastBind = time.Time{}
 			}
 			client.mutex.Unlock()
-			if !needSnapshot && !needBind {
-				continue
-			}
-			ctx, cancel := context.WithTimeout(client.ctx, client.gateway.options.CommandTimeout)
-			_, err := client.verifyV2Access(ctx)
-			if err == nil && needSnapshot {
-				err = client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputSnapshot, RuntimeEpoch: epoch})
-			}
-			if err == nil && needBind {
-				err = client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputBind, RuntimeEpoch: epoch})
-			}
-			cancel()
-			if err != nil && !errors.Is(err, ErrRoomRuntimeNotStarted) {
-				client.reject("", protocolErrorFromV2(err))
-			}
 		}
+	}
+	cancel()
+	client.signalControl()
+	return true
+}
+
+// requestOwedControl asks the runtime for a snapshot and, while this player is
+// alive in play, rebinds its controls at most once per second.
+func (client *gatewayClient) requestOwedControl() {
+	client.mutex.Lock()
+	epoch := client.v2.epoch
+	needSnapshot := client.v2.needSnapshot
+	client.v2.needSnapshot = false
+	needBind := client.v2.needBind && client.v2.phase == module.PhasePlaying && time.Since(client.v2.lastBind) >= time.Second &&
+		client.v2.frame != nil && client.v2.frame.header.Alive(client.userID)
+	if needBind {
+		client.v2.lastBind = time.Now()
+	}
+	client.mutex.Unlock()
+	if !needSnapshot && !needBind {
+		return
+	}
+	ctx, cancel := context.WithTimeout(client.ctx, client.gateway.options.CommandTimeout)
+	defer cancel()
+	_, err := client.verifyV2Access(ctx)
+	if err == nil && needSnapshot {
+		err = client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(module.InputSnapshot, "", epoch), nil)
+	}
+	if err == nil && needBind {
+		err = client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(module.InputBind, "", epoch), nil)
+	}
+	if err != nil && !errors.Is(err, ErrRoomRuntimeNotStarted) {
+		client.reject("", tickProtocolError(client.v2.gameKey(), err))
 	}
 }
 
@@ -510,5 +525,7 @@ func (client *gatewayClient) disconnectController() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), connectionCleanupTimeout)
 	defer cancel()
-	_ = client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.userID, client.id, houseRockets.RuntimeInput{Kind: houseRockets.InputDisconnect, RuntimeEpoch: epoch, ControlGeneration: grant.ControlGeneration})
+	control := client.controlInput(module.InputDisconnect, "", epoch)
+	control.ControlGeneration = grant.ControlGeneration
+	_ = client.gateway.manager.DispatchGameplay(ctx, client.roomID, control, nil)
 }

@@ -2,20 +2,14 @@ package realtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/google/uuid"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
-	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/application/game/module"
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
@@ -39,6 +33,9 @@ var (
 )
 
 type RoomManagerOptions struct {
+	// Games resolves the tick module of a session; sessions of other games run
+	// the shared lobby lifecycle only.
+	Games                *module.Registry
 	LeaseTTL             time.Duration
 	RenewInterval        time.Duration
 	CommandTimeout       time.Duration
@@ -78,6 +75,11 @@ type RoomManager struct {
 	sender      cqrs.Sender
 	processor   commandProcessor
 	options     RoomManagerOptions
+	// Tick-game capabilities, resolved once at construction.
+	owners      gameAbstract.RuntimeOwnerRepository
+	gameplay    coordinationAbstract.GameplayCoordinator
+	checkpoints coordinationAbstract.RuntimeCheckpointStore
+	scanner     gameAbstract.ActiveGameSessionScanner
 
 	mutex                sync.RWMutex
 	rooms                map[string]*managedRoom
@@ -123,7 +125,7 @@ func NewRoomManager(
 	if options.RenewInterval+maximumProcessingTime >= options.LeaseTTL {
 		return nil, errors.New("room lease TTL must cover command retries and the renew interval")
 	}
-	return &RoomManager{
+	manager := &RoomManager{
 		coordinator: coordinator,
 		repository:  repository,
 		sender:      sender,
@@ -132,7 +134,36 @@ func NewRoomManager(
 		rooms:       make(map[string]*managedRoom),
 		activations: make(map[string]*roomActivation),
 		errors:      make(chan RuntimeError, 32),
-	}, nil
+	}
+	if options.Games.HasTickGames() {
+		if err := manager.resolveTickCapabilities(); err != nil {
+			return nil, err
+		}
+	}
+	return manager, nil
+}
+
+// Tick games need durable owner fencing, cross-instance gameplay input and a
+// checkpoint store; a missing capability fails construction, not a match.
+func (manager *RoomManager) resolveTickCapabilities() error {
+	var ok bool
+	if manager.owners, ok = manager.repository.(gameAbstract.RuntimeOwnerRepository); !ok {
+		return errors.New("tick games require a durable runtime owner repository")
+	}
+	if manager.gameplay, ok = manager.coordinator.(coordinationAbstract.GameplayCoordinator); !ok {
+		return errors.New("tick games require a gameplay coordinator")
+	}
+	if manager.checkpoints, ok = manager.coordinator.(coordinationAbstract.RuntimeCheckpointStore); !ok {
+		return errors.New("tick games require a runtime checkpoint store")
+	}
+	manager.scanner, _ = manager.repository.(gameAbstract.ActiveGameSessionScanner)
+	return nil
+}
+
+// tickGame returns the realtime module of a game, or nil for lobby-only games.
+func (manager *RoomManager) tickGame(gameKey string) module.TickModule {
+	game, _ := manager.options.Games.Tick(gameKey)
+	return game
 }
 
 func (manager *RoomManager) Start(ctx context.Context) error {
@@ -159,8 +190,8 @@ func (manager *RoomManager) Start(ctx context.Context) error {
 		cancel()
 		return err
 	}
-	if gameplay, ok := manager.coordinator.(coordinationAbstract.GameplayCoordinator); ok {
-		gameplaySubscription, err := gameplay.SubscribeGameplay(rootCtx)
+	if manager.gameplay != nil {
+		gameplaySubscription, err := manager.gameplay.SubscribeGameplay(rootCtx)
 		if err != nil {
 			_ = subscription.Close()
 			cancel()
@@ -175,9 +206,9 @@ func (manager *RoomManager) Start(ctx context.Context) error {
 	manager.started = true
 	manager.workers.Add(1)
 	go manager.commandLoop(rootCtx, subscription)
-	if scanner, ok := manager.repository.(gameAbstract.ActiveGameSessionScanner); ok && manager.options.MatchRepository != nil && manager.options.RecoveryScanInterval > 0 {
+	if manager.scanner != nil && manager.options.MatchRepository != nil && manager.options.RecoveryScanInterval > 0 {
 		manager.workers.Add(1)
-		go manager.recoveryLoop(rootCtx, scanner)
+		go manager.recoveryLoop(rootCtx, manager.scanner)
 	}
 	return nil
 }
@@ -252,15 +283,8 @@ func (manager *RoomManager) activateRoom(
 		return RoomOwnership{}, err
 	}
 	var expectedOwner gameAbstract.RuntimeOwner
-	if supportsGameRuntime(session.Snapshot().GameKey) {
-		owners, ok := manager.repository.(gameAbstract.RuntimeOwnerRepository)
-		if !ok {
-			return RoomOwnership{}, errors.New("durable runtime owner repository is required")
-		}
-		if _, ok := manager.coordinator.(coordinationAbstract.GameplayCoordinator); !ok {
-			return RoomOwnership{}, errors.New("gameplay coordinator is required")
-		}
-		expectedOwner, err = owners.FindRuntimeOwner(ctx, roomID)
+	if manager.tickGame(session.Snapshot().GameKey) != nil {
+		expectedOwner, err = manager.owners.FindRuntimeOwner(ctx, roomID)
 		if err != nil {
 			return RoomOwnership{}, err
 		}
@@ -299,7 +323,7 @@ func (manager *RoomManager) activateRoom(
 			}
 		}
 		ownership := ownershipFromLease(owner, false)
-		if supportsGameRuntime(session.Snapshot().GameKey) {
+		if manager.tickGame(session.Snapshot().GameKey) != nil {
 			current, err := manager.waitForRuntimeOwner(ctx, owner)
 			if err != nil {
 				return RoomOwnership{}, err
@@ -319,12 +343,11 @@ func (manager *RoomManager) waitForRuntimeOwner(ctx context.Context, lease coord
 	defer cancel()
 	ticker := time.NewTicker(defaultRetryDelay)
 	defer ticker.Stop()
-	owners := manager.repository.(gameAbstract.RuntimeOwnerRepository)
 	for {
 		if err := ctx.Err(); err != nil {
 			return gameAbstract.RuntimeOwner{}, err
 		}
-		current, err := owners.FindRuntimeOwner(ctx, lease.RoomID)
+		current, err := manager.owners.FindRuntimeOwner(ctx, lease.RoomID)
 		if err != nil {
 			return gameAbstract.RuntimeOwner{}, err
 		}
@@ -380,9 +403,10 @@ func (manager *RoomManager) startRoom(
 		manager.releaseLease(lease)
 		return RoomOwnership{}, ErrTerminalRoom
 	}
+	game := manager.tickGame(snapshot.GameKey)
 	var runtimeOwner gameAbstract.RuntimeOwner
-	if supportsGameRuntime(snapshot.GameKey) {
-		runtimeOwner, err = manager.repository.(gameAbstract.RuntimeOwnerRepository).ClaimRuntimeOwner(ctx, expectedOwner.Generation, gameAbstract.RuntimeOwner{
+	if game != nil {
+		runtimeOwner, err = manager.owners.ClaimRuntimeOwner(ctx, expectedOwner.Generation, gameAbstract.RuntimeOwner{
 			SessionID: roomID, OwnerInstanceID: lease.OwnerInstanceID, LeaseID: lease.LeaseID,
 		})
 		if err != nil {
@@ -406,9 +430,10 @@ func (manager *RoomManager) startRoom(
 		lease:        lease,
 		queue:        make(chan coordinationAbstract.CommandDelivery, manager.options.CommandQueueSize),
 		runtimeOwner: runtimeOwner,
+		tick:         tickState{game: game},
 	}
 	room.leaseDeadline.Store(&lease.ExpiresAt)
-	if err := room.syncGameRuntime(snapshot, true); err != nil {
+	if err := room.syncSession(snapshot, true); err != nil {
 		roomCancel()
 		manager.releaseLease(lease)
 		return RoomOwnership{}, err
@@ -662,395 +687,4 @@ func ownershipFromLease(lease coordinationAbstract.RoomLease, local bool) RoomOw
 		FencingToken:    lease.FencingToken,
 		Local:           local,
 	}
-}
-
-type managedRoom struct {
-	manager              *RoomManager
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	lease                coordinationAbstract.RoomLease
-	queue                chan coordinationAbstract.CommandDelivery
-	stopOnce             sync.Once
-	leaseDeadline        atomic.Pointer[time.Time]
-	runtimeOwner         gameAbstract.RuntimeOwner
-	gameMutex            sync.RWMutex
-	game                 *gameRuntime
-	snapshot             atomic.Pointer[gameDomain.SessionSnapshot]
-	lobbyMutex           sync.Mutex
-	lobbyLastSeen        map[string]time.Time
-	members              map[string]string
-	frozenPlayers        []gameParticipant
-	previewSequence      int64
-	pendingResult        *houseRockets.HouseRocketsResultModel
-	pendingCancellations []coordinationAbstract.CommandDelivery
-	checkpointMutex      sync.Mutex
-	checkpointReleased   bool
-	checkpointSequence   int64
-	checkpointCritical   string
-	checkpointAt         time.Time
-	completionStarted    time.Time
-}
-
-type roomActivation struct {
-	done chan struct{}
-}
-
-func (room *managedRoom) ownership() RoomOwnership {
-	ownership := ownershipFromLease(room.lease, true)
-	ownership.RuntimeEpoch = room.runtimeOwner.Generation
-	return ownership
-}
-
-func (room *managedRoom) stop() {
-	room.stopOnce.Do(room.cancel)
-}
-
-func (room *managedRoom) run(snapshot gameDomain.SessionSnapshot) {
-	defer room.manager.workers.Done()
-	defer room.manager.removeRoom(room)
-	defer room.manager.releaseLease(room.lease)
-	defer room.stop()
-	var deadlineTimer *time.Timer
-	var deadlineChannel <-chan time.Time
-	resetDeadline := func(current gameDomain.SessionSnapshot) {
-		if deadlineTimer != nil {
-			if !deadlineTimer.Stop() {
-				select {
-				case <-deadlineTimer.C:
-				default:
-				}
-			}
-		}
-		deadline, exists := sessionDeadline(current)
-		if !exists {
-			deadlineTimer = nil
-			deadlineChannel = nil
-			return
-		}
-		delay := time.Until(deadline)
-		if delay < 0 {
-			delay = 0
-		}
-		deadlineTimer = time.NewTimer(delay)
-		deadlineChannel = deadlineTimer.C
-	}
-	resetDeadline(snapshot)
-	idleTicker := time.NewTicker(min(room.manager.options.IdleRoomTimeout/2, room.manager.options.LeaseTTL))
-	defer idleTicker.Stop()
-	var idleSince time.Time
-	var completionChannel <-chan time.Time
-	if room.manager.options.MatchRepository != nil && supportsGameRuntime(snapshot.GameKey) {
-		ticker := time.NewTicker(250 * time.Millisecond)
-		defer ticker.Stop()
-		completionChannel = ticker.C
-	}
-	var reconcileChannel <-chan time.Time
-	if room.manager.options.ParticipantDirectory != nil && supportsGameRuntime(snapshot.GameKey) {
-		interval := room.manager.options.ReconcileInterval
-		if interval <= 0 {
-			interval = 2 * time.Second
-		}
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		reconcileChannel = ticker.C
-	}
-	defer func() {
-		if deadlineTimer != nil {
-			deadlineTimer.Stop()
-		}
-	}()
-
-	for {
-		room.captureResult()
-		select {
-		case <-room.ctx.Done():
-			return
-		case <-idleTicker.C:
-			if snapshot.State != gameDomain.SessionLobby || !supportsGameRuntime(snapshot.GameKey) {
-				idleSince = time.Time{}
-				continue
-			}
-			ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-			presence, err := room.manager.coordinator.ListPresence(ctx, room.lease.RoomID)
-			cancel()
-			if err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				return
-			}
-			if len(presence) > 0 {
-				idleSince = time.Time{}
-				continue
-			}
-			if idleSince.IsZero() {
-				idleSince = time.Now()
-			}
-			if time.Since(idleSince) >= room.manager.options.IdleRoomTimeout {
-				return
-			}
-		case <-completionChannel:
-			room.captureResult()
-			if room.pendingResult != nil && room.completeMatch() {
-				return
-			}
-		case <-reconcileChannel:
-			room.captureResult()
-			if room.pendingResult != nil {
-				continue
-			}
-			updated, err := room.reconcilePlayers(snapshot, time.Now().UTC())
-			if err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				room.stop()
-				return
-			}
-			changed := updated.Version != snapshot.Version
-			snapshot = updated
-			if err := room.syncGameRuntime(snapshot, false); err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				return
-			}
-			resetDeadline(snapshot)
-			if changed {
-				if err := room.publishSnapshot("", snapshot); err != nil {
-					room.manager.report(room.lease.RoomID, err)
-					return
-				}
-			}
-			if snapshot.State == gameDomain.SessionCancelled || snapshot.State == gameDomain.SessionFinished {
-				return
-			}
-		case delivery := <-room.queue:
-			envelope := delivery.Envelope()
-			room.captureResult()
-			if room.pendingResult != nil {
-				if trigger := room.runtimeOwner.CompletionTrigger; trigger != nil && envelope.MessageID == trigger.CommandID && envelope.ActorID == trigger.ActorID && envelope.Type == trigger.CommandType && len(room.pendingCancellations) < room.manager.options.CommandQueueSize {
-					room.pendingCancellations = append(room.pendingCancellations, delivery)
-					continue
-				}
-				if len(room.pendingCancellations) > 0 {
-					first := room.pendingCancellations[0].Envelope()
-					if envelope.MessageID == first.MessageID && envelope.ActorID == first.ActorID && envelope.Type == first.Type {
-						if len(room.pendingCancellations) < room.manager.options.CommandQueueSize {
-							room.pendingCancellations = append(room.pendingCancellations, delivery)
-						}
-						continue
-					}
-				}
-				_ = room.publishCommandRejected(envelope, helpers.NewConflictError("houseRockets.error.finalizing"))
-				_ = delivery.Ack(room.ctx)
-				continue
-			}
-			if snapshot.GameKey == houseRockets.GameKey && snapshot.State == gameDomain.SessionRunning && envelope.Type == gameCommands.CancelGameSessionCommandType && room.manager.options.MatchRepository != nil {
-				if err := room.requestMatchCancellation(envelope); err != nil {
-					_ = room.publishCommandRejected(envelope, err)
-					if !isRetryableCommandError(err) {
-						_ = delivery.Ack(room.ctx)
-					}
-				} else {
-					room.pendingCancellations = append(room.pendingCancellations, delivery)
-					room.captureResult()
-				}
-				continue
-			}
-			updated, err := room.processCommand(envelope)
-			if err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				if !isRetryableCommandError(err) {
-					if rejectionErr := room.publishCommandRejected(envelope, err); rejectionErr != nil {
-						room.manager.report(room.lease.RoomID, rejectionErr)
-						if errors.Is(rejectionErr, coordinationAbstract.ErrLeaseLost) {
-							return
-						}
-					}
-					_ = delivery.Ack(room.ctx)
-				}
-				continue
-			}
-			snapshot = updated
-			if err := room.syncGameRuntime(snapshot, true); err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				return
-			}
-			resetDeadline(snapshot)
-			publishErr := room.publishSnapshot(delivery.Envelope().MessageID, updated)
-			if publishErr != nil {
-				room.manager.report(room.lease.RoomID, publishErr)
-			}
-			if err := delivery.Ack(room.ctx); err != nil {
-				room.manager.report(room.lease.RoomID, err)
-			}
-			if errors.Is(publishErr, coordinationAbstract.ErrLeaseLost) ||
-				errors.Is(publishErr, coordinationAbstract.ErrUnavailable) {
-				return
-			}
-			if snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled {
-				return
-			}
-		case <-deadlineChannel:
-			deadline, exists := sessionDeadline(snapshot)
-			if !exists {
-				resetDeadline(snapshot)
-				continue
-			}
-			current, reconcileErr := room.reconcilePlayers(snapshot, deadline)
-			if reconcileErr != nil {
-				room.manager.report(room.lease.RoomID, reconcileErr)
-				return
-			}
-			if current.Version != snapshot.Version {
-				snapshot = current
-				if err := room.syncGameRuntime(snapshot, false); err != nil {
-					room.manager.report(room.lease.RoomID, err)
-					return
-				}
-				resetDeadline(snapshot)
-				if err := room.publishSnapshot("", snapshot); err != nil {
-					room.manager.report(room.lease.RoomID, err)
-					return
-				}
-				if snapshot.State == gameDomain.SessionCancelled {
-					return
-				}
-				continue
-			}
-			updated, err := room.advance(deadline)
-			if err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				stored, loadErr := room.manager.repository.FindByID(room.ctx, room.lease.RoomID)
-				if loadErr != nil {
-					room.manager.report(room.lease.RoomID, loadErr)
-					return
-				}
-				snapshot = stored.Snapshot()
-				if err := room.syncGameRuntime(snapshot, false); err != nil {
-					room.manager.report(room.lease.RoomID, err)
-					return
-				}
-				resetDeadline(snapshot)
-				continue
-			}
-			messageID := advanceCommandID(snapshot, deadline)
-			snapshot = updated
-			if err := room.syncGameRuntime(snapshot, false); err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				return
-			}
-			resetDeadline(snapshot)
-			if err := room.publishSnapshot(messageID, updated); err != nil {
-				room.manager.report(room.lease.RoomID, err)
-				if errors.Is(err, coordinationAbstract.ErrLeaseLost) ||
-					errors.Is(err, coordinationAbstract.ErrUnavailable) {
-					return
-				}
-			}
-			if snapshot.State == gameDomain.SessionFinished || snapshot.State == gameDomain.SessionCancelled {
-				return
-			}
-		}
-	}
-}
-
-func (room *managedRoom) processCommand(
-	envelope coordinationAbstract.MessageEnvelope,
-) (gameDomain.SessionSnapshot, error) {
-	var snapshot gameDomain.SessionSnapshot
-	var err error
-	for attempt := 1; attempt <= room.manager.options.MaxCommandAttempts; attempt++ {
-		commandCtx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-		snapshot, err = room.manager.processor.Process(commandCtx, envelope)
-		cancel()
-		if err == nil || !isRetryableCommandError(err) || attempt == room.manager.options.MaxCommandAttempts {
-			return snapshot, err
-		}
-		select {
-		case <-time.After(room.manager.options.RetryDelay):
-		case <-room.ctx.Done():
-			return gameDomain.SessionSnapshot{}, room.ctx.Err()
-		}
-	}
-	return snapshot, err
-}
-
-func (room *managedRoom) advance(deadline time.Time) (gameDomain.SessionSnapshot, error) {
-	commandID := advanceCommandIDForRoom(room.lease.RoomID, deadline)
-	commandCtx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-	defer cancel()
-	return cqrs.Send[gameDomain.SessionSnapshot](commandCtx, room.manager.sender, gameCommands.AdvanceGameSessionCommand{
-		CommandID: commandID,
-		SessionID: room.lease.RoomID,
-		AdvanceAt: deadline,
-	})
-}
-
-func (room *managedRoom) publishSnapshot(messageID string, snapshot gameDomain.SessionSnapshot) error {
-	if messageID == "" {
-		messageID = uuid.NewString()
-	}
-	payload, err := json.Marshal(snapshot)
-	if err != nil {
-		return err
-	}
-	return room.manager.coordinator.PublishRoomEvent(room.ctx, room.lease, coordinationAbstract.MessageEnvelope{
-		MessageID: messageID,
-		RoomID:    room.lease.RoomID,
-		Type:      GameSessionSnapshotEventType,
-		Sequence:  snapshot.Version,
-		Payload:   payload,
-	})
-}
-
-func (room *managedRoom) publishCommandRejected(
-	envelope coordinationAbstract.MessageEnvelope,
-	commandErr error,
-) error {
-	payload, err := json.Marshal(protocolErrorFrom(commandErr))
-	if err != nil {
-		return err
-	}
-	return room.manager.coordinator.PublishRoomEvent(room.ctx, room.lease, coordinationAbstract.MessageEnvelope{
-		MessageID:    envelope.MessageID,
-		RoomID:       room.lease.RoomID,
-		Type:         CommandRejectedMessageType,
-		ConnectionID: envelope.ConnectionID,
-		Payload:      payload,
-	})
-}
-
-func sessionDeadline(snapshot gameDomain.SessionSnapshot) (time.Time, bool) {
-	switch snapshot.State {
-	case gameDomain.SessionReadyWindow:
-		return snapshot.ReadyWindowEndsAt, !snapshot.ReadyWindowEndsAt.IsZero()
-	case gameDomain.SessionCountdown:
-		return snapshot.CountdownEndsAt, !snapshot.CountdownEndsAt.IsZero()
-	default:
-		return time.Time{}, false
-	}
-}
-
-func advanceCommandID(snapshot gameDomain.SessionSnapshot, deadline time.Time) string {
-	return advanceCommandIDForRoom(snapshot.SessionID, deadline)
-}
-
-func advanceCommandIDForRoom(roomID string, deadline time.Time) string {
-	return fmt.Sprintf("advance:%s:%d", roomID, deadline.UTC().UnixNano())
-}
-
-func isRetryableCommandError(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, coordinationAbstract.ErrUnavailable) {
-		return true
-	}
-	var applicationError *helpers.ApplicationError
-	if errors.As(err, &applicationError) {
-		return applicationError.Kind == helpers.ErrorKindUnavailable ||
-			applicationError.Key == "game.error.session_conflict"
-	}
-	if errors.Is(err, ErrUnsupportedRoomCommand) || errors.Is(err, ErrRoomCommandPayloadRequired) {
-		return false
-	}
-	var syntaxError *json.SyntaxError
-	var typeError *json.UnmarshalTypeError
-	if errors.As(err, &syntaxError) || errors.As(err, &typeError) {
-		return false
-	}
-	return true
 }

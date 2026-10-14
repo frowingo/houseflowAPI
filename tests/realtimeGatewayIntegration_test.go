@@ -8,7 +8,7 @@ import (
 	"time"
 
 	gameCommands "houseflowApi/internal/application/game/commands"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/realtime"
 	"houseflowApi/internal/models/dtos"

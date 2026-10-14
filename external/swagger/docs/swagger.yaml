@@ -1,6 +1,6 @@
 basePath: /api/v1
 definitions:
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason:
+  houseflowApi_internal_application_game_games_houseRockets.EliminationReason:
     enum:
     - behindCamera
     - forfeit
@@ -12,7 +12,7 @@ definitions:
     - EliminationForfeit
     - EliminationConnectionExpired
     - EliminationMembershipRevoked
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason:
+  houseflowApi_internal_application_game_games_houseRockets.EndReason:
     enum:
     - lastSurvivor
     - simultaneousElimination
@@ -32,27 +32,27 @@ definitions:
     - EndRecoveryFailed
     - EndCoordinationUnavailable
     - EndRuntimeOverloaded
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel:
+  houseflowApi_internal_application_game_games_houseRockets.HouseRocketsPlayerResultModel:
     properties:
       distance:
         type: number
       eliminatedAtTick:
         type: integer
       eliminationReason:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason'
+        $ref: '#/definitions/houseflowApi_internal_application_game_games_houseRockets.EliminationReason'
       playerId:
         type: string
       rank:
         type: integer
     type: object
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel:
+  houseflowApi_internal_application_game_games_houseRockets.HouseRocketsResultModel:
     properties:
       courseVersion:
         type: integer
       durationSeconds:
         type: number
       endReason:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason'
+        $ref: '#/definitions/houseflowApi_internal_application_game_games_houseRockets.EndReason'
       endedAt:
         type: string
       gameKey:
@@ -61,7 +61,7 @@ definitions:
         type: string
       players:
         items:
-          $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel'
+          $ref: '#/definitions/houseflowApi_internal_application_game_games_houseRockets.HouseRocketsPlayerResultModel'
         type: array
       protocolVersion:
         type: integer
@@ -70,11 +70,11 @@ definitions:
       startedAt:
         type: string
       status:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus'
+        $ref: '#/definitions/houseflowApi_internal_application_game_games_houseRockets.ResultStatus'
       winnerId:
         type: string
     type: object
-  houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus:
+  houseflowApi_internal_application_game_games_houseRockets.ResultStatus:
     enum:
     - completed
     - cancelled
@@ -137,10 +137,10 @@ definitions:
       success:
         type: boolean
     type: object
-  ? houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel
+  ? houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_games_houseRockets_HouseRocketsResultModel
   : properties:
       data:
-        $ref: '#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel'
+        $ref: '#/definitions/houseflowApi_internal_application_game_games_houseRockets.HouseRocketsResultModel'
       success:
         type: boolean
     type: object
@@ -1419,7 +1419,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel'
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_games_houseRockets_HouseRocketsResultModel'
         "401":
           description: Unauthorized
           schema:

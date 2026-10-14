@@ -73,7 +73,7 @@ func (runtime *Runtime) Checkpoint() RuntimeCheckpoint {
 // RestoreRuntime keeps physics frozen during ownership interruption. No queued
 // steering is replayed and no old connection generation survives the new epoch.
 func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*Runtime, error) {
-	if checkpoint.SchemaVersion != RuntimeCheckpointVersion || checkpoint.Epoch <= 0 || epoch <= checkpoint.Epoch || checkpoint.Sequence <= 0 || checkpoint.Sequence >= 1<<62 || checkpoint.CapturedAt.IsZero() || checkpoint.CapturedAt.Before(checkpoint.World.StartedAt) || now.IsZero() || checkpoint.Remainder < 0 || checkpoint.Remainder >= int64(time.Second) || len(checkpoint.Controls) != len(checkpoint.World.Players) {
+	if !validCheckpointHeader(checkpoint, epoch, now) {
 		return nil, ErrInvalidSimulationState
 	}
 	simulation, err := RestoreSimulation(checkpoint.World)
@@ -120,6 +120,15 @@ func RestoreRuntime(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) (*
 	}
 	runtime.publishFrame()
 	return runtime, nil
+}
+
+// validCheckpointHeader accepts a checkpoint only from an older epoch, with a
+// bounded sequence, a capture time inside the match and one control per player.
+func validCheckpointHeader(checkpoint RuntimeCheckpoint, epoch int64, now time.Time) bool {
+	ordered := checkpoint.Epoch > 0 && epoch > checkpoint.Epoch && checkpoint.Sequence > 0 && checkpoint.Sequence < 1<<62
+	captured := !checkpoint.CapturedAt.IsZero() && !checkpoint.CapturedAt.Before(checkpoint.World.StartedAt) && !now.IsZero()
+	scheduler := checkpoint.Remainder >= 0 && checkpoint.Remainder < int64(time.Second)
+	return checkpoint.SchemaVersion == RuntimeCheckpointVersion && ordered && captured && scheduler && len(checkpoint.Controls) == len(checkpoint.World.Players)
 }
 
 // RecoveryFrame advertises frozen authoritative state while controls rebind.

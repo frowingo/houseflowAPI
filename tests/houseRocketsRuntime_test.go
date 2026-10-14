@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 )
 
 func newRocketsRuntime(t *testing.T) (*houseRockets.Runtime, time.Time) {

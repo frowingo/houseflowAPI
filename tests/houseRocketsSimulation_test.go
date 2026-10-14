@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/games/houseRockets"
 )
 
 type houseRocketsExpectedBody struct {

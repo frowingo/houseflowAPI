@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"houseflowApi/internal/application/game/games"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	gameApplication "houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
@@ -31,7 +31,7 @@ import (
 )
 
 func TestDefaultGameCatalogAdvertisesOnlyEnabledGames(t *testing.T) {
-	catalog, err := gameApplication.NewDefaultCatalog()
+	catalog, err := builtinCatalog(games.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestEnsureActiveGameSessionIsConcurrentAndReleasesTerminalSlot(t *testing.T
 	assertDocumentCount(t, fixture, database.GameSessionCollectionName, 1)
 	assertActiveSlotCount(t, fixture, 1)
 
-	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy())
+	cancelHandler := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames())
 	if _, err := cancelHandler.Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{
 		CommandID: "cancel-active",
 		SessionID: active.SessionID,

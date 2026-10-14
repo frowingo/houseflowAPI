@@ -7,7 +7,7 @@ import (
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 )
 
 const fanoutBenchmarkPlayers = 8
@@ -99,7 +99,7 @@ func BenchmarkHouseRocketsFramePublish(b *testing.B) {
 // one runtime frame to every controlling connection of a full room.
 func BenchmarkHouseRocketsFrameFanout(b *testing.B) {
 	frame, grants := playingFrame(b)
-	payload, err := json.Marshal(gamePreviewFrame{RuntimeFrame: frame})
+	payload, err := json.Marshal(frame)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func BenchmarkHouseRocketsFrameFanout(b *testing.B) {
 	hub := &roomHub{clients: make(map[string]*gatewayClient, len(grants))}
 	clients := make([]*gatewayClient, len(grants))
 	for index := range grants {
-		client := &gatewayClient{id: connectionID(index), roomID: "fanout-session", userID: grants[index].PlayerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(1)}
+		client := &gatewayClient{id: connectionID(index), roomID: "fanout-session", userID: grants[index].PlayerID, gateway: gateway, outbound: make(chan []byte, defaultOutboundQueueSize), active: true, v2: newV2ClientState(houseRockets.Module(), 1)}
 		client.v2.grant = &grants[index]
 		clients[index] = client
 		hub.clients[client.id] = client

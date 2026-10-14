@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/infrastructure/realtime"
 	"houseflowApi/internal/infrastructure/telemetry"

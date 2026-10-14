@@ -704,3 +704,37 @@ ardından yazanı kalmamış `OutboxMessage` collection'ını düşürür. `Acti
 bu sürümün rollout'u boyunca hâlâ önceki sürüm tarafından yazıldığından bir sonraki
 release'in migration'ında düşürülür; erken düşürmek collection'ı index'siz olarak yeniden
 oluştururdu.
+
+## ADR-018 — Oyun modülü sözleşmesi ve paylaşılan multiplayer core
+
+Yeni oyunlar core'u değiştirmeden eklenebilmelidir. Core; session lifecycle'ı, oda
+sahipliğini (lease + Mongo generation), kalıcılığı, WebSocket taşımasını ve fanout'u
+sahiplenir. Oyun yalnız kurallarını, wire modellerini ve simülasyonunu bilir. Sözleşme
+`internal/application/game/module` paketindedir; `module.Registry` bir süreçte etkin
+oyunları tutar ve core oyuna özgü her davranışı oradan çözer.
+
+İlk hat **tick** hattıdır (`TickModule` / `TickRuntime`): sabit hızlı scheduler, geçici
+gameplay girdisi, Redis checkpoint ile recovery. Control binding, epoch/generation fencing,
+faz enum'u ve kontrol hataları her tick oyunu için ortaktır ve `module` paketindedir.
+Client'a giden mesaj tipleri ve hata kodları oyun anahtarıyla türetilir
+(`<gameKey>.snapshot`, `<gameKey>.error.stale_control`); House Rockets için bunlar önceki
+değerlerin aynısıdır. Sıra tabanlı oyunlar için ikinci hat Faz 5'te eklenecektir; sözleşmesi
+kullanılmadan önce tanımlanmamıştır.
+
+Maç tamamlama (`CompleteMatchCommand`) ve sonuç sorgusu core'dadır; oyun yalnız sonucu
+doğrular ve normalleştirir (`FinalizeResult`) ve kendi wire modelini döndürür
+(`DecodeResult`). Somut oyun paketlerini yalnız `internal/application/game/games`
+(composition root) import eder; bu kural bir mimari testle zorunludur.
+
+Rolling deploy sırasında önceki sürümle Redis üzerinden değiş tokuş edilen formatlar
+(gameplay input, frame, control grant, checkpoint) değişmemiştir ve bir uyumluluk testiyle
+sabitlenmiştir. Frame başlığı hub başına bir kez decode edilir; bağlantıya özel
+projeksiyonu modül yapar.
+
+`realtime` paketi Go alt paketlerine bölünmemiştir: gateway ile oda yöneticisi birbirinin
+iç durumunu kullanır ve bölmek bu durumu dışa açmayı gerektirirdi. Sorumluluklar dosya ve
+tip düzeyinde ayrılmıştır (`room`, `roomLobby`, `tickHost`, `tickCheckpoint`,
+`roomCompletion`, `gatewayV2`). Oda durumu `lobbyState`, `tickState` ve `completionState`
+olarak gruplanmış, olay döngüsü olay başına küçük metotlara bölünmüştür. Tick oyunlarının
+ihtiyaç duyduğu owner repository, gameplay bus ve checkpoint store constructor'da çözülür;
+eksik bir yetenek ilk maçta değil başlatmada hata verir.

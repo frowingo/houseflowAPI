@@ -10,7 +10,7 @@ import (
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/module"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -42,7 +42,6 @@ var (
 )
 
 type GatewayOptions struct {
-	EnableHouseRockets  bool
 	MaximumMessageBytes int64
 	OutboundQueueSize   int
 	PingInterval        time.Duration
@@ -100,8 +99,8 @@ func NewGateway(
 	if options.MaxConnections < 0 {
 		return nil, errors.New("maximum connections must not be negative")
 	}
-	if options.EnableHouseRockets && manager.options.ParticipantDirectory == nil {
-		return nil, errors.New("House Rockets requires a participant directory")
+	if manager.options.Games.HasTickGames() && manager.options.ParticipantDirectory == nil {
+		return nil, errors.New("realtime games require a participant directory")
 	}
 	if options.PingInterval >= options.IdleTimeout {
 		return nil, errors.New("ping interval must be shorter than idle timeout")
@@ -175,10 +174,11 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
 		version, _ := strconv.Atoi(c.Query("protocolVersion"))
-		if version != V2ProtocolVersion || snapshot.ProtocolVersion != V2ProtocolVersion || snapshot.GameKey != houseRockets.GameKey {
+		if version != V2ProtocolVersion || snapshot.ProtocolVersion != V2ProtocolVersion {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewLocalizedError(unsupportedProtocolErrorCode))
 		}
-		if !gateway.options.EnableHouseRockets {
+		game := gateway.manager.tickGame(snapshot.GameKey)
+		if game == nil {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewNotFoundError("game.error.definition_not_found"))
 		}
 		if err := gateway.requireActiveMember(requestCtx, snapshot.HouseID, userID); err != nil {
@@ -204,6 +204,7 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
 		c.Locals("realtimeEpoch", ownership.RuntimeEpoch)
+		c.Locals("realtimeGame", game)
 		c.Locals("realtimeReservation", reservation)
 		if err := c.Next(); err != nil {
 			reservation.release()
@@ -562,7 +563,8 @@ func newGatewayClient(
 	}
 	client.expiresAt, _ = socket.Locals("tokenExpiresAt").(time.Time)
 	epoch, _ := socket.Locals("realtimeEpoch").(int64)
-	client.v2 = newV2ClientState(epoch)
+	game, _ := socket.Locals("realtimeGame").(module.TickModule)
+	client.v2 = newV2ClientState(game, epoch)
 	return client
 }
 

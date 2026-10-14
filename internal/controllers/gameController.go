@@ -4,8 +4,6 @@ import (
 	"houseflowApi/external/validator"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsQueries "houseflowApi/internal/application/game/gameSpesific/houseRockets/queries"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -30,20 +28,21 @@ func NewGameController(sender cqrs.Sender, localizer helpers.MessageLocalizer) *
 	}
 }
 
-// @Summary Get the immutable House Rockets match result
+// @Summary Get the immutable match result
+// @Description Returns the committed result in its game's own wire model.
 // @Tags Game
 // @Produce json
 // @Security BearerAuth
 // @Param sessionId path string true "Game session ID"
-// @Success 200 {object} core.ApiResponse[houseRockets.HouseRocketsResultModel]
+// @Success 200 {object} core.ApiResponse[object]
 // @Failure 401 {object} core.ErrorResponse
 // @Failure 403 {object} core.ErrorResponse "Current house membership required"
 // @Failure 404 {object} core.ErrorResponse "Session or committed result not found"
-// @Router /game/{sessionId}/result [get]
+// @Router /game/sessions/{sessionId}/result [get]
 func (controller *GameController) GetResult(c *fiber.Ctx) error {
 	ctx, cancel := requestContext(c)
 	defer cancel()
-	result, err := cqrs.Send[houseRockets.HouseRocketsResultModel](ctx, controller.sender, rocketsQueries.GetMatchResultQuery{SessionID: c.Params("sessionId"), UserID: c.Locals("userID").(string)})
+	result, err := cqrs.Send[any](ctx, controller.sender, gameQueries.GetMatchResultQuery{SessionID: c.Params("sessionId"), UserID: c.Locals("userID").(string)})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, controller.localizer, err)
 	}

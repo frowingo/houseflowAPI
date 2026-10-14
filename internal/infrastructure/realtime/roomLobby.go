@@ -4,22 +4,30 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/module"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
-
-	"github.com/google/uuid"
 )
 
 const GameRoomAccessEventType = "gameRuntime.access"
 const lobbyHeartbeatInput = "lobbyHeartbeat"
 
-type gameParticipant = houseRockets.PlayerIdentity
+// lobbyState is the realtime view of a room's players: current house members,
+// application heartbeats of ready players and the roster frozen at countdown.
+type lobbyState struct {
+	mutex    sync.Mutex
+	members  map[string]string
+	lastSeen map[string]time.Time
+	frozen   []module.Player
+}
 
 func (room *managedRoom) refreshParticipants(snapshot gameDomain.SessionSnapshot) error {
 	room.snapshot.Store(&snapshot)
@@ -38,12 +46,12 @@ func (room *managedRoom) refreshParticipants(snapshot gameDomain.SessionSnapshot
 		names[participant.PlayerID] = participant.DisplayName
 		ids = append(ids, participant.PlayerID)
 	}
-	room.lobbyMutex.Lock()
+	room.lobby.mutex.Lock()
 	// Sockets only act on a membership change; a new owner always announces
 	// once because revocations may have happened during the handoff.
-	changed := room.members == nil || !sameMembers(room.members, names)
-	room.members = names
-	room.lobbyMutex.Unlock()
+	changed := room.lobby.members == nil || !sameMembers(room.lobby.members, names)
+	room.lobby.members = names
+	room.lobby.mutex.Unlock()
 	if !changed {
 		return nil
 	}
@@ -63,8 +71,40 @@ func sameMembers(current, next map[string]string) bool {
 	return true
 }
 
+// recordLobbyHeartbeat keeps a ready player from being excluded as
+// disconnected before the match starts.
+func (room *managedRoom) recordLobbyHeartbeat(input module.ControlInput) error {
+	if input.RuntimeEpoch != room.runtimeOwner.Generation {
+		return module.ErrStaleInput
+	}
+	if time.Since(input.CreatedAt) > room.tick.game.Timing().InputLifetime {
+		return module.ErrInputExpired
+	}
+	room.lobby.mutex.Lock()
+	defer room.lobby.mutex.Unlock()
+	if room.lobby.lastSeen == nil {
+		room.lobby.lastSeen = make(map[string]time.Time)
+	}
+	if room.manager.options.ParticipantDirectory != nil {
+		if _, member := room.lobby.members[input.PlayerID]; !member {
+			return module.ErrControlRequired
+		}
+	}
+	if snapshot := room.snapshot.Load(); snapshot != nil {
+		for _, player := range snapshot.Players {
+			if player.PlayerID == input.PlayerID {
+				room.lobby.lastSeen[input.PlayerID] = time.Now()
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+// reconcilePlayers excludes revoked members and ready players whose lobby
+// heartbeat expired, grouped by reason.
 func (room *managedRoom) reconcilePlayers(snapshot gameDomain.SessionSnapshot, at time.Time) (gameDomain.SessionSnapshot, error) {
-	if room.manager.options.ParticipantDirectory == nil || !supportsGameRuntime(snapshot.GameKey) {
+	if room.manager.options.ParticipantDirectory == nil || !room.managesPlayers() {
 		return snapshot, nil
 	}
 	if err := room.refreshParticipants(snapshot); err != nil {
@@ -78,27 +118,28 @@ func (room *managedRoom) reconcilePlayers(snapshot gameDomain.SessionSnapshot, a
 	if at.Before(snapshot.UpdatedAt) {
 		at = snapshot.UpdatedAt
 	}
+	controlTimeout := room.tick.game.Timing().ControlTimeout
 	groups := map[string][]string{"membershipRevoked": {}, "connectionExpired": {}}
-	room.lobbyMutex.Lock()
+	room.lobby.mutex.Lock()
 	for _, player := range snapshot.Players {
 		if player.State == gameDomain.PlayerLeft || player.State == gameDomain.PlayerFinished {
 			continue
 		}
-		if _, member := room.members[player.PlayerID]; !member {
+		if _, member := room.lobby.members[player.PlayerID]; !member {
 			groups["membershipRevoked"] = append(groups["membershipRevoked"], player.PlayerID)
 			continue
 		}
 		if player.State == gameDomain.PlayerReady {
-			lastSeen := room.lobbyLastSeen[player.PlayerID]
+			lastSeen := room.lobby.lastSeen[player.PlayerID]
 			if lastSeen.Before(player.ReadyAt) {
 				lastSeen = player.ReadyAt
 			}
-			if at.Sub(lastSeen) >= houseRockets.ControlTimeout {
+			if at.Sub(lastSeen) >= controlTimeout {
 				groups["connectionExpired"] = append(groups["connectionExpired"], player.PlayerID)
 			}
 		}
 	}
-	room.lobbyMutex.Unlock()
+	room.lobby.mutex.Unlock()
 	for _, reason := range []string{"membershipRevoked", "connectionExpired"} {
 		ids := groups[reason]
 		if len(ids) == 0 {
@@ -135,16 +176,34 @@ func (room *managedRoom) rosterIDs(snapshot gameDomain.SessionSnapshot) ([]strin
 		}
 	}
 	members := make([]string, 0, len(snapshot.Players))
-	room.lobbyMutex.Lock()
-	defer room.lobbyMutex.Unlock()
+	room.lobby.mutex.Lock()
+	defer room.lobby.mutex.Unlock()
 	if room.manager.options.ParticipantDirectory == nil {
 		for _, player := range snapshot.Players {
 			members = append(members, player.PlayerID)
 		}
 	} else {
-		for id := range room.members {
+		for id := range room.lobby.members {
 			members = append(members, id)
 		}
 	}
 	return playing, members
+}
+
+// freezePlayers selects the ready roster once; a running session recovered by
+// a new owner rebuilds it from players who were ready before the countdown.
+func (room *managedRoom) freezePlayers(snapshot gameDomain.SessionSnapshot) {
+	room.lobby.mutex.Lock()
+	defer room.lobby.mutex.Unlock()
+	for _, player := range snapshot.Players {
+		eligibleRunning := snapshot.State == gameDomain.SessionRunning && !player.ReadyAt.IsZero() && (player.LeftAt.IsZero() || !player.LeftAt.Before(snapshot.StartedAt.Add(-snapshot.Rules.CountdownDuration)))
+		if !eligibleRunning && player.State != gameDomain.PlayerReady && player.State != gameDomain.PlayerPlaying {
+			continue
+		}
+		name := room.lobby.members[player.PlayerID]
+		if name == "" {
+			name = "Player"
+		}
+		room.lobby.frozen = append(room.lobby.frozen, module.Player{PlayerID: player.PlayerID, DisplayName: name})
+	}
 }

@@ -9,6 +9,7 @@ import (
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 )
 
@@ -75,7 +76,7 @@ func decodePayload[T any](payload json.RawMessage) (T, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return value, err
 	}
-	if err := ensureJSONEnd(decoder); err != nil {
+	if err := helpers.EnsureJSONEnd(decoder); err != nil {
 		return value, err
 	}
 	return value, nil

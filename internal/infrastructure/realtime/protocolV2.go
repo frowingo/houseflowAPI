@@ -1,16 +1,13 @@
 package realtime
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	gameCommands "houseflowApi/internal/application/game/commands"
-	"houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/module"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
 )
 
@@ -24,8 +21,9 @@ const (
 type DecodedV2ClientMessage struct {
 	Envelope ClientMessage
 	Ready    *dtos.RealtimeReadyModel
-	Steer    *houseRockets.HouseRocketsSteerModel
 	Ping     *dtos.RealtimePingModel
+	// Intent is a game-owned gameplay message, validated by its module.
+	Intent module.Intent
 }
 
 type V2ServerMessage[T any] struct {
@@ -64,8 +62,8 @@ func NewV2ErrorMessage(messageID string, sentAt time.Time, protocolError V2Proto
 	}
 }
 
-func V2ProtocolErrorFrom(err error) V2ProtocolError {
-	result := protocolErrorFromV2(err)
+func V2ProtocolErrorFrom(gameKey string, err error) V2ProtocolError {
+	result := tickProtocolError(gameKey, err)
 	if result.Args == nil {
 		result.Args = []string{}
 	}
@@ -83,12 +81,14 @@ func NewV2ServerMessage[T any](messageType string, messageID string, sequence *i
 	}
 }
 
-func DecodeV2ClientMessage(data []byte) (DecodedV2ClientMessage, error) {
+// DecodeV2ClientMessage strictly decodes one client envelope. Lobby commands
+// and realtime controls are shared; game must decode its own gameplay intents.
+func DecodeV2ClientMessage(data []byte, game module.TickModule) (DecodedV2ClientMessage, error) {
 	var decoded DecodedV2ClientMessage
 	if len(data) > defaultMaximumMessageBytes {
 		return decoded, ErrInvalidClientMessage
 	}
-	if err := decodeV2Object(data, &decoded.Envelope, []string{"payload"}, "protocolVersion", "messageId", "type"); err != nil {
+	if err := helpers.DecodeStrictObject(data, &decoded.Envelope, []string{"payload"}, "protocolVersion", "messageId", "type"); err != nil {
 		return decoded, errors.Join(ErrInvalidClientMessage, err)
 	}
 	message := &decoded.Envelope
@@ -100,33 +100,27 @@ func DecodeV2ClientMessage(data []byte) (DecodedV2ClientMessage, error) {
 		return decoded, ErrInvalidClientMessage
 	}
 	var err error
-	switch message.Type {
-	case gameCommands.JoinGameSessionCommandType, gameCommands.LeaveGameSessionCommandType,
-		gameCommands.CancelGameSessionCommandType, houseRockets.ResyncMessageType:
+	switch {
+	case message.Type == gameCommands.JoinGameSessionCommandType, message.Type == gameCommands.LeaveGameSessionCommandType,
+		message.Type == gameCommands.CancelGameSessionCommandType, game != nil && message.Type == module.ResyncMessageType(game.Definition().GameKey):
 		if len(message.Payload) > 0 {
 			var empty struct{}
-			err = decodeV2Object(message.Payload, &empty, nil)
+			err = helpers.DecodeStrictObject(message.Payload, &empty, nil)
 		}
-	case gameCommands.SetPlayerReadyCommandType:
+	case message.Type == gameCommands.SetPlayerReadyCommandType:
 		decoded.Ready = new(dtos.RealtimeReadyModel)
-		err = decodeV2Object(message.Payload, decoded.Ready, nil, "ready")
-	case houseRockets.SteerMessageType:
-		decoded.Steer = new(houseRockets.HouseRocketsSteerModel)
-		err = decodeV2Object(message.Payload, decoded.Steer, nil, "controlGeneration", "inputSequence", "heading")
-		if err == nil && !decoded.Steer.Valid() {
-			err = houseRockets.ErrInvalidInput
-		}
-		if err == nil {
-			decoded.Steer.Heading = math.Atan2(math.Sin(decoded.Steer.Heading), math.Cos(decoded.Steer.Heading))
-		} else {
-			err = errors.Join(houseRockets.ErrInvalidInput, err)
-		}
-	case PingMessageType:
+		err = helpers.DecodeStrictObject(message.Payload, decoded.Ready, nil, "ready")
+	case message.Type == PingMessageType:
 		decoded.Ping = new(dtos.RealtimePingModel)
-		err = decodeV2Object(message.Payload, decoded.Ping, nil, "pingId")
+		err = helpers.DecodeStrictObject(message.Payload, decoded.Ping, nil, "pingId")
 		if err == nil && (decoded.Ping.PingID == "" || len(decoded.Ping.PingID) > 128 ||
 			strings.TrimSpace(decoded.Ping.PingID) != decoded.Ping.PingID) {
 			err = ErrInvalidClientMessage
+		}
+	case game != nil:
+		decoded.Intent, err = game.DecodeIntent(message.Type, message.Payload)
+		if errors.Is(err, module.ErrUnsupportedIntent) {
+			err = ErrUnsupportedRoomCommand
 		}
 	default:
 		err = ErrUnsupportedRoomCommand
@@ -137,75 +131,27 @@ func DecodeV2ClientMessage(data []byte) (DecodedV2ClientMessage, error) {
 	return decoded, nil
 }
 
-func decodeV2Object(data []byte, target any, optionalFields []string, requiredFields ...string) error {
-	if err := rejectDuplicateV2Keys(data); err != nil {
-		return err
+// tickProtocolError maps runtime rejections to the game's namespaced codes.
+func tickProtocolError(gameKey string, err error) ProtocolError {
+	code := ""
+	switch {
+	case errors.Is(err, module.ErrStaleInput), errors.Is(err, module.ErrControlRequired):
+		code = "stale_control"
+	case errors.Is(err, module.ErrPlayerEliminated):
+		code = "player_eliminated"
+	case errors.Is(err, module.ErrPlayerNotFound):
+		code = "control_unavailable"
+	case errors.Is(err, module.ErrFinished), errors.Is(err, ErrRoomRuntimeNotStarted):
+		code = "not_running"
+	case errors.Is(err, module.ErrInputRate):
+		return ProtocolError{Code: messageRateLimitErrorCode}
+	case errors.Is(err, module.ErrRuntimeBusy):
+		return ProtocolError{Code: roomUnavailableErrorCode, Retryable: true}
+	case errors.Is(err, module.ErrInvalidInput), errors.Is(err, module.ErrInputExpired):
+		code = "invalid_input"
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
-		return errors.New("JSON object is required")
+	if code != "" {
+		return ProtocolError{Code: module.ErrorCode(gameKey, code)}
 	}
-	for _, field := range requiredFields {
-		value, exists := fields[field]
-		if !exists || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-			return fmt.Errorf("%s is required", field)
-		}
-	}
-	allowedFields := make(map[string]bool, len(requiredFields)+len(optionalFields))
-	for _, field := range requiredFields {
-		allowedFields[field] = true
-	}
-	for _, field := range optionalFields {
-		allowedFields[field] = true
-	}
-	for field := range fields {
-		if !allowedFields[field] {
-			return fmt.Errorf("unknown field %s", field)
-		}
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	return ensureJSONEnd(decoder)
-}
-
-func rejectDuplicateV2Keys(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var readValue func() error
-	readValue = func() error {
-		token, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		delimiter, composite := token.(json.Delim)
-		if !composite {
-			return nil
-		}
-		seen := make(map[string]bool)
-		for decoder.More() {
-			if delimiter == '{' {
-				keyToken, err := decoder.Token()
-				if err != nil {
-					return err
-				}
-				key, ok := keyToken.(string)
-				if !ok || seen[key] {
-					return errors.New("duplicate or invalid JSON field")
-				}
-				seen[key] = true
-			}
-			if err := readValue(); err != nil {
-				return err
-			}
-		}
-		_, err = decoder.Token()
-		return err
-	}
-	if err := readValue(); err != nil {
-		return err
-	}
-	return ensureJSONEnd(decoder)
+	return protocolErrorFrom(err)
 }

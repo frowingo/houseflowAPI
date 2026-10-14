@@ -5,7 +5,6 @@ import (
 
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
 )
 
 type Catalog struct {
@@ -26,16 +25,6 @@ func NewCatalog(definitions ...gameDomain.GameDefinition) (*Catalog, error) {
 		catalog.definitions[definition.GameKey] = definition
 	}
 	return catalog, nil
-}
-
-type CatalogOptions struct{ EnableHouseRockets bool }
-
-func NewDefaultCatalog(options ...CatalogOptions) (*Catalog, error) {
-	var definitions []gameDomain.GameDefinition
-	if len(options) > 0 && options[0].EnableHouseRockets {
-		definitions = append(definitions, houseRockets.Definition())
-	}
-	return NewCatalog(definitions...)
 }
 
 func (catalog *Catalog) Find(gameKey string) (gameDomain.GameDefinition, error) {

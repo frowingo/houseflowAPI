@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"errors"
+	"houseflowApi/internal/application/game/games"
 	"math"
 	"os"
 	"reflect"
@@ -10,10 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"houseflowApi/internal/application/game"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	"houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	"houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/infrastructure/realtime"
 	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
@@ -64,7 +64,7 @@ type houseRocketsProtocolFixture struct {
 
 func readHouseRocketsFixture[T any](t *testing.T, name string) T {
 	t.Helper()
-	data, err := os.ReadFile("../internal/application/game/gameSpesific/houseRockets/fixtures/" + name + ".json")
+	data, err := os.ReadFile("../internal/application/game/games/houseRockets/fixtures/" + name + ".json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestHouseRocketsDefinitionContract(t *testing.T) {
 		}
 		seen[color] = true
 	}
-	catalog, err := game.NewDefaultCatalog()
+	catalog, err := builtinCatalog(games.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestHouseRocketsClientContractFixtures(t *testing.T) {
 	fixture := readHouseRocketsFixture[houseRocketsProtocolFixture](t, "houseRocketsProtocol")
 	for _, entry := range fixture.ClientMessages {
 		t.Run(entry.Name, func(t *testing.T) {
-			decoded, err := realtime.DecodeV2ClientMessage(entry.Message)
+			decoded, err := realtime.DecodeV2ClientMessage(entry.Message, houseRockets.Module())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +165,7 @@ func TestHouseRocketsClientContractFixtures(t *testing.T) {
 					t.Fatal("explicit false must remain valid")
 				}
 			case "steer":
-				if decoded.Steer == nil || !decoded.Steer.Valid() || decoded.Steer.Heading != 0 || decoded.Steer.InputSequence != 42 {
+				if decodedSteer(decoded) == nil || !decodedSteer(decoded).Valid() || decodedSteer(decoded).Heading != 0 || decodedSteer(decoded).InputSequence != 42 {
 					t.Fatal("zero heading must remain valid")
 				}
 			case "ping":
@@ -177,11 +177,11 @@ func TestHouseRocketsClientContractFixtures(t *testing.T) {
 	}
 	for _, entry := range fixture.InvalidClientMessages {
 		t.Run(entry.Name, func(t *testing.T) {
-			_, err := realtime.DecodeV2ClientMessage([]byte(entry.JSON))
+			_, err := realtime.DecodeV2ClientMessage([]byte(entry.JSON), houseRockets.Module())
 			if err == nil {
 				t.Fatal("invalid client message was accepted")
 			}
-			protocolError := realtime.V2ProtocolErrorFrom(err)
+			protocolError := realtime.V2ProtocolErrorFrom(houseRockets.GameKey, err)
 			if protocolError.Code != entry.ErrorCode || protocolError.Retryable {
 				t.Fatalf("unexpected rejection: %+v", protocolError)
 			}
@@ -191,12 +191,12 @@ func TestHouseRocketsClientContractFixtures(t *testing.T) {
 
 func TestHouseRocketsClientContractBoundaries(t *testing.T) {
 	valid := `{"protocolVersion":2,"messageId":"a","type":"houseRockets.steer","payload":{"controlGeneration":"g","inputSequence":1,"heading":7.853981633974483}}`
-	decoded, err := realtime.DecodeV2ClientMessage([]byte(valid))
-	if err != nil || math.Abs(decoded.Steer.Heading-math.Pi/2) > 1e-12 {
+	decoded, err := realtime.DecodeV2ClientMessage([]byte(valid), houseRockets.Module())
+	if err != nil || math.Abs(decodedSteer(decoded).Heading-math.Pi/2) > 1e-12 {
 		t.Fatalf("heading normalization failed: %v", err)
 	}
 	for _, command := range []string{"gameSession.join", "gameSession.leave", "gameSession.cancel", "houseRockets.resync"} {
-		if _, err := realtime.DecodeV2ClientMessage([]byte(`{"protocolVersion":2,"messageId":"a","type":"` + command + `"}`)); err != nil {
+		if _, err := realtime.DecodeV2ClientMessage([]byte(`{"protocolVersion":2,"messageId":"a","type":"`+command+`"}`), houseRockets.Module()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -214,7 +214,7 @@ func TestHouseRocketsClientContractBoundaries(t *testing.T) {
 		strings.Repeat(" ", 16*1024+1), `[]`, `null`, `true`, `{`,
 	}
 	for index, message := range invalid {
-		if _, err := realtime.DecodeV2ClientMessage([]byte(message)); err == nil {
+		if _, err := realtime.DecodeV2ClientMessage([]byte(message), houseRockets.Module()); err == nil {
 			t.Fatalf("invalid boundary %d accepted", index)
 		}
 	}
@@ -403,14 +403,14 @@ func FuzzHouseRocketsClientDecoder(f *testing.F) {
 	f.Add([]byte(`{"protocolVersion":2,"messageId":"a","type":"gameSession.join","payload":{"x":[{"x":1,"x":2}]}}`))
 	f.Add([]byte(`null`))
 	f.Fuzz(func(t *testing.T, data []byte) {
-		decoded, err := realtime.DecodeV2ClientMessage(data)
+		decoded, err := realtime.DecodeV2ClientMessage(data, houseRockets.Module())
 		if err != nil {
 			return
 		}
 		if decoded.Envelope.ProtocolVersion != 2 || decoded.Envelope.MessageID == "" || len(data) > 16*1024 {
 			t.Fatal("invalid envelope accepted")
 		}
-		if decoded.Steer != nil && (!decoded.Steer.Valid() || math.Abs(decoded.Steer.Heading) > math.Pi) {
+		if decodedSteer(decoded) != nil && (!decodedSteer(decoded).Valid() || math.Abs(decodedSteer(decoded).Heading) > math.Pi) {
 			t.Fatal("invalid or unnormalized steer accepted")
 		}
 	})

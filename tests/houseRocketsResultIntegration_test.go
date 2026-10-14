@@ -16,8 +16,7 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
@@ -114,10 +113,10 @@ func TestHouseRocketsResultSurvivesPostCommitPublishFailure(t *testing.T) {
 	session := persistRocketsSession(t, fixture, true)
 	matches := database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name())
 	mediator := newGameSessionMediator(fixture)
-	cqrs.MustRegister[houseRockets.HouseRocketsResultModel, rocketsCommands.CompleteMatchCommand](mediator, rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches))
+	registerRocketsResults(mediator, fixture.repository, matches, nil)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](mediator, gameQueries.NewAuthorizeCancellationHandler(fixture.repository, fixture.membershipPolicy()))
 	coordinator := resultPublishFailureCoordinator{newTestCoordinator(t, prepareRedis(t), "result-publish-failure")}
-	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, mediator, realtime.RoomManagerOptions{MatchRepository: matches, RenewInterval: 500 * time.Millisecond})
+	manager, err := realtime.NewRoomManager(coordinator, fixture.repository, mediator, realtime.RoomManagerOptions{Games: rocketsGames(), MatchRepository: matches, RenewInterval: 500 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +196,7 @@ func (fixture *rocketsGatewayFixture) resultHTTP(t *testing.T, index int, sessio
 	return response.StatusCode, body.Data
 }
 
-func completionFixture(t *testing.T, reason houseRockets.EndReason) (*gameSessionApplicationFixture, *database.GameMatchRepository, rocketsCommands.CompleteMatchCommand) {
+func completionFixture(t *testing.T, reason houseRockets.EndReason) (*gameSessionApplicationFixture, *database.GameMatchRepository, rocketsCompletion) {
 	t.Helper()
 	fixture := newGameSessionApplicationFixture(t)
 	snapshot := persistRocketsSession(t, fixture, true)
@@ -243,12 +242,12 @@ func completionFixture(t *testing.T, reason houseRockets.EndReason) (*gameSessio
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture, database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name()), rocketsCommands.CompleteMatchCommand{Result: result, Owner: owner}
+	return fixture, database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name()), rocketsCompletion{Result: result, Owner: owner}
 }
 
 func TestHouseRocketsResultFiveMinuteExpiryIsPersistedWithoutWinner(t *testing.T) {
 	fixture, matches, command := completionFixture(t, houseRockets.EndSessionExpired)
-	result, err := rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches).Handle(fixture.ctx, command)
+	result, err := newRocketsCompletionHandler(fixture.repository, matches).Handle(fixture.ctx, command)
 	if err != nil || result.Status != houseRockets.ResultCancelled || result.DurationSeconds != 300 || result.WinnerID != nil {
 		t.Fatalf("expiry result: %+v %v", result, err)
 	}
@@ -289,7 +288,7 @@ func TestHouseRocketsGatewayPregameCancellationDoesNotCreateResult(t *testing.T)
 
 func TestHouseRocketsResultConcurrentCompletionIsImmutableAndRematchSafe(t *testing.T) {
 	fixture, matches, command := completionFixture(t, houseRockets.EndLastSurvivor)
-	handler := rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches)
+	handler := newRocketsCompletionHandler(fixture.repository, matches)
 	start := make(chan struct{})
 	var workers sync.WaitGroup
 	errorsChannel := make(chan error, 4)
@@ -364,7 +363,7 @@ func TestHouseRocketsResultConcurrentCompletionIsImmutableAndRematchSafe(t *test
 func TestHouseRocketsResultTransactionRollbackAndRetry(t *testing.T) {
 	fixture, matches, command := completionFixture(t, houseRockets.EndCancelledByUser)
 	command.CancelCommandID, command.CancelUserID = "cancel-match", fixture.ownerID
-	handler := rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches)
+	handler := newRocketsCompletionHandler(fixture.repository, matches)
 	// The result insert is the LAST write, after owner, receipt, terminal session and slot writes.
 	rejectMatchResults(t, fixture)
 	if _, err := handler.Handle(fixture.ctx, command); err == nil {
@@ -395,7 +394,7 @@ func TestHouseRocketsResultTransactionRollbackAndRetry(t *testing.T) {
 		}
 	}
 	// The ordinary cancellation handler recognizes the transaction's user receipt.
-	if _, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "cancel-match", SessionID: result.SessionID, UserID: fixture.ownerID}); err != nil {
+	if _, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "cancel-match", SessionID: result.SessionID, UserID: fixture.ownerID}); err != nil {
 		t.Fatalf("cancel retry not idempotent: %v", err)
 	}
 }
@@ -407,7 +406,7 @@ func TestHouseRocketsResultStaleOwnerCannotCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches)
+	handler := newRocketsCompletionHandler(fixture.repository, matches)
 	if _, err := handler.Handle(fixture.ctx, command); !errors.Is(err, gameAbstract.ErrRuntimeOwnerConflict) {
 		t.Fatalf("stale owner completed: %v", err)
 	}
@@ -424,7 +423,7 @@ func TestHouseRocketsResultStaleOwnerCannotCommit(t *testing.T) {
 func TestHouseRocketsResultTakeoverAndCompletionHaveOneWinner(t *testing.T) {
 	for range 3 {
 		fixture, matches, command := completionFixture(t, houseRockets.EndLastSurvivor)
-		handler := rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches)
+		handler := newRocketsCompletionHandler(fixture.repository, matches)
 		start := make(chan struct{})
 		completionErrors, claimErrors := make(chan error, 1), make(chan error, 1)
 		go func() { <-start; _, err := handler.Handle(fixture.ctx, command); completionErrors <- err }()
@@ -507,7 +506,7 @@ func TestHouseRocketsGatewayRunningCancellationAndHTTPFallback(t *testing.T) {
 	if status, _ := fixture.resultHTTP(t, 0, session.SessionID, ""); status != 401 {
 		t.Fatalf("anonymous result: %d", status)
 	}
-	_, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "authorized-cancel", SessionID: session.SessionID, UserID: fixture.ownerID})
+	_, err := gameCommands.NewCancelGameSessionHandler(fixture.repository, fixture.membershipPolicy(), rocketsGames()).Handle(fixture.ctx, gameCommands.CancelGameSessionCommand{CommandID: "authorized-cancel", SessionID: session.SessionID, UserID: fixture.ownerID})
 	if err != nil {
 		t.Fatalf("committed cancel receipt not replayable: %v", err)
 	}

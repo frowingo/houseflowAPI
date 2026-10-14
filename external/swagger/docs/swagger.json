@@ -762,7 +762,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel"
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_games_houseRockets_HouseRocketsResultModel"
                         }
                     },
                     "401": {
@@ -1982,7 +1982,7 @@
         }
     },
     "definitions": {
-        "houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason": {
+        "houseflowApi_internal_application_game_games_houseRockets.EliminationReason": {
             "type": "string",
             "enum": [
                 "behindCamera",
@@ -1997,7 +1997,7 @@
                 "EliminationMembershipRevoked"
             ]
         },
-        "houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason": {
+        "houseflowApi_internal_application_game_games_houseRockets.EndReason": {
             "type": "string",
             "enum": [
                 "lastSurvivor",
@@ -2020,7 +2020,7 @@
                 "EndRuntimeOverloaded"
             ]
         },
-        "houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel": {
+        "houseflowApi_internal_application_game_games_houseRockets.HouseRocketsPlayerResultModel": {
             "type": "object",
             "properties": {
                 "distance": {
@@ -2030,7 +2030,7 @@
                     "type": "integer"
                 },
                 "eliminationReason": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EliminationReason"
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.EliminationReason"
                 },
                 "playerId": {
                     "type": "string"
@@ -2040,7 +2040,7 @@
                 }
             }
         },
-        "houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel": {
+        "houseflowApi_internal_application_game_games_houseRockets.HouseRocketsResultModel": {
             "type": "object",
             "properties": {
                 "courseVersion": {
@@ -2050,7 +2050,7 @@
                     "type": "number"
                 },
                 "endReason": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.EndReason"
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.EndReason"
                 },
                 "endedAt": {
                     "type": "string"
@@ -2064,7 +2064,7 @@
                 "players": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsPlayerResultModel"
+                        "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.HouseRocketsPlayerResultModel"
                     }
                 },
                 "protocolVersion": {
@@ -2077,14 +2077,14 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus"
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.ResultStatus"
                 },
                 "winnerId": {
                     "type": "string"
                 }
             }
         },
-        "houseflowApi_internal_application_game_gameSpesific_houseRockets.ResultStatus": {
+        "houseflowApi_internal_application_game_games_houseRockets.ResultStatus": {
             "type": "string",
             "enum": [
                 "completed",
@@ -2174,11 +2174,11 @@
                 }
             }
         },
-        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_gameSpesific_houseRockets_HouseRocketsResultModel": {
+        "houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_application_game_games_houseRockets_HouseRocketsResultModel": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/houseflowApi_internal_application_game_gameSpesific_houseRockets.HouseRocketsResultModel"
+                    "$ref": "#/definitions/houseflowApi_internal_application_game_games_houseRockets.HouseRocketsResultModel"
                 },
                 "success": {
                     "type": "boolean"

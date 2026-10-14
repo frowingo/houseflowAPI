@@ -14,8 +14,7 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
-	rocketsCommands "houseflowApi/internal/application/game/gameSpesific/houseRockets/commands"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/data/database"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -139,7 +138,7 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rocketsCommands.NewCompleteMatchHandler(sessions, matches).Handle(fixture.ctx, rocketsCommands.CompleteMatchCommand{Result: result, Owner: owner}); err != nil {
+	if _, err := newRocketsCompletionHandler(sessions, matches).Handle(fixture.ctx, rocketsCompletion{Result: result, Owner: owner}); err != nil {
 		t.Fatal(err)
 	}
 	commands := counter.snapshot()

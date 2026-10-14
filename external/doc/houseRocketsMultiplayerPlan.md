@@ -69,7 +69,7 @@ eder, bu listeyi eksiksiz mobil audit veya test başarısı kabul etmez.
   işaretidir; bugünkü runtime feature flag'i veya mobil UI engeli **değildir**.
   Mobil bu alanı canlı ortam erişimi kararı için kullanmaz.
 - Protocol fixture:
-  `internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsProtocol.json`.
+  `internal/application/game/games/houseRockets/fixtures/houseRocketsProtocol.json`.
   Physics fixture aynı dizinde `houseRocketsSimulation.json`.
   Agent backend checkout'una erişmeli veya aynı revizyonun JSON'larını almalı.
   Mobilde kullanılacak JSON kopyaları test kaynaklarında tutulur; target/bundle
@@ -437,7 +437,7 @@ session domain'inin mevcut kuralıyla countdown daha erken başlayabilir.
 ### 4.1. Backend
 
 - `internal/application/game/domain`: Ortak session lifecycle'ı.
-- `internal/application/game/gameSpesific/houseRockets`: Tanım/enum, game-specific
+- `internal/application/game/games/houseRockets`: Tanım/enum, game-specific
   state, kurallar, geometri ve bağımsız simülasyon mevcut. Oyun completion/result
   handler'ları bu dizinin `commands`/`queries` altındadır. Saf motor
   HTTP/WebSocket/SpriteKit/Redis tiplerine bağımlı değildir.
@@ -514,21 +514,21 @@ uygulandı; Paket 5 ile kalıcı sonuç endpoint'i de eklendi.
 
 Ortak referanslar:
 
-- [Protokol fixture'ı](/Users/frowing/Projects/houseflowApi/internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsProtocol.json): Geçerli/geçersiz
+- [Protokol fixture'ı](/Users/frowing/Projects/houseflowApi/internal/application/game/games/houseRockets/fixtures/houseRocketsProtocol.json): Geçerli/geçersiz
   client mesajları, welcome/session/countdown/playing/recovering/result/error
   örnekleri ve HTTP response'ları. `liveGatewayAvailable: false` Paket 1'in
   tarihsel metadata'sıdır; güncel local/staging kapısı değildir (bölüm 0.2).
-- [Fizik fixture'ı](/Users/frowing/Projects/houseflowApi/internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsSimulation.json): Mevcut Swift
+- [Fizik fixture'ı](/Users/frowing/Projects/houseflowApi/internal/application/game/games/houseRockets/fixtures/houseRocketsSimulation.json): Mevcut Swift
   kaynakları değiştirilmeden çalıştırılarak elde edilen 2/4/8 kişilik spawn,
   altı hareket senaryosu, geometri, dönüş, field salınımı ve yüzey teması.
   Paket 2'de üç navigation/effect senaryosu eklendi: 30 s parkur sürüşü,
   boostThenHold ve slowThenHold. `absoluteTolerance: 1e-9` ile Go motoru
   bütün referanslarla karşılaştırılıyor. Kaynak SHA-256'ları dosyada.
   Bu bağımsız Swift referans kontrolüdür; mobil test suite/iOS build kabulü değil.
-- `internal/application/game/gameSpesific/houseRockets/definition.go`: Oyun-specific sabitler
+- `internal/application/game/games/houseRockets/definition.go`: Oyun-specific sabitler
   ve enum'lar; ortak GameSession domain'ine fizik/puan mantığı eklenmedi.
-- `internal/application/game/gameSpesific/houseRockets/models.go`: House Rockets wire modelleri.
-- `internal/application/game/gameSpesific/houseRockets/protocol.go`: Oyuna özgü mesaj/hata tanımları.
+- `internal/application/game/games/houseRockets/models.go`: House Rockets wire modelleri.
+- `internal/application/game/games/houseRockets/protocol.go`: Oyuna özgü mesaj/hata tanımları.
   Ortak ready/ping/pong modelleri `internal/models/dtos/realtimeModels.go` içinde.
 - `internal/infrastructure/realtime/protocolV2.go`: Gateway'in kullandığı v2 validation ve
   server envelope'ları.
@@ -1011,8 +1011,8 @@ Backend teslimleri:
 - Runtime sahiplik generation'ı, checkpoint/sonuç transaction sınırı ve
   takeover yarışı için uygulanacak korumanın tasarımı.
 - Ortak protokol/physics fixture'ları:
-  `internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsProtocol.json` ve
-  `internal/application/game/gameSpesific/houseRockets/fixtures/houseRocketsSimulation.json`. İkisi de oluşturuldu;
+  `internal/application/game/games/houseRockets/fixtures/houseRocketsProtocol.json` ve
+  `internal/application/game/games/houseRockets/fixtures/houseRocketsSimulation.json`. İkisi de oluşturuldu;
   fixture schema `1`, contract revision `houseRockets.v2.1`.
 - DTO JSON encode/decode ve sınır değerleri için contract testleri.
 
@@ -1049,7 +1049,7 @@ sözleşmesiyle geliştirilir; client sonucunu otorite yapmaz.
 
 Paket 2 uygulanan API ve sınırlar:
 
-- Kodlar `internal/application/game/gameSpesific/houseRockets` altında:
+- Kodlar `internal/application/game/games/houseRockets` altında:
   `course.go`, `simulation.go`, `simulationState.go`, `simulationResult.go`.
   Ortak GameSession domain'i, katalog ve gateway değiştirilmedi.
 - `NewSimulation(NewSimulationParams)`: Authoritative session/house kimliği,
@@ -1127,7 +1127,7 @@ bu paket bitince hazır kabul etmeyin; gateway teslimi Paket 4'tedir.
 
 Paket 3 uygulanan API ve sınırlar:
 
-- Oyun kuralları ve kontrol state'i `internal/application/game/gameSpesific/houseRockets/runtime.go`
+- Oyun kuralları ve kontrol state'i `internal/application/game/games/houseRockets/runtime.go`
   altında. Ortak room manager fizik bilmez; `internal/infrastructure/realtime/gameRuntime.go`
   küçük factory/adapter ile start, cancel ve fanout bağlar. Üretimde bot yoktur.
 - `Runtime.Run`: 60 Hz scheduling, 120 Hz tam fizik tick'i. Fractional süre

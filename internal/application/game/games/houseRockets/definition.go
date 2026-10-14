@@ -1,6 +1,7 @@
 package houseRockets
 
 import (
+	"houseflowApi/internal/application/game/module"
 	"time"
 
 	gameDomain "houseflowApi/internal/application/game/domain"
@@ -43,15 +44,15 @@ const (
 	SlowPeriodSeconds             = 4.4 / 1.2
 )
 
-type Phase string
+type Phase = module.Phase
 
 const (
-	PhaseCountdown  Phase = "countdown"
-	PhasePlaying    Phase = "playing"
-	PhaseRecovering Phase = "recovering"
-	PhaseFinalizing Phase = "finalizing"
-	PhaseEnded      Phase = "ended"
-	PhaseCancelled  Phase = "cancelled"
+	PhaseCountdown  = module.PhaseCountdown
+	PhasePlaying    = module.PhasePlaying
+	PhaseRecovering = module.PhaseRecovering
+	PhaseFinalizing = module.PhaseFinalizing
+	PhaseEnded      = module.PhaseEnded
+	PhaseCancelled  = module.PhaseCancelled
 )
 
 type Color string
@@ -114,9 +115,9 @@ const (
 	EndLastSurvivor            EndReason = "lastSurvivor"
 	EndSimultaneousElimination EndReason = "simultaneousElimination"
 	EndInsufficientPlayers     EndReason = "insufficientPlayers"
-	EndCancelledByUser         EndReason = "cancelledByUser"
+	EndCancelledByUser         EndReason = module.EndCancelledByUser
 	EndSessionExpired          EndReason = "sessionExpired"
-	EndRecoveryFailed          EndReason = "recoveryFailed"
+	EndRecoveryFailed          EndReason = module.EndRecoveryFailed
 	EndCoordinationUnavailable EndReason = "coordinationUnavailable"
 	EndRuntimeOverloaded       EndReason = "runtimeOverloaded"
 )

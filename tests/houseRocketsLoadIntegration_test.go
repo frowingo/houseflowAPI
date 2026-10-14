@@ -20,7 +20,7 @@ import (
 	ws "github.com/fasthttp/websocket"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/realtime"

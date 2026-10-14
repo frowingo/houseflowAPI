@@ -10,7 +10,8 @@ import (
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
-	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
+	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
+	"houseflowApi/internal/application/game/module"
 )
 
 // Only the remote-observer path is allowed: an observer must never claim ownership.
@@ -71,7 +72,11 @@ func newRemoteActivation(t *testing.T) (*RoomManager, *activationRepository, *ac
 		RoomID: session.Snapshot().SessionID, OwnerInstanceID: "owner", LeaseID: "new-lease",
 		FencingToken: 1, ExpiresAt: time.Now().Add(time.Minute),
 	}}
-	manager := &RoomManager{repository: repository, coordinator: coordinator, options: normalizeOptions(RoomManagerOptions{})}
+	games, err := module.NewRegistry(houseRockets.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &RoomManager{repository: repository, coordinator: coordinator, owners: repository, options: normalizeOptions(RoomManagerOptions{Games: games})}
 	return manager, repository, coordinator
 }
 

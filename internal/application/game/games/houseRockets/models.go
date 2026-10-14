@@ -1,6 +1,7 @@
 package houseRockets
 
 import (
+	"houseflowApi/internal/application/game/module"
 	"math"
 	"strings"
 	"time"
@@ -53,12 +54,7 @@ type HouseRocketsWelcomeModel struct {
 	Settings        HouseRocketsRuntimeSettingsModel `json:"settings"`
 }
 
-type HouseRocketsControlGrantedModel struct {
-	SessionID         string `json:"sessionId"`
-	PlayerID          string `json:"playerId"`
-	RuntimeEpoch      int64  `json:"runtimeEpoch"`
-	ControlGeneration string `json:"controlGeneration"`
-}
+type HouseRocketsControlGrantedModel = module.ControlGrant
 
 type HouseRocketsPlayerModel struct {
 	PlayerID                   string             `json:"playerId"`
