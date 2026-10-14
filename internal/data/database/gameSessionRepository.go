@@ -18,22 +18,17 @@ import (
 // session ends so a delayed claimant still sees the completed generation.
 const runtimeOwnerRetention = time.Hour
 
-// GameSessionRepository still writes the legacy ActiveGameSession pointer so
-// instances running the previous release keep a consistent active slot during
-// a rolling deploy. Reads prefer GameSession.activeKey.
 type GameSessionRepository struct {
-	sessions       databaseAbstract.DbRepository[gameSessionDocument]
-	activeSessions databaseAbstract.DbRepository[activeGameSessionDocument]
-	receipts       databaseAbstract.DbRepository[entities.GameSessionCommandReceipt]
+	sessions databaseAbstract.DbRepository[gameSessionDocument]
+	receipts databaseAbstract.DbRepository[entities.GameSessionCommandReceipt]
 }
 
 var _ gameAbstract.GameSessionRepository = (*GameSessionRepository)(nil)
 
 func NewGameSessionRepository(client *mongo.Client, dbName string) *GameSessionRepository {
 	return &GameSessionRepository{
-		sessions:       NewDbContext[gameSessionDocument](client, dbName),
-		activeSessions: NewDbContext[activeGameSessionDocument](client, dbName),
-		receipts:       NewDbContext[entities.GameSessionCommandReceipt](client, dbName),
+		sessions: NewDbContext[gameSessionDocument](client, dbName),
+		receipts: NewDbContext[entities.GameSessionCommandReceipt](client, dbName),
 	}
 }
 
@@ -50,18 +45,10 @@ func (repository *GameSessionRepository) Create(
 		return gameAbstract.PersistenceResult{}, err
 	}
 	document := gameSessionDocumentFromSnapshot(snapshot)
-	activeSession := activeGameSessionDocument{
-		HouseID:   snapshot.HouseID,
-		GameKey:   snapshot.GameKey,
-		SessionID: snapshot.SessionID,
-		CreatedAt: snapshot.CreatedAt,
-	}
 
+	// The unique activeKey index rejects a second active session for the slot.
 	err := repository.sessions.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
 		if err := repository.insertReceipt(txCtx, command, snapshot.SessionID); err != nil {
-			return err
-		}
-		if _, err := repository.activeSessions.Insert(txCtx, activeSession); err != nil {
 			return err
 		}
 		_, err := repository.sessions.Insert(txCtx, document)
@@ -126,40 +113,12 @@ func (repository *GameSessionRepository) FindActive(
 	var document gameSessionDocument
 	err := repository.sessions.Collection().FindOne(ctx, bson.M{"activeKey": activeSessionKey(houseID, gameKey)}).Decode(&document)
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		return repository.findActiveByLegacyPointer(ctx, houseID, gameKey)
-	}
-	if err != nil {
-		return nil, err
-	}
-	session, err := gameDomain.RestoreGameSession(document.snapshot())
-	if err != nil {
-		return nil, err
-	}
-	return validActiveSession(session, houseID, gameKey)
-}
-
-// A previous release replaces whole documents without activeKey; until it is
-// retired the legacy pointer still identifies its active sessions.
-func (repository *GameSessionRepository) findActiveByLegacyPointer(
-	ctx context.Context,
-	houseID string,
-	gameKey string,
-) (*gameDomain.GameSession, error) {
-	var active activeGameSessionDocument
-	err := repository.activeSessions.Collection().FindOne(ctx, bson.M{
-		"houseId": houseID,
-		"gameKey": gameKey,
-	}).Decode(&active)
-	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, gameAbstract.ErrGameSessionNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	session, err := repository.FindByID(ctx, active.SessionID)
-	if errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
-		return nil, gameAbstract.ErrActiveSessionInvariant
-	}
+	session, err := gameDomain.RestoreGameSession(document.snapshot())
 	if err != nil {
 		return nil, err
 	}
@@ -236,11 +195,9 @@ func (repository *GameSessionRepository) Save(
 		if err := repository.replaceSession(txCtx, expectedVersion, document); err != nil {
 			return err
 		}
+		// The terminal snapshot carries no activeKey, which releases the slot.
 		if !isTerminalSession(snapshot.State) {
 			return nil
-		}
-		if err := repository.releaseActiveSession(txCtx, snapshot); err != nil {
-			return err
 		}
 		_, err := repository.runtimeOwners().UpdateOne(txCtx, bson.M{"_id": snapshot.SessionID}, bson.M{"$set": bson.M{"expiresAt": runtimeOwnerExpiry(snapshot)}})
 		return err
@@ -310,21 +267,6 @@ func (repository *GameSessionRepository) insertReceipt(
 		return nil
 	}
 	_, err := repository.receipts.Insert(ctx, commandReceipt(command, sessionID))
-	return err
-}
-
-// releaseActiveSession runs inside the terminal transaction. The replaced
-// document already dropped activeKey; the legacy pointer may be missing for
-// sessions written only by the new release.
-func (repository *GameSessionRepository) releaseActiveSession(
-	ctx context.Context,
-	snapshot gameDomain.SessionSnapshot,
-) error {
-	_, err := repository.activeSessions.Collection().DeleteOne(ctx, bson.M{
-		"houseId":   snapshot.HouseID,
-		"gameKey":   snapshot.GameKey,
-		"sessionId": snapshot.SessionID,
-	})
 	return err
 }
 

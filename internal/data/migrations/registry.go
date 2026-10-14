@@ -73,5 +73,6 @@ func AllMigrations() []Migration {
 		&retireFlappyBird{},
 		// --- Game Data Retention ---
 		&gameDataRetention{},
+		&retireGameOutbox{},
 	}
 }

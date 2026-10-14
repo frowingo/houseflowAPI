@@ -146,9 +146,7 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 
 	expected := map[string]int64{
 		"GameSession":               1,
-		"ActiveGameSession":         0,
 		"GameSessionCommandReceipt": 9,
-		"OutboxMessage":             0,
 		"GameRuntimeOwner":          1,
 		"GameMatchResult":           1,
 	}

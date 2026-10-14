@@ -5,9 +5,11 @@ import "context"
 type ActiveGameSession struct {
 	SessionID string
 	GameKey   string
+	// Cursor is opaque; pass the last item's cursor to read the next page.
+	Cursor string
 }
 
-// Pages the existing active-pointer index, never the full historical session collection.
+// Pages the active-slot index, never the full historical session collection.
 type ActiveGameSessionScanner interface {
-	ListActiveSessions(ctx context.Context, afterSessionID string, limit int) ([]ActiveGameSession, error)
+	ListActiveSessions(ctx context.Context, after string, limit int) ([]ActiveGameSession, error)
 }

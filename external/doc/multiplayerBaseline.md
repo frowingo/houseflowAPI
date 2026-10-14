@@ -96,6 +96,10 @@ Aynı ölçüm testleriyle; değişiklikler ADR-017'dedir.
 | Oda temizliği sonrası TTL'siz Redis anahtarı | 1 (fence) | 0 |
 | Değişiklik yokken `access` event'i | her reconcile turunda | yok |
 
+Faz 1B'de legacy `ActiveGameSession` pointer'ının kullanımı ve `OutboxMessage` collection'ı kaldırıldı;
+aktif session okuması tek sorgudur ve maç başına Mongo yazma komutu 25'ten 23'e iner
+(pointer insert ve delete yok).
+
 Yük matrisi, Faz 0 ve Faz 1A aynı oturumda art arda çalıştırıldığında CPU, Redis
 komut sayısı ve socket byte'larında ölçüm gürültüsünü aşan bir fark göstermez; Faz 1A
 frame başına çalışan koda dokunmaz.

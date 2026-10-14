@@ -132,9 +132,6 @@ func (repository *GameMatchRepository) Complete(ctx context.Context, completion 
 		if updated.MatchedCount != 1 {
 			return gameAbstract.ErrConcurrentSessionUpdate
 		}
-		if err := repository.sessions.releaseActiveSession(txCtx, snapshot); err != nil {
-			return err
-		}
 		_, err = repository.results.InsertOne(txCtx, document)
 		return err
 	})

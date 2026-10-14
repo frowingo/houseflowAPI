@@ -3,7 +3,9 @@ package tests
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,21 +252,38 @@ func TestGameSessionRepositorySystemTransitionsKeepNoReceipt(t *testing.T) {
 	assertReceiptCount(t, fixture, 1)
 }
 
-// A previous release replaces documents without activeKey during a rolling
-// deploy; its legacy pointer must still resolve the active session.
-func TestGameSessionRepositoryReadsLegacyActivePointerDuringRollout(t *testing.T) {
+// The recovery scanner pages only active slots, in stable cursor order.
+func TestGameSessionRepositoryPagesActiveSessionsOnly(t *testing.T) {
 	fixture := newGameSessionPersistenceFixture(t)
-	_, _ = seedGameSession(t, fixture)
-	if _, err := fixture.db.Collection(database.GameSessionCollectionName).UpdateOne(fixture.ctx, bson.M{"_id": "session-1"}, bson.M{"$unset": bson.M{"activeKey": ""}}); err != nil {
-		t.Fatal(err)
+	for index, gameKey := range []string{"game-a", "game-b", "game-c", "game-d"} {
+		session := newPersistenceTestSessionFor(t, fmt.Sprintf("scan-%d", index), gameKey)
+		if gameKey == "game-c" {
+			if err := session.Cancel(gameDomain.EndReasonCancelledByUser, persistenceTestTime()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := fixture.repository.Create(fixture.ctx, session.Snapshot(), session.PendingEvents(), persistenceCommand("scan-create-"+gameKey, "gameSession.create", gameKey)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	active, err := fixture.repository.FindActive(fixture.ctx, "house-1", "shared-game")
-	if err != nil || active.Snapshot().SessionID != "session-1" {
-		t.Fatalf("legacy active lookup = %v", err)
+	scanner := fixture.repository.(gameAbstract.ActiveGameSessionScanner)
+	var seen []string
+	after := ""
+	for page := 0; page < 3; page++ {
+		items, err := scanner.ListActiveSessions(fixture.ctx, after, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range items {
+			seen = append(seen, item.SessionID+"/"+item.GameKey)
+			after = item.Cursor
+		}
+		if len(items) < 2 {
+			break
+		}
 	}
-	duplicate := newPersistenceTestSessionWithID(t, "session-2")
-	if _, err := fixture.repository.Create(fixture.ctx, duplicate.Snapshot(), duplicate.PendingEvents(), persistenceCommand("create-2", "gameSession.create", "create-2")); !errors.Is(err, gameAbstract.ErrActiveGameSessionExists) {
-		t.Fatalf("second active session error = %v, want ErrActiveGameSessionExists", err)
+	if strings.Join(seen, ",") != "scan-0/game-a,scan-1/game-b,scan-3/game-d" {
+		t.Fatalf("scanned sessions = %v", seen)
 	}
 }
 
@@ -293,15 +312,15 @@ func TestGameSessionRepositoryRejectsInconsistentPersistenceBatch(t *testing.T) 
 
 func newPersistenceTestSession(t *testing.T) *gameDomain.GameSession {
 	t.Helper()
-	return newPersistenceTestSessionWithID(t, "session-1")
+	return newPersistenceTestSessionFor(t, "session-1", "shared-game")
 }
 
-func newPersistenceTestSessionWithID(t *testing.T, sessionID string) *gameDomain.GameSession {
+func newPersistenceTestSessionFor(t *testing.T, sessionID, gameKey string) *gameDomain.GameSession {
 	t.Helper()
 	session, err := gameDomain.NewGameSession(gameDomain.NewSessionParams{
 		SessionID:       sessionID,
 		HouseID:         "house-1",
-		GameKey:         "shared-game",
+		GameKey:         gameKey,
 		ProtocolVersion: 1,
 		Mode:            gameDomain.RealtimeGame,
 		Rules: gameDomain.SessionRules{

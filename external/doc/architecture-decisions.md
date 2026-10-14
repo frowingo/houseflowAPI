@@ -695,3 +695,12 @@ ve kalıcı fence Mongo generation'dır; uzun süre kullanılmayan bir odada say
 başlaması güvenlidir. Room üyelik listesi her reconcile turunda okunmaya devam eder, ancak
 socket'lere `gameRuntime.access` event'i yalnız üye kümesi değiştiğinde veya room yeni
 sahibinde ilk açıldığında gönderilir.
+
+Geçişin ikinci adımı v37 (1.3.10) tüm instance'larda çalıştıktan sonra uygulanmıştır:
+pointer yazımı ve pointer'a geri düşme kaldırılmış, recovery scanner `activeKey` partial
+index'ini `activeKey` imleciyle sayfalar. `0045_retireGameOutbox` önce 0044
+adımlarını tekrarlayarak rollout sırasında önceki sürümün yazdığı eksik alanları tamamlar,
+ardından yazanı kalmamış `OutboxMessage` collection'ını düşürür. `ActiveGameSession`
+bu sürümün rollout'u boyunca hâlâ önceki sürüm tarafından yazıldığından bir sonraki
+release'in migration'ında düşürülür; erken düşürmek collection'ı index'siz olarak yeniden
+oluştururdu.

@@ -156,7 +156,7 @@ func (manager *RoomManager) recoveryLoop(ctx context.Context, scanner gameAbstra
 					pageComplete = false
 					break
 				}
-				after = session.SessionID
+				after = session.Cursor
 				if !supportsGameRuntime(session.GameKey) || manager.localRoom(session.SessionID) != nil {
 					continue
 				}
