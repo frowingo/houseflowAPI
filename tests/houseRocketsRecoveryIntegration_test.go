@@ -407,9 +407,7 @@ func TestHouseRocketsRecoveryFinalizationBudgetPreservesProposalForNextOwner(t *
 	if _, err := first.ReleaseRoom(fixture.ctx, lease); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{"eventType": bson.M{"$ne": houseRockets.ResultMessageType}}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	rejectMatchResults(t, fixture)
 	manager := newRecoveryManager(t, fixture, second, realtime.RoomManagerOptions{FinalizationTimeout: 400 * time.Millisecond})
 	if _, err := manager.EnsureRoom(fixture.ctx, snapshot.SessionID); err != nil {
 		t.Fatal(err)
@@ -431,9 +429,7 @@ waitBudget:
 	if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, houseRockets.GameKey); err != nil {
 		t.Fatalf("failed transaction released active slot: %v", err)
 	}
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	acceptMatchResults(t, fixture)
 	recovered := newRecoveryManager(t, fixture, third, realtime.RoomManagerOptions{RecoveryMaxAge: time.Nanosecond})
 	if _, err := recovered.EnsureRoom(fixture.ctx, snapshot.SessionID); err != nil {
 		t.Fatal(err)

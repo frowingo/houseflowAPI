@@ -39,10 +39,28 @@ func (room *managedRoom) refreshParticipants(snapshot gameDomain.SessionSnapshot
 		ids = append(ids, participant.PlayerID)
 	}
 	room.lobbyMutex.Lock()
+	// Sockets only act on a membership change; a new owner always announces
+	// once because revocations may have happened during the handoff.
+	changed := room.members == nil || !sameMembers(room.members, names)
 	room.members = names
 	room.lobbyMutex.Unlock()
+	if !changed {
+		return nil
+	}
 	payload, _ := json.Marshal(ids)
 	return room.manager.coordinator.PublishRoomEvent(ctx, room.lease, coordinationAbstract.MessageEnvelope{MessageID: fmt.Sprintf("access:%s:%d", snapshot.SessionID, time.Now().UnixNano()), Type: GameRoomAccessEventType, Payload: payload})
+}
+
+func sameMembers(current, next map[string]string) bool {
+	if len(current) != len(next) {
+		return false
+	}
+	for id := range next {
+		if _, exists := current[id]; !exists {
+			return false
+		}
+	}
+	return true
 }
 
 func (room *managedRoom) reconcilePlayers(snapshot gameDomain.SessionSnapshot, at time.Time) (gameDomain.SessionSnapshot, error) {

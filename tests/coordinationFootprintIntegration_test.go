@@ -71,7 +71,7 @@ func TestRoomLifecycleRedisFootprint(t *testing.T) {
 	sort.Strings(persistent)
 	sort.Strings(expiring)
 	t.Logf("ROOM_REDIS_FOOTPRINT persistent=[%s] expiring=[%s]", strings.Join(persistent, " "), strings.Join(expiring, " "))
-	if len(persistent) != 1 || !strings.HasSuffix(persistent[0], ":fence") {
-		t.Fatalf("keys without TTL after room cleanup = %v, want only the room fence", persistent)
+	if len(persistent) != 0 {
+		t.Fatalf("keys without TTL after room cleanup = %v, want none", persistent)
 	}
 }

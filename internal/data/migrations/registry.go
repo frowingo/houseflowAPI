@@ -71,5 +71,7 @@ func AllMigrations() []Migration {
 		&gameMatchResult{},
 		// --- Protocol v1 Retirement ---
 		&retireFlappyBird{},
+		// --- Game Data Retention ---
+		&gameDataRetention{},
 	}
 }

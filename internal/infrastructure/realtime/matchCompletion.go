@@ -151,8 +151,5 @@ func (room *managedRoom) completeMatch() bool {
 			return true
 		}
 	}
-	if err = room.manager.options.MatchRepository.MarkPublished(ctx, room.lease.RoomID); err != nil {
-		room.manager.report(room.lease.RoomID, err)
-	}
 	return true
 }

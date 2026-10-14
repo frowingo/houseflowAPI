@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -15,12 +14,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-const gameSessionAggregateType = "gameSession"
+// The runtime owner record only fences a live room; it is kept a while after the
+// session ends so a delayed claimant still sees the completed generation.
+const runtimeOwnerRetention = time.Hour
 
+// GameSessionRepository still writes the legacy ActiveGameSession pointer so
+// instances running the previous release keep a consistent active slot during
+// a rolling deploy. Reads prefer GameSession.activeKey.
 type GameSessionRepository struct {
 	sessions       databaseAbstract.DbRepository[gameSessionDocument]
 	activeSessions databaseAbstract.DbRepository[activeGameSessionDocument]
-	outbox         databaseAbstract.DbRepository[entities.OutboxMessage]
 	receipts       databaseAbstract.DbRepository[entities.GameSessionCommandReceipt]
 }
 
@@ -30,7 +33,6 @@ func NewGameSessionRepository(client *mongo.Client, dbName string) *GameSessionR
 	return &GameSessionRepository{
 		sessions:       NewDbContext[gameSessionDocument](client, dbName),
 		activeSessions: NewDbContext[activeGameSessionDocument](client, dbName),
-		outbox:         NewDbContext[entities.OutboxMessage](client, dbName),
 		receipts:       NewDbContext[entities.GameSessionCommandReceipt](client, dbName),
 	}
 }
@@ -48,11 +50,6 @@ func (repository *GameSessionRepository) Create(
 		return gameAbstract.PersistenceResult{}, err
 	}
 	document := gameSessionDocumentFromSnapshot(snapshot)
-	messages, err := outboxMessages(events)
-	if err != nil {
-		return gameAbstract.PersistenceResult{}, err
-	}
-	receipt := commandReceipt(command, snapshot.SessionID)
 	activeSession := activeGameSessionDocument{
 		HouseID:   snapshot.HouseID,
 		GameKey:   snapshot.GameKey,
@@ -60,17 +57,15 @@ func (repository *GameSessionRepository) Create(
 		CreatedAt: snapshot.CreatedAt,
 	}
 
-	err = repository.sessions.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		if _, err := repository.receipts.Insert(txCtx, receipt); err != nil {
+	err := repository.sessions.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		if err := repository.insertReceipt(txCtx, command, snapshot.SessionID); err != nil {
 			return err
 		}
 		if _, err := repository.activeSessions.Insert(txCtx, activeSession); err != nil {
 			return err
 		}
-		if _, err := repository.sessions.Insert(txCtx, document); err != nil {
-			return err
-		}
-		return repository.outbox.InsertMany(txCtx, messages)
+		_, err := repository.sessions.Insert(txCtx, document)
+		return err
 	})
 	if mongo.IsDuplicateKeyError(err) {
 		result, found, lookupErr := repository.FindProcessedCommand(ctx, command)
@@ -128,6 +123,28 @@ func (repository *GameSessionRepository) FindActive(
 	if gameKey == "" {
 		return nil, gameDomain.ErrGameKeyRequired
 	}
+	var document gameSessionDocument
+	err := repository.sessions.Collection().FindOne(ctx, bson.M{"activeKey": activeSessionKey(houseID, gameKey)}).Decode(&document)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return repository.findActiveByLegacyPointer(ctx, houseID, gameKey)
+	}
+	if err != nil {
+		return nil, err
+	}
+	session, err := gameDomain.RestoreGameSession(document.snapshot())
+	if err != nil {
+		return nil, err
+	}
+	return validActiveSession(session, houseID, gameKey)
+}
+
+// A previous release replaces whole documents without activeKey; until it is
+// retired the legacy pointer still identifies its active sessions.
+func (repository *GameSessionRepository) findActiveByLegacyPointer(
+	ctx context.Context,
+	houseID string,
+	gameKey string,
+) (*gameDomain.GameSession, error) {
 	var active activeGameSessionDocument
 	err := repository.activeSessions.Collection().FindOne(ctx, bson.M{
 		"houseId": houseID,
@@ -146,6 +163,10 @@ func (repository *GameSessionRepository) FindActive(
 	if err != nil {
 		return nil, err
 	}
+	return validActiveSession(session, houseID, gameKey)
+}
+
+func validActiveSession(session *gameDomain.GameSession, houseID, gameKey string) (*gameDomain.GameSession, error) {
 	snapshot := session.Snapshot()
 	if snapshot.HouseID != houseID || snapshot.GameKey != gameKey || isTerminalSession(snapshot.State) {
 		return nil, gameAbstract.ErrActiveSessionInvariant
@@ -159,6 +180,9 @@ func (repository *GameSessionRepository) FindProcessedCommand(
 ) (gameAbstract.PersistenceResult, bool, error) {
 	if err := validateCommandDescriptor(command); err != nil {
 		return gameAbstract.PersistenceResult{}, false, err
+	}
+	if command.IsSystem() {
+		return gameAbstract.PersistenceResult{}, false, nil
 	}
 	var receipt entities.GameSessionCommandReceipt
 	err := repository.receipts.Collection().FindOne(ctx, bson.M{
@@ -193,48 +217,33 @@ func (repository *GameSessionRepository) Save(
 	if err := validateCommandDescriptor(command); err != nil {
 		return gameAbstract.PersistenceResult{}, err
 	}
-	document := gameSessionDocumentFromSnapshot(snapshot)
-	messages, err := outboxMessages(events)
-	if err != nil {
-		return gameAbstract.PersistenceResult{}, err
+	if command.IsSystem() && len(events) == 0 {
+		return gameAbstract.PersistenceResult{SessionID: snapshot.SessionID}, nil
 	}
-	receipt := commandReceipt(command, snapshot.SessionID)
+	document := gameSessionDocumentFromSnapshot(snapshot)
+	// A non-terminal system transition is a single conditional write.
+	if command.IsSystem() && !isTerminalSession(snapshot.State) {
+		if err := repository.replaceSession(ctx, expectedVersion, document); err != nil {
+			return gameAbstract.PersistenceResult{}, err
+		}
+		return gameAbstract.PersistenceResult{SessionID: snapshot.SessionID}, nil
+	}
 
-	err = repository.sessions.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
-		if _, err := repository.receipts.Insert(txCtx, receipt); err != nil {
+	err := repository.sessions.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		if err := repository.insertReceipt(txCtx, command, snapshot.SessionID); err != nil {
 			return err
 		}
-		result, err := repository.sessions.Collection().ReplaceOne(txCtx, bson.M{
-			"_id":     snapshot.SessionID,
-			"version": expectedVersion,
-		}, document)
-		if err != nil {
+		if err := repository.replaceSession(txCtx, expectedVersion, document); err != nil {
 			return err
 		}
-		if result.MatchedCount == 0 {
-			exists, err := repository.sessions.ExistsByFilter(txCtx, bson.M{"_id": snapshot.SessionID})
-			if err != nil {
-				return err
-			}
-			if !exists {
-				return gameAbstract.ErrGameSessionNotFound
-			}
-			return gameAbstract.ErrConcurrentSessionUpdate
+		if !isTerminalSession(snapshot.State) {
+			return nil
 		}
-		if isTerminalSession(snapshot.State) {
-			result, err := repository.activeSessions.Collection().DeleteOne(txCtx, bson.M{
-				"houseId":   snapshot.HouseID,
-				"gameKey":   snapshot.GameKey,
-				"sessionId": snapshot.SessionID,
-			})
-			if err != nil {
-				return err
-			}
-			if result.DeletedCount != 1 {
-				return gameAbstract.ErrActiveSessionInvariant
-			}
+		if err := repository.releaseActiveSession(txCtx, snapshot); err != nil {
+			return err
 		}
-		return repository.outbox.InsertMany(txCtx, messages)
+		_, err := repository.runtimeOwners().UpdateOne(txCtx, bson.M{"_id": snapshot.SessionID}, bson.M{"$set": bson.M{"expiresAt": runtimeOwnerExpiry(snapshot)}})
+		return err
 	})
 	if err != nil {
 		result, found, lookupErr := repository.FindProcessedCommand(ctx, command)
@@ -247,6 +256,28 @@ func (repository *GameSessionRepository) Save(
 		return gameAbstract.PersistenceResult{}, err
 	}
 	return gameAbstract.PersistenceResult{SessionID: snapshot.SessionID}, nil
+}
+
+// replaceSession is the optimistic-concurrency write of a session snapshot.
+func (repository *GameSessionRepository) replaceSession(ctx context.Context, expectedVersion int64, document gameSessionDocument) error {
+	result, err := repository.sessions.Collection().ReplaceOne(ctx, bson.M{
+		"_id":     document.SessionID,
+		"version": expectedVersion,
+	}, document)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount > 0 {
+		return nil
+	}
+	exists, err := repository.sessions.ExistsByFilter(ctx, bson.M{"_id": document.SessionID})
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return gameAbstract.ErrGameSessionNotFound
+	}
+	return gameAbstract.ErrConcurrentSessionUpdate
 }
 
 func isTerminalSession(state gameDomain.SessionState) bool {
@@ -266,6 +297,39 @@ func validateCommandDescriptor(command gameAbstract.CommandDescriptor) error {
 	default:
 		return nil
 	}
+}
+
+// insertReceipt records a client command for idempotent replay. System
+// transitions are fenced by the expected version and keep no receipt.
+func (repository *GameSessionRepository) insertReceipt(
+	ctx context.Context,
+	command gameAbstract.CommandDescriptor,
+	sessionID string,
+) error {
+	if command.IsSystem() {
+		return nil
+	}
+	_, err := repository.receipts.Insert(ctx, commandReceipt(command, sessionID))
+	return err
+}
+
+// releaseActiveSession runs inside the terminal transaction. The replaced
+// document already dropped activeKey; the legacy pointer may be missing for
+// sessions written only by the new release.
+func (repository *GameSessionRepository) releaseActiveSession(
+	ctx context.Context,
+	snapshot gameDomain.SessionSnapshot,
+) error {
+	_, err := repository.activeSessions.Collection().DeleteOne(ctx, bson.M{
+		"houseId":   snapshot.HouseID,
+		"gameKey":   snapshot.GameKey,
+		"sessionId": snapshot.SessionID,
+	})
+	return err
+}
+
+func runtimeOwnerExpiry(snapshot gameDomain.SessionSnapshot) time.Time {
+	return snapshot.EndedAt.Add(runtimeOwnerRetention).UTC()
 }
 
 func commandReceipt(
@@ -322,27 +386,4 @@ func validatePersistenceBatch(
 		eventIDs[event.EventID] = struct{}{}
 	}
 	return nil
-}
-
-func outboxMessages(events []gameDomain.SessionEvent) ([]entities.OutboxMessage, error) {
-	createdAt := time.Now().UTC()
-	messages := make([]entities.OutboxMessage, 0, len(events))
-	for _, event := range events {
-		payload, err := json.Marshal(event)
-		if err != nil {
-			return nil, err
-		}
-		messages = append(messages, entities.OutboxMessage{
-			EventID:          event.EventID,
-			AggregateType:    gameSessionAggregateType,
-			AggregateID:      event.SessionID,
-			AggregateVersion: event.Version,
-			EventType:        string(event.Type),
-			Payload:          payload,
-			OccurredAt:       event.OccurredAt,
-			CreatedAt:        createdAt,
-			NextAttemptAt:    createdAt,
-		})
-	}
-	return messages, nil
 }

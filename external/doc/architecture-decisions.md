@@ -665,3 +665,33 @@ v1 mesaj üretimi ve gateway içindeki v1 dalları kaldırılmıştır. Varsayı
 yalnız etkinleştirilmiş oyunları içerir. `0043_retireFlappyBird` migration'ı kalan
 non-terminal `flappyBird` session'larını `cancelled/gameRetired` yapar ve aktif
 slotlarını siler. Yeni oyunlar ortak modül sözleşmesi üzerinden eklenecektir.
+
+## ADR-017 — Oyun verisinin saklama süreleri ve outbox'ın kaldırılması
+
+`OutboxMessage` kayıtlarını okuyan bir tüketici yoktu; result teslimi doğrudan room
+event'i ve `GET /result` fallback'i ile yapılıyordu. Session ve match transaction'ları
+artık outbox yazmaz; domain event'leri yalnız version tutarlılığı için doğrulanır.
+
+Komut receipt'leri yalnız istemci komutları için yazılır ve 1 saat sonra TTL ile silinir.
+Runtime'ın sistem geçişleri (`gameSessionRuntime` aktörü: deadline, reconcile, match
+completion) beklenen version ve deterministik domain kurallarıyla fence'lenir; receipt
+yazmaz. Terminal olmayan sistem geçişi tek koşullu yazmadır ve transaction açmaz.
+
+Ev + oyun başına tek aktif session garantisi `GameSession.activeKey` alanına ve unique
+partial index'e taşınır. Rolling deploy sırasında önceki sürüm aynı veritabanına yazmaya
+devam ettiğinden geçiş iki adımlıdır: önce iki yere birden yazılır ve okuma `activeKey`
+üzerinden yapılıp bulunamazsa `ActiveGameSession` pointer'ına düşülür; önceki sürüm hiçbir
+instance'ta kalmadığında pointer ve `OutboxMessage` collection'ı kaldırılır.
+
+İptal edilen session'lar ve iptal edilen maçların result'ları `endedAt + 10 dakika` sonra
+TTL ile silinir; tamamlanan maçlar ve sonuçları kalıcıdır. `GameRuntimeOwner` kaydı
+session terminal olduktan 1 saat sonra silinir. Bu kayıt session'a gömülmemiştir: CAS
+otoritesini rolling deploy sırasında iki kayıt arasında taşımak split-brain riski taşır ve
+kazanç maç başına tek küçük dokümandır. Match result yetkilendirmesi session yerine
+result'taki `houseId` ile yapılır.
+
+Redis room fence sayacı her acquire'da 24 saat TTL alır. Token yalnız eşitlikle karşılaştırılır
+ve kalıcı fence Mongo generation'dır; uzun süre kullanılmayan bir odada sayacın sıfırdan
+başlaması güvenlidir. Room üyelik listesi her reconcile turunda okunmaya devam eder, ancak
+socket'lere `gameRuntime.access` event'i yalnız üye kümesi değiştiğinde veya room yeni
+sahibinde ilk açıldığında gönderilir.

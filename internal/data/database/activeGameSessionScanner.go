@@ -9,6 +9,8 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 )
 
+// ListActiveSessions pages the legacy pointer, which every running release
+// still writes. It moves to GameSession.activeKey once the pointer is retired.
 func (repository *GameSessionRepository) ListActiveSessions(ctx context.Context, afterSessionID string, limit int) ([]gameAbstract.ActiveGameSession, error) {
 	if limit < 1 || limit > 1000 {
 		return nil, errors.New("invalid active session page size")

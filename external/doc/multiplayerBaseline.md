@@ -74,3 +74,28 @@ overload, checkpoint hatası, slow consumer ve admission reddi sıfırdır.
 8 × 8 satırında fizik adımı ortalama 0,04 ms, tick aralığı ortalama 16,67 ms
 (maksimum 17,8 ms), worker RSS 35 MB'dır. Darboğaz simülasyon değil, serileştirme
 ve fanout'tur.
+
+**Ölçüm notu:** CPU yüzdeleri oturumdan oturuma belirgin oynar (aynı Faz 0 kodu ertesi
+gün 8 × 2'de %4,4 yerine %12,5 ölçüldü). İki sürüm yalnız aynı oturumda art arda
+alınan çalıştırmalarla karşılaştırılmalıdır. Redis komut ve socket byte sayıları
+çalıştırmalar arasında %1'in altında değişir ve doğrudan karşılaştırılabilir.
+
+## 5. Faz 1A sonrası — 14 Ekim 2026
+
+Aynı ölçüm testleriyle; değişiklikler ADR-017'dedir.
+
+| Ölçüm | Faz 0 | Faz 1A |
+|---|---|---|
+| Maç sonunda kalan doküman (4 oyuncu) | 28 | 12 |
+| — GameSessionCommandReceipt | 11 (süresiz) | 9 (1 saat TTL) |
+| — OutboxMessage | 14 | 0 |
+| — GameRuntimeOwner | 1 (süresiz) | 1 (session bitiminden 1 saat sonra silinir) |
+| İptal edilen maçın kalıcı izi | session + result + owner (süresiz) | session + result 10 dakika, owner 1 saat sonra silinir |
+| Mongo transaction commit | 11 | 10 |
+| Mongo yazma komutu | 39 | 25 |
+| Oda temizliği sonrası TTL'siz Redis anahtarı | 1 (fence) | 0 |
+| Değişiklik yokken `access` event'i | her reconcile turunda | yok |
+
+Yük matrisi, Faz 0 ve Faz 1A aynı oturumda art arda çalıştırıldığında CPU, Redis
+komut sayısı ve socket byte'larında ölçüm gürültüsünü aşan bir fark göstermez; Faz 1A
+frame başına çalışan koda dokunmaz.

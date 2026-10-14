@@ -12,7 +12,6 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	"houseflowApi/internal/data/database"
-	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/data/migrations"
 )
 
@@ -74,13 +73,15 @@ func TestGameMatchRepositorySupportsAnotherGameAndImmutableReplay(t *testing.T) 
 	if _, err := fixture.repository.FindActive(fixture.ctx, "house", "turnGame"); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
 		t.Fatalf("active slot not released: %v", err)
 	}
-	var outbox entities.OutboxMessage
-	filter := bson.M{"eventId": "turnGame.result:" + result.SessionID}
-	if err := fixture.db.Collection(entities.OutboxMessageCollectionName).FindOne(fixture.ctx, filter).Decode(&outbox); err != nil {
-		t.Fatal(err)
+	// A completed result is kept; its owner fence only outlives the session briefly.
+	var retention struct {
+		ExpiresAt *time.Time `bson:"expiresAt"`
 	}
-	if outbox.AggregateType != "gameMatch" || outbox.EventType != "turnGame.result" || !bytes.Equal(outbox.Payload, result.Payload) {
-		t.Fatalf("incorrect generic outbox: %+v", outbox)
+	if err := fixture.db.Collection(database.GameMatchResultCollectionName).FindOne(fixture.ctx, bson.M{"_id": result.SessionID}).Decode(&retention); err != nil || retention.ExpiresAt != nil {
+		t.Fatalf("completed result expiry = %v %v", retention.ExpiresAt, err)
+	}
+	if err := fixture.db.Collection(database.RuntimeOwnerCollectionName).FindOne(fixture.ctx, bson.M{"_id": result.SessionID, "completed": true}).Decode(&retention); err != nil || retention.ExpiresAt == nil || !retention.ExpiresAt.After(completion.Result.EndedAt) {
+		t.Fatalf("runtime owner expiry = %v %v", retention.ExpiresAt, err)
 	}
 	if _, err := matches.Complete(fixture.ctx, completion); err != nil {
 		t.Fatalf("duplicate completion: %v", err)
@@ -95,15 +96,9 @@ func TestGameMatchRepositorySupportsAnotherGameAndImmutableReplay(t *testing.T) 
 	if _, err := matches.Complete(fixture.ctx, changed); !errors.Is(err, gameAbstract.ErrMatchResultConflict) {
 		t.Fatalf("event mutation accepted: %v", err)
 	}
-	if err := matches.MarkPublished(fixture.ctx, result.SessionID); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.db.Collection(entities.OutboxMessageCollectionName).FindOne(fixture.ctx, filter).Decode(&outbox); err != nil || outbox.PublishedAt == nil {
-		t.Fatalf("generic event not marked published: %v", err)
-	}
-	count, err := fixture.db.Collection(entities.OutboxMessageCollectionName).CountDocuments(fixture.ctx, filter)
+	count, err := fixture.db.Collection(database.GameMatchResultCollectionName).CountDocuments(fixture.ctx, bson.M{})
 	if err != nil || count != 1 {
-		t.Fatalf("duplicate outbox: %d %v", count, err)
+		t.Fatalf("duplicate result: %d %v", count, err)
 	}
 }
 
@@ -174,9 +169,9 @@ func TestGameMatchMigrationIsRepeatableWithoutChangingStoredResults(t *testing.T
 	if err != nil || !bytes.Equal(stored.Payload, completion.Result.Payload) {
 		t.Fatalf("migration changed immutable result: %+v %v", stored, err)
 	}
-	count, err := fixture.db.Collection(entities.OutboxMessageCollectionName).CountDocuments(fixture.ctx, bson.M{"eventType": "turnGame.result"})
+	count, err := fixture.db.Collection(database.GameMatchResultCollectionName).CountDocuments(fixture.ctx, bson.M{})
 	if err != nil || count != 1 {
-		t.Fatalf("migration recreated publication: %d %v", count, err)
+		t.Fatalf("migration duplicated result: %d %v", count, err)
 	}
 	collections, err := fixture.db.ListCollectionNames(fixture.ctx, bson.M{"name": "HouseRocketsMatchResult"})
 	if err != nil || len(collections) != 0 {

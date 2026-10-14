@@ -142,16 +142,13 @@ func TestGameMatchPersistenceFootprint(t *testing.T) {
 	if _, err := rocketsCommands.NewCompleteMatchHandler(sessions, matches).Handle(fixture.ctx, rocketsCommands.CompleteMatchCommand{Result: result, Owner: owner}); err != nil {
 		t.Fatal(err)
 	}
-	if err := matches.MarkPublished(fixture.ctx, snapshot.SessionID); err != nil {
-		t.Fatal(err)
-	}
 	commands := counter.snapshot()
 
 	expected := map[string]int64{
 		"GameSession":               1,
 		"ActiveGameSession":         0,
-		"GameSessionCommandReceipt": 11,
-		"OutboxMessage":             14,
+		"GameSessionCommandReceipt": 9,
+		"OutboxMessage":             0,
 		"GameRuntimeOwner":          1,
 		"GameMatchResult":           1,
 	}

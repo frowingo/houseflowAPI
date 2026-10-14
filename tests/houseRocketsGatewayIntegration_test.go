@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -364,6 +365,46 @@ func TestHouseRocketsGatewayMembershipRevocationClosesSocketAndEliminates(t *tes
 	case <-second.errors:
 	case <-time.After(2 * time.Second):
 		t.Fatal("revoked socket stayed open")
+	}
+}
+
+// Reconciliation re-reads membership every interval but announces it to the
+// room's sockets only when the member set changes.
+func TestHouseRocketsGatewayAnnouncesOnlyMembershipChanges(t *testing.T) {
+	fixture := newRocketsGatewayFixture(t, houseRockets.Definition().Rules)
+	session := fixture.ensureHTTP(t)
+	_ = fixture.connect(t, 0, session.SessionId, fixture.ownerID)
+	observer := newTestCoordinator(t, os.Getenv("HOUSEFLOW_TEST_REDIS_URL"), "access-observer")
+	events, err := observer.SubscribeRoomEvents(fixture.ctx, session.SessionId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = events.Close() })
+	countAccess := func(window time.Duration) int {
+		count := 0
+		timer := time.NewTimer(window)
+		defer timer.Stop()
+		for {
+			select {
+			case event := <-events.Messages():
+				if event.Type == realtime.GameRoomAccessEventType {
+					count++
+				}
+			case <-timer.C:
+				return count
+			}
+		}
+	}
+	// Ten reconcile intervals without a membership change.
+	if unchanged := countAccess(time.Second); unchanged != 0 {
+		t.Fatalf("access events without membership change = %d, want 0", unchanged)
+	}
+	houseID, _ := primitive.ObjectIDFromHex(fixture.houseID)
+	if _, err := fixture.db.Collection("House").UpdateOne(fixture.ctx, bson.M{"_id": houseID}, bson.M{"$pull": bson.M{"memberIds": fixture.memberID}}); err != nil {
+		t.Fatal(err)
+	}
+	if changed := countAccess(time.Second); changed != 1 {
+		t.Fatalf("access events after revocation = %d, want 1", changed)
 	}
 }
 

@@ -164,7 +164,6 @@ func TestGameSessionApplicationCreateAndJoinAreIdempotent(t *testing.T) {
 	if len(stored.Players()) != 1 || stored.Players()[0].PlayerID != fixture.memberID {
 		t.Fatalf("stored players = %+v, want member exactly once", stored.Players())
 	}
-	assertCollectionCount(t, fixture, entities.OutboxMessageCollectionName, 2)
 	assertCollectionCount(t, fixture, entities.GameSessionCommandReceiptCollectionName, 2)
 }
 
@@ -198,7 +197,6 @@ func TestGameSessionApplicationRecordsNoOpAndRejectsCommandIDReuse(t *testing.T)
 	if first.Version != 2 || second.Version != 2 {
 		t.Fatalf("no-op versions = %d/%d, want 2/2", first.Version, second.Version)
 	}
-	assertCollectionCount(t, fixture, entities.OutboxMessageCollectionName, 2)
 	assertCollectionCount(t, fixture, entities.GameSessionCommandReceiptCollectionName, 3)
 
 	_, err = readyHandler.Handle(fixture.ctx, gameCommands.SetPlayerReadyCommand{

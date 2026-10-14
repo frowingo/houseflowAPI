@@ -8,6 +8,10 @@ import (
 
 const GameSessionCollectionName = "GameSession"
 
+// Cancelled sessions carry no result worth keeping; MongoDB's TTL monitor
+// removes them shortly after expiresAt.
+const CancelledSessionRetention = 10 * time.Minute
+
 type gameSessionRulesDocument struct {
 	MinimumPlayers          int   `bson:"minimumPlayers"`
 	MaximumPlayers          int   `bson:"maximumPlayers"`
@@ -41,7 +45,13 @@ type gameSessionDocument struct {
 	EndedAt           *time.Time                  `bson:"endedAt,omitempty"`
 	EndReason         string                      `bson:"endReason,omitempty"`
 	Version           int64                       `bson:"version"`
+	// ActiveKey exists only while the session is non-terminal; its unique
+	// partial index allows one active session per house and game.
+	ActiveKey string     `bson:"activeKey,omitempty"`
+	ExpiresAt *time.Time `bson:"expiresAt,omitempty"`
 }
+
+func activeSessionKey(houseID, gameKey string) string { return houseID + ":" + gameKey }
 
 func (gameSessionDocument) CollectionName() string {
 	return GameSessionCollectionName
@@ -57,6 +67,10 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 			ReadyAt:  optionalTime(player.ReadyAt),
 			LeftAt:   optionalTime(player.LeftAt),
 		})
+	}
+	activeKey := ""
+	if !isTerminalSession(snapshot.State) {
+		activeKey = activeSessionKey(snapshot.HouseID, snapshot.GameKey)
 	}
 	return gameSessionDocument{
 		SessionID:       snapshot.SessionID,
@@ -81,7 +95,16 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 		EndedAt:           optionalTime(snapshot.EndedAt),
 		EndReason:         snapshot.EndReason,
 		Version:           snapshot.Version,
+		ActiveKey:         activeKey,
+		ExpiresAt:         cancelledExpiry(snapshot.State, snapshot.EndedAt),
 	}
+}
+
+func cancelledExpiry(state gameDomain.SessionState, endedAt time.Time) *time.Time {
+	if state != gameDomain.SessionCancelled {
+		return nil
+	}
+	return optionalTime(endedAt.Add(CancelledSessionRetention))
 }
 
 func (document gameSessionDocument) snapshot() gameDomain.SessionSnapshot {
