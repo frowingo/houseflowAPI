@@ -1,205 +1,108 @@
 package tests
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"net"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
 	gameCommands "houseflowApi/internal/application/game/commands"
-	gameDomain "houseflowApi/internal/application/game/domain"
+	houseRockets "houseflowApi/internal/application/game/gameSpesific/houseRockets"
 	"houseflowApi/internal/helpers"
-	"houseflowApi/internal/infrastructure/middleware"
 	"houseflowApi/internal/infrastructure/realtime"
+	"houseflowApi/internal/models/dtos"
 
 	fasthttpWebsocket "github.com/fasthttp/websocket"
-	"github.com/gofiber/fiber/v2"
 )
 
+// Lobby commands, identity spoofing, protocol rejection, presence cleanup and
+// reconnect recovery, with the two sockets connected to different instances.
 func TestRealtimeGatewayAuthenticatesRoutesCommandsAndRecoversSnapshot(t *testing.T) {
-	fixture := newGameSessionApplicationFixture(t)
-	session := fixture.createSession(t)
-	redisURL := prepareRedis(t)
-	coordinator := newTestCoordinator(t, redisURL, "gateway-instance")
-	jwtService := helpers.NewJWTService("gateway-test-secret")
-	service, err := realtime.NewService(
-		coordinator,
-		fixture.repository,
-		newGameSessionMediator(fixture),
-		realtime.RoomManagerOptions{
-			LeaseTTL:       5 * time.Second,
-			RenewInterval:  500 * time.Millisecond,
-			CommandTimeout: time.Second,
-		},
-		realtime.GatewayOptions{
-			AllowedOrigins:    []string{"*"},
-			PingInterval:      100 * time.Millisecond,
-			IdleTimeout:       800 * time.Millisecond,
-			WriteTimeout:      time.Second,
-			PresenceTTL:       600 * time.Millisecond,
-			PresenceRefresh:   100 * time.Millisecond,
-			MessageRateWindow: time.Second,
-			MaximumMessages:   20,
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
+	fixture := newRocketsGatewayFixture(t, houseRockets.Definition().Rules)
+	session := fixture.ensureHTTP(t)
+	observer := newTestCoordinator(t, os.Getenv("HOUSEFLOW_TEST_REDIS_URL"), "gateway-observer")
+	member := fixture.connect(t, 0, session.SessionId, fixture.memberID)
+	owner := fixture.connect(t, 1, session.SessionId, fixture.ownerID)
+	eventually(t, 2*time.Second, func() bool {
+		presences, err := observer.ListPresence(fixture.ctx, session.SessionId)
+		return err == nil && len(presences) == 2
+	})
+
+	owner.send(t, gameCommands.SetPlayerReadyCommandType, "gateway-owner-not-player", realtime.ReadyCommandPayload{Ready: true})
+	owner.await(t, func(message realtime.ServerMessage) bool {
+		return message.Type == realtime.CommandAcceptedMessageType && message.MessageID == "gateway-owner-not-player"
+	})
+	rejected := owner.await(t, func(message realtime.ServerMessage) bool {
+		return message.Type == realtime.CommandRejectedMessageType && message.MessageID == "gateway-owner-not-player"
+	})
+	if rejected.Error == nil || rejected.Error.Code != "game.error.player_not_found" {
+		t.Fatalf("application rejection = %+v", rejected)
 	}
-	if err := service.Start(fixture.ctx); err != nil {
-		t.Fatal(err)
-	}
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get(
-		"/api/v1/game/:sessionId/realtime",
-		middleware.AuthRequired(jwtService),
-		service.UpgradeMiddleware(),
-		service.Handler(),
-	)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	serveErrors := make(chan error, 1)
-	go func() { serveErrors <- app.Listener(listener) }()
-	t.Cleanup(func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer shutdownCancel()
-		_ = app.ShutdownWithContext(shutdownCtx)
-		_ = service.Close(shutdownCtx)
-		select {
-		case <-serveErrors:
-		case <-time.After(time.Second):
+
+	member.send(t, gameCommands.JoinGameSessionCommandType, "gateway-join-member", struct{}{})
+	member.await(t, func(message realtime.ServerMessage) bool {
+		return message.Type == realtime.CommandAcceptedMessageType && message.MessageID == "gateway-join-member"
+	})
+	for _, socket := range []*rocketsSocket{member, owner} {
+		joined := awaitSessionSnapshot(t, socket, "gateway-join-member")
+		if joined.Version != 2 || len(joined.Players) != 1 || joined.Players[0].PlayerId != fixture.memberID {
+			t.Fatalf("joined snapshot = %+v", joined)
 		}
-	})
-	endpoint := fmt.Sprintf(
-		"ws://%s/api/v1/game/%s/realtime",
-		listener.Addr().String(),
-		session.SessionID,
-	)
-
-	unauthorized, response, err := fasthttpWebsocket.DefaultDialer.Dial(endpoint, nil)
-	if unauthorized != nil {
-		_ = unauthorized.Close()
-	}
-	if err == nil || response == nil || response.StatusCode != fiber.StatusUnauthorized {
-		t.Fatalf("unauthorized dial err=%v status=%v", err, responseStatus(response))
 	}
 
-	memberToken := generateGatewayToken(t, jwtService, fixture.memberID)
-	ownerToken := generateGatewayToken(t, jwtService, fixture.ownerID)
-	memberConnection := dialGateway(t, endpoint, memberToken)
-	memberInitial := awaitGatewayMessage(t, memberConnection, realtime.GameSessionSnapshotEventType, "")
-	assertGatewaySnapshot(t, memberInitial, gameDomain.SessionLobby, 1)
-	ownerConnection := dialGateway(t, endpoint, ownerToken)
-	ownerInitial := awaitGatewayMessage(t, ownerConnection, realtime.GameSessionSnapshotEventType, "")
-	assertGatewaySnapshot(t, ownerInitial, gameDomain.SessionLobby, 1)
-
-	eventually(t, time.Second, func() bool {
-		presences, listErr := coordinator.ListPresence(fixture.ctx, session.SessionID)
-		return listErr == nil && len(presences) == 2
-	})
-	readyPayload, err := json.Marshal(realtime.ReadyCommandPayload{Ready: true})
+	member.mutex.Lock()
+	err := member.connection.WriteMessage(fasthttpWebsocket.TextMessage, []byte(`{"protocolVersion":2,"messageId":"spoofed-actor","type":"`+gameCommands.LeaveGameSessionCommandType+`","actorId":"`+fixture.ownerID+`"}`))
+	member.mutex.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeGatewayMessage(t, ownerConnection, realtime.ClientMessage{
-		ProtocolVersion: realtime.ProtocolVersion,
-		MessageID:       "gateway-owner-not-player",
-		Type:            gameCommands.SetPlayerReadyCommandType,
-		Payload:         readyPayload,
-	})
-	awaitGatewayMessage(t, ownerConnection, realtime.CommandAcceptedMessageType, "gateway-owner-not-player")
-	ownerRejected := awaitGatewayMessage(
-		t,
-		ownerConnection,
-		realtime.CommandRejectedMessageType,
-		"gateway-owner-not-player",
-	)
-	if ownerRejected.Error == nil || ownerRejected.Error.Code != "game.error.player_not_found" {
-		t.Fatalf("application rejection = %+v", ownerRejected)
-	}
-
-	writeGatewayMessage(t, memberConnection, realtime.ClientMessage{
-		ProtocolVersion: realtime.ProtocolVersion,
-		MessageID:       "gateway-join-member",
-		Type:            gameCommands.JoinGameSessionCommandType,
-	})
-	awaitGatewayMessage(t, memberConnection, realtime.CommandAcceptedMessageType, "gateway-join-member")
-	memberSnapshot := awaitGatewayMessage(
-		t,
-		memberConnection,
-		realtime.GameSessionSnapshotEventType,
-		"gateway-join-member",
-	)
-	ownerSnapshot := awaitGatewayMessage(
-		t,
-		ownerConnection,
-		realtime.GameSessionSnapshotEventType,
-		"gateway-join-member",
-	)
-	assertGatewaySnapshot(t, memberSnapshot, gameDomain.SessionLobby, 2)
-	assertGatewaySnapshot(t, ownerSnapshot, gameDomain.SessionLobby, 2)
-
-	spoofedMessage := []byte(fmt.Sprintf(
-		`{"protocolVersion":%d,"messageId":"spoofed-actor","type":"%s","actorId":"%s"}`,
-		realtime.ProtocolVersion,
-		gameCommands.LeaveGameSessionCommandType,
-		fixture.ownerID,
-	))
-	if err := memberConnection.WriteMessage(fasthttpWebsocket.TextMessage, spoofedMessage); err != nil {
-		t.Fatal(err)
-	}
-	spoofRejected := awaitGatewayMessage(
-		t,
-		memberConnection,
-		realtime.CommandRejectedMessageType,
-		"",
-	)
+	spoofRejected := member.await(t, func(message realtime.ServerMessage) bool { return message.Type == realtime.CommandRejectedMessageType })
 	if spoofRejected.Error == nil || spoofRejected.Error.Code != "realtime.error.invalid_command" {
 		t.Fatalf("spoof rejection = %+v", spoofRejected)
 	}
 
-	writeGatewayMessage(t, memberConnection, realtime.ClientMessage{
-		ProtocolVersion: 99,
-		MessageID:       "unsupported-version",
-		Type:            gameCommands.LeaveGameSessionCommandType,
+	member.mutex.Lock()
+	err = member.connection.WriteJSON(realtime.ClientMessage{ProtocolVersion: 99, MessageID: "unsupported-version", Type: gameCommands.LeaveGameSessionCommandType})
+	member.mutex.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	versionRejected := member.await(t, func(message realtime.ServerMessage) bool {
+		return message.Type == realtime.CommandRejectedMessageType && message.MessageID == "unsupported-version"
 	})
-	versionRejected := awaitGatewayMessage(
-		t,
-		memberConnection,
-		realtime.CommandRejectedMessageType,
-		"unsupported-version",
-	)
 	if versionRejected.Error == nil || versionRejected.Error.Code != "realtime.error.unsupported_protocol" {
 		t.Fatalf("protocol rejection = %+v", versionRejected)
 	}
 
-	_ = ownerConnection.Close()
-	_ = memberConnection.Close()
+	_ = owner.connection.Close()
+	_ = member.connection.Close()
 	eventually(t, 2*time.Second, func() bool {
-		presences, listErr := coordinator.ListPresence(fixture.ctx, session.SessionID)
-		return listErr == nil && len(presences) == 0
+		presences, err := observer.ListPresence(fixture.ctx, session.SessionId)
+		return err == nil && len(presences) == 0
 	})
 
-	reconnected := dialGateway(t, endpoint, memberToken)
-	defer reconnected.Close()
-	reconnectedSnapshot := awaitGatewayMessage(
-		t,
-		reconnected,
-		realtime.GameSessionSnapshotEventType,
-		"",
-	)
-	assertGatewaySnapshot(t, reconnectedSnapshot, gameDomain.SessionLobby, 2)
-	var snapshot gameDomain.SessionSnapshot
-	if err := json.Unmarshal(reconnectedSnapshot.Payload, &snapshot); err != nil {
+	reconnected := fixture.connect(t, 1, session.SessionId, fixture.memberID)
+	reconnected.send(t, houseRockets.ResyncMessageType, "gateway-resync", struct{}{})
+	recovered := awaitSessionSnapshot(t, reconnected, "gateway-resync")
+	if recovered.Version != 2 || len(recovered.Players) != 1 || recovered.Players[0].PlayerId != fixture.memberID {
+		t.Fatalf("reconnected snapshot = %+v", recovered)
+	}
+}
+
+func awaitSessionSnapshot(t *testing.T, socket *rocketsSocket, messageID string) dtos.GameSessionResponseModel {
+	t.Helper()
+	message := socket.await(t, func(message realtime.ServerMessage) bool {
+		return message.Type == realtime.GameSessionSnapshotEventType && message.MessageID == messageID
+	})
+	var snapshot dtos.GameSessionResponseModel
+	if err := json.Unmarshal(message.Payload, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Players) != 1 || snapshot.Players[0].PlayerID != fixture.memberID {
-		t.Fatalf("reconnected players = %+v", snapshot.Players)
+	if message.Sequence != snapshot.Version {
+		t.Fatalf("snapshot sequence = %d, version = %d", message.Sequence, snapshot.Version)
 	}
+	return snapshot
 }
 
 func generateGatewayToken(t *testing.T, service *helpers.JWTService, userID string) string {
@@ -227,58 +130,4 @@ func responseStatus(response *http.Response) any {
 		return nil
 	}
 	return response.StatusCode
-}
-
-func writeGatewayMessage(
-	t *testing.T,
-	connection *fasthttpWebsocket.Conn,
-	message realtime.ClientMessage,
-) {
-	t.Helper()
-	if err := connection.WriteJSON(message); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func awaitGatewayMessage(
-	t *testing.T,
-	connection *fasthttpWebsocket.Conn,
-	messageType string,
-	messageID string,
-) realtime.ServerMessage {
-	t.Helper()
-	deadline := time.Now().Add(roomRuntimeTestTimeout)
-	if err := connection.SetReadDeadline(deadline); err != nil {
-		t.Fatal(err)
-	}
-	for time.Now().Before(deadline) {
-		var message realtime.ServerMessage
-		if err := connection.ReadJSON(&message); err != nil {
-			t.Fatalf("read gateway message: %v", err)
-		}
-		if message.Type == messageType && (messageID == "" || message.MessageID == messageID) {
-			return message
-		}
-	}
-	t.Fatalf("message type=%q id=%q was not delivered", messageType, messageID)
-	return realtime.ServerMessage{}
-}
-
-func assertGatewaySnapshot(
-	t *testing.T,
-	message realtime.ServerMessage,
-	state gameDomain.SessionState,
-	version int64,
-) {
-	t.Helper()
-	if message.ProtocolVersion != realtime.ProtocolVersion || message.Sequence != version {
-		t.Fatalf("snapshot envelope = %+v", message)
-	}
-	var snapshot gameDomain.SessionSnapshot
-	if err := json.Unmarshal(message.Payload, &snapshot); err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.State != state || snapshot.Version != version {
-		t.Fatalf("snapshot state/version = %s/%d, want %s/%d", snapshot.State, snapshot.Version, state, version)
-	}
 }

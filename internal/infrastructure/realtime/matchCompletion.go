@@ -102,12 +102,8 @@ func (room *managedRoom) completeMatch() bool {
 		room.manager.report(room.lease.RoomID, err)
 		return errors.Is(err, gameAbstract.ErrRuntimeOwnerConflict) || errors.Is(err, gameAbstract.ErrMatchResultConflict) || (!isRetryableCommandError(err) && !errors.Is(err, context.DeadlineExceeded))
 	}
-	if store, ok := room.manager.coordinator.(coordinationAbstract.RuntimeCheckpointStore); ok {
-		ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-		if err := store.DeleteRuntimeCheckpoint(ctx, room.lease); err != nil {
-			room.manager.report(room.lease.RoomID, err)
-		}
-		cancel()
+	if err := room.releaseCheckpoint(); err != nil {
+		room.manager.report(room.lease.RoomID, err)
 	}
 	// ACK means durable completion, not delivery to every currently connected socket.
 	for _, delivery := range room.pendingCancellations {
@@ -154,9 +150,6 @@ func (room *managedRoom) completeMatch() bool {
 			room.manager.report(room.lease.RoomID, err)
 			return true
 		}
-	}
-	if err = room.manager.options.MatchRepository.MarkPublished(ctx, room.lease.RoomID); err != nil {
-		room.manager.report(room.lease.RoomID, err)
 	}
 	return true
 }

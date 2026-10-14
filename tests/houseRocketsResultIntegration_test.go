@@ -44,9 +44,7 @@ func TestHouseRocketsGatewayKeepsFinalizingDuringTransactionFailure(t *testing.T
 	second := fixture.connect(t, 1, session.SessionID, fixture.memberID)
 	_ = first.grant(t)
 	_ = second.grant(t)
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{"eventType": bson.M{"$ne": houseRockets.ResultMessageType}}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	rejectMatchResults(t, fixture.gameSessionApplicationFixture)
 	first.send(t, gameCommands.CancelGameSessionCommandType, "pending-cancel", struct{}{})
 	finalizing := second.snapshot(t, func(model houseRockets.HouseRocketsSnapshotModel) bool {
 		return model.Phase == houseRockets.PhaseFinalizing
@@ -76,9 +74,7 @@ waitForRetry:
 	if err != nil || active.Snapshot().State != gameDomain.SessionRunning {
 		t.Fatalf("active slot released before commit: %v", err)
 	}
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	acceptMatchResults(t, fixture.gameSessionApplicationFixture)
 	second.await(t, func(message realtime.ServerMessage) bool { return message.Type == houseRockets.ResultMessageType })
 	if status, _ := fixture.resultHTTP(t, 1, session.SessionID, fixture.memberID); status != 200 {
 		t.Fatalf("retry never completed: %d", status)
@@ -94,6 +90,23 @@ func (coordinator resultPublishFailureCoordinator) PublishRoomEvent(ctx context.
 		return coordinationAbstract.ErrUnavailable
 	}
 	return coordinator.RedisCoordinator.PublishRoomEvent(ctx, lease, event)
+}
+
+// rejectMatchResults fails the last write of the completion transaction.
+func rejectMatchResults(t *testing.T, fixture *gameSessionApplicationFixture) {
+	t.Helper()
+	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: database.GameMatchResultCollectionName}, {Key: "validator", Value: bson.M{"_id": bson.M{"$exists": false}}}}).Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// acceptMatchResults lifts the injected failure; the disposable test database
+// keeps no result schema validator afterwards.
+func acceptMatchResults(t *testing.T, fixture *gameSessionApplicationFixture) {
+	t.Helper()
+	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: database.GameMatchResultCollectionName}, {Key: "validator", Value: bson.M{}}}).Err(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestHouseRocketsResultSurvivesPostCommitPublishFailure(t *testing.T) {
@@ -130,10 +143,6 @@ func TestHouseRocketsResultSurvivesPostCommitPublishFailure(t *testing.T) {
 				}
 				if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, houseRockets.GameKey); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
 					t.Fatalf("committed slot retained: %v", err)
-				}
-				var outbox entities.OutboxMessage
-				if err := fixture.db.Collection(entities.OutboxMessageCollectionName).FindOne(fixture.ctx, bson.M{"eventId": "houseRockets.result:" + session.SessionID}).Decode(&outbox); err != nil || outbox.PublishedAt != nil {
-					t.Fatalf("undelivered outbox marked published: %+v %v", outbox, err)
 				}
 				return
 			}
@@ -252,6 +261,16 @@ func TestHouseRocketsResultFiveMinuteExpiryIsPersistedWithoutWinner(t *testing.T
 	if err != nil || stored.Snapshot().State != gameDomain.SessionCancelled {
 		t.Fatalf("expiry session: %v", err)
 	}
+	// A cancelled match leaves nothing behind: session and result expire together.
+	want := stored.Snapshot().EndedAt.Add(database.CancelledSessionRetention).Truncate(time.Millisecond)
+	for _, collection := range []string{database.GameSessionCollectionName, database.GameMatchResultCollectionName} {
+		var document struct {
+			ExpiresAt *time.Time `bson:"expiresAt"`
+		}
+		if err := fixture.db.Collection(collection).FindOne(fixture.ctx, bson.M{"_id": result.SessionID}).Decode(&document); err != nil || document.ExpiresAt == nil || !document.ExpiresAt.Equal(want) {
+			t.Fatalf("%s expiresAt = %v, want %s: %v", collection, document.ExpiresAt, want, err)
+		}
+	}
 }
 
 func TestHouseRocketsGatewayPregameCancellationDoesNotCreateResult(t *testing.T) {
@@ -299,17 +318,15 @@ func TestHouseRocketsResultConcurrentCompletionIsImmutableAndRematchSafe(t *test
 			t.Fatalf("canonical result changed: %+v", result)
 		}
 	}
-	for _, collection := range []string{database.GameMatchResultCollectionName, entities.GameSessionCommandReceiptCollectionName, entities.OutboxMessageCollectionName} {
+	// One canonical result; the runtime completion itself keeps no receipt.
+	for collection, want := range map[string]int64{database.GameMatchResultCollectionName: 1, entities.GameSessionCommandReceiptCollectionName: 0} {
 		filter := bson.M{"_id": command.Result.SessionID}
 		if collection == entities.GameSessionCommandReceiptCollectionName {
 			filter = bson.M{"commandId": "complete:" + command.Result.SessionID}
 		}
-		if collection == entities.OutboxMessageCollectionName {
-			filter = bson.M{"eventType": houseRockets.ResultMessageType, "aggregateId": command.Result.SessionID}
-		}
 		count, err := fixture.db.Collection(collection).CountDocuments(fixture.ctx, filter)
-		if err != nil || count != 1 {
-			t.Fatalf("%s count=%d: %v", collection, count, err)
+		if err != nil || count != want {
+			t.Fatalf("%s count=%d want=%d: %v", collection, count, want, err)
 		}
 	}
 	stored, err := fixture.repository.FindByID(fixture.ctx, command.Result.SessionID)
@@ -348,12 +365,10 @@ func TestHouseRocketsResultTransactionRollbackAndRetry(t *testing.T) {
 	fixture, matches, command := completionFixture(t, houseRockets.EndCancelledByUser)
 	command.CancelCommandID, command.CancelUserID = "cancel-match", fixture.ownerID
 	handler := rocketsCommands.NewCompleteMatchHandler(fixture.repository, matches)
-	// Fail the LAST write after owner, receipts, terminal session, slot and result writes.
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{"eventType": bson.M{"$ne": houseRockets.ResultMessageType}}}, {Key: "validationLevel", Value: "strict"}, {Key: "validationAction", Value: "error"}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	// The result insert is the LAST write, after owner, receipt, terminal session and slot writes.
+	rejectMatchResults(t, fixture)
 	if _, err := handler.Handle(fixture.ctx, command); err == nil {
-		t.Fatal("injected outbox rejection unexpectedly committed")
+		t.Fatal("injected result rejection unexpectedly committed")
 	}
 	if _, err := matches.FindResult(fixture.ctx, command.Result.SessionID); !errors.Is(err, gameAbstract.ErrMatchResultNotFound) {
 		t.Fatalf("result escaped rollback: %v", err)
@@ -369,9 +384,7 @@ func TestHouseRocketsResultTransactionRollbackAndRetry(t *testing.T) {
 	if err != nil || count != 0 {
 		t.Fatalf("receipts escaped rollback: %d %v", count, err)
 	}
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	acceptMatchResults(t, fixture)
 	result, err := handler.Handle(fixture.ctx, command)
 	if err != nil || result.Status != houseRockets.ResultCancelled || result.WinnerID != nil {
 		t.Fatalf("retry: %+v %v", result, err)

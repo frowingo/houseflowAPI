@@ -12,7 +12,7 @@ import (
 
 const (
 	AdvanceGameSessionCommandType = "gameSession.advance"
-	GameSessionRuntimeActorID     = "gameSessionRuntime"
+	GameSessionRuntimeActorID     = gameAbstract.SystemActorID
 )
 
 type AdvanceGameSessionCommand struct {

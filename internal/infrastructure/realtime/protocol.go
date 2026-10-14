@@ -1,19 +1,15 @@
 package realtime
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
-	"strings"
 	"time"
 
-	gameCommands "houseflowApi/internal/application/game/commands"
 	"houseflowApi/internal/helpers"
 )
 
 const (
-	ProtocolVersion                 = 1
 	CommandAcceptedMessageType      = "gameSession.commandAccepted"
 	CommandRejectedMessageType      = "gameSession.commandRejected"
 	defaultInvalidCommandErrorCode  = "realtime.error.invalid_command"
@@ -37,6 +33,8 @@ type ClientMessage struct {
 	Payload         json.RawMessage `json:"payload,omitempty"`
 }
 
+// ServerMessage is the decoded shape shared by every server envelope,
+// including V2ServerMessage and V2ErrorMessage.
 type ServerMessage struct {
 	ProtocolVersion int             `json:"protocolVersion"`
 	MessageID       string          `json:"messageId,omitempty"`
@@ -53,29 +51,6 @@ type ProtocolError struct {
 	Retryable bool     `json:"retryable"`
 }
 
-func decodeClientMessage(payload []byte) (ClientMessage, error) {
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	var message ClientMessage
-	if err := decoder.Decode(&message); err != nil {
-		return ClientMessage{}, errors.Join(ErrInvalidClientMessage, err)
-	}
-	if err := ensureJSONEnd(decoder); err != nil {
-		return ClientMessage{}, errors.Join(ErrInvalidClientMessage, err)
-	}
-	message.MessageID = strings.TrimSpace(message.MessageID)
-	message.Type = strings.TrimSpace(message.Type)
-	if message.ProtocolVersion != ProtocolVersion {
-		return message, ErrUnsupportedProtocol
-	}
-	if message.MessageID == "" ||
-		len(message.MessageID) > maximumMessageIDLength ||
-		!isSupportedClientCommand(message.Type) {
-		return message, ErrInvalidClientMessage
-	}
-	return message, nil
-}
-
 func ensureJSONEnd(decoder *json.Decoder) error {
 	var trailing any
 	err := decoder.Decode(&trailing)
@@ -86,18 +61,6 @@ func ensureJSONEnd(decoder *json.Decoder) error {
 		return errors.New("multiple JSON values are not allowed")
 	}
 	return err
-}
-
-func isSupportedClientCommand(commandType string) bool {
-	switch commandType {
-	case gameCommands.JoinGameSessionCommandType,
-		gameCommands.SetPlayerReadyCommandType,
-		gameCommands.LeaveGameSessionCommandType,
-		gameCommands.CancelGameSessionCommandType:
-		return true
-	default:
-		return false
-	}
 }
 
 func protocolErrorFrom(err error) ProtocolError {
@@ -118,13 +81,4 @@ func protocolErrorFrom(err error) ProtocolError {
 		return ProtocolError{Code: unsupportedProtocolErrorCode}
 	}
 	return ProtocolError{Code: defaultInternalCommandErrorCode, Retryable: true}
-}
-
-func newServerMessage(messageType string, messageID string) ServerMessage {
-	return ServerMessage{
-		ProtocolVersion: ProtocolVersion,
-		MessageID:       messageID,
-		Type:            messageType,
-		SentAt:          time.Now().UTC(),
-	}
 }

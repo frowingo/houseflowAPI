@@ -21,12 +21,19 @@ var (
 	ErrCommandIDReused          = errors.New("game session command ID was reused with different content")
 )
 
+// SystemActorID marks transitions driven by the room runtime (deadlines,
+// reconciliation, match completion). They are fenced by the expected session
+// version and deterministic domain rules, so no command receipt is stored.
+const SystemActorID = "gameSessionRuntime"
+
 type CommandDescriptor struct {
 	CommandID   string
 	ActorID     string
 	CommandType string
 	PayloadHash string
 }
+
+func (command CommandDescriptor) IsSystem() bool { return command.ActorID == SystemActorID }
 
 type PersistenceResult struct {
 	SessionID        string

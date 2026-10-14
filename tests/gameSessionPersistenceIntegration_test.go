@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -67,22 +66,21 @@ func newGameSessionPersistenceFixture(t *testing.T) *gameSessionPersistenceFixtu
 	}
 }
 
-func TestGameSessionRepositoryPersistsSnapshotAndOutboxAtomically(t *testing.T) {
+func TestGameSessionRepositoryPersistsSnapshotReceiptAndActiveSlotAtomically(t *testing.T) {
 	fixture := newGameSessionPersistenceFixture(t)
 	session := newPersistenceTestSession(t)
-	events := session.PendingEvents()
 
 	if _, err := fixture.repository.Create(
 		fixture.ctx,
 		session.Snapshot(),
-		events,
+		session.PendingEvents(),
 		persistenceCommand("create-1", "gameSession.create", "create-payload"),
 	); err != nil {
 		t.Fatal(err)
 	}
 	session.ClearPendingEvents()
 
-	stored, err := fixture.repository.FindByID(fixture.ctx, session.Snapshot().SessionID)
+	stored, err := fixture.repository.FindActive(fixture.ctx, "house-1", "shared-game")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,26 +94,11 @@ func TestGameSessionRepositoryPersistsSnapshotAndOutboxAtomically(t *testing.T) 
 	if len(stored.PendingEvents()) != 0 {
 		t.Fatal("restored session must not contain pending events")
 	}
-
-	var message entities.OutboxMessage
-	if err := fixture.db.Collection(entities.OutboxMessageCollectionName).
-		FindOne(fixture.ctx, bson.M{"eventId": events[0].EventID}).
-		Decode(&message); err != nil {
-		t.Fatal(err)
-	}
-	if message.AggregateID != storedSnapshot.SessionID || message.AggregateVersion != 1 {
-		t.Fatalf("outbox aggregate = %s/%d, want %s/1", message.AggregateID, message.AggregateVersion, storedSnapshot.SessionID)
-	}
-	var persistedEvent gameDomain.SessionEvent
-	if err := json.Unmarshal(message.Payload, &persistedEvent); err != nil {
-		t.Fatal(err)
-	}
-	if persistedEvent.EventID != events[0].EventID || persistedEvent.Type != gameDomain.SessionCreated {
-		t.Fatalf("persisted event = %+v, want session created event %s", persistedEvent, events[0].EventID)
-	}
+	assertStoredSessionFields(t, fixture, storedSnapshot.SessionID, "house-1:shared-game", false)
+	assertReceiptCount(t, fixture, 1)
 }
 
-func TestGameSessionRepositoryRejectsConcurrentUpdateWithoutExtraOutbox(t *testing.T) {
+func TestGameSessionRepositoryRejectsConcurrentUpdateWithoutExtraReceipt(t *testing.T) {
 	fixture := newGameSessionPersistenceFixture(t)
 	_, _ = seedGameSession(t, fixture)
 
@@ -192,26 +175,28 @@ func TestGameSessionRepositoryRejectsConcurrentUpdateWithoutExtraOutbox(t *testi
 	if _, exists := stored.Player(loserID); exists {
 		t.Fatal("losing writer's player must not be persisted")
 	}
-	assertOutboxMessageCount(t, fixture, 2)
+	assertReceiptCount(t, fixture, 2)
 }
 
-func TestGameSessionRepositoryRollsBackSnapshotWhenOutboxInsertFails(t *testing.T) {
+func TestGameSessionRepositoryRollsBackReceiptWhenSnapshotWriteFails(t *testing.T) {
 	fixture := newGameSessionPersistenceFixture(t)
-	session, initialEventID := seedGameSession(t, fixture)
+	session, _ := seedGameSession(t, fixture)
+	// The receipt is inserted first; a rejected snapshot must roll it back.
+	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: database.GameSessionCollectionName}, {Key: "validator", Value: bson.M{"players": bson.M{"$size": 0}}}}).Err(); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := session.JoinPlayer("player-1", persistenceTestTime().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	events := session.PendingEvents()
-	events[0].EventID = initialEventID
 	if _, err := fixture.repository.Save(
 		fixture.ctx,
 		1,
 		session.Snapshot(),
-		events,
+		session.PendingEvents(),
 		persistenceCommand("join-rollback", "gameSession.join", "rollback-payload"),
 	); err == nil {
-		t.Fatal("save must fail when the outbox event ID already exists")
+		t.Fatal("save must fail when the snapshot write is rejected")
 	}
 
 	stored, err := fixture.repository.FindByID(fixture.ctx, "session-1")
@@ -222,9 +207,65 @@ func TestGameSessionRepositoryRollsBackSnapshotWhenOutboxInsertFails(t *testing.
 		t.Fatalf("stored version = %d, want rollback to version 1", stored.Version())
 	}
 	if _, exists := stored.Player("player-1"); exists {
-		t.Fatal("snapshot update must roll back when outbox insertion fails")
+		t.Fatal("snapshot update must roll back")
 	}
-	assertOutboxMessageCount(t, fixture, 1)
+	assertReceiptCount(t, fixture, 1)
+}
+
+func TestGameSessionRepositoryCancellationReleasesSlotAndExpires(t *testing.T) {
+	fixture := newGameSessionPersistenceFixture(t)
+	session, _ := seedGameSession(t, fixture)
+	endedAt := persistenceTestTime().Add(time.Minute)
+	if err := session.Cancel(gameDomain.EndReasonCancelledByUser, endedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repository.Save(fixture.ctx, 1, session.Snapshot(), session.PendingEvents(), persistenceCommand("cancel-1", "gameSession.cancel", "cancel-payload")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repository.FindActive(fixture.ctx, "house-1", "shared-game"); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
+		t.Fatalf("cancelled session still active: %v", err)
+	}
+	expiresAt := assertStoredSessionFields(t, fixture, "session-1", "", true)
+	if !expiresAt.Equal(endedAt.Add(database.CancelledSessionRetention)) {
+		t.Fatalf("expiresAt = %s, want %s", expiresAt, endedAt.Add(database.CancelledSessionRetention))
+	}
+}
+
+func TestGameSessionRepositorySystemTransitionsKeepNoReceipt(t *testing.T) {
+	fixture := newGameSessionPersistenceFixture(t)
+	session, _ := seedGameSession(t, fixture)
+	system := gameAbstract.CommandDescriptor{CommandID: "advance-1", ActorID: gameAbstract.SystemActorID, CommandType: "gameSession.advance", PayloadHash: "advance"}
+	if _, err := fixture.repository.Save(fixture.ctx, 1, session.Snapshot(), nil, system); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Cancel(gameDomain.EndReasonInsufficientPlayers, persistenceTestTime().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repository.Save(fixture.ctx, 1, session.Snapshot(), session.PendingEvents(), system); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := fixture.repository.FindProcessedCommand(fixture.ctx, system); err != nil || found {
+		t.Fatalf("system receipt lookup = %t %v", found, err)
+	}
+	assertReceiptCount(t, fixture, 1)
+}
+
+// A previous release replaces documents without activeKey during a rolling
+// deploy; its legacy pointer must still resolve the active session.
+func TestGameSessionRepositoryReadsLegacyActivePointerDuringRollout(t *testing.T) {
+	fixture := newGameSessionPersistenceFixture(t)
+	_, _ = seedGameSession(t, fixture)
+	if _, err := fixture.db.Collection(database.GameSessionCollectionName).UpdateOne(fixture.ctx, bson.M{"_id": "session-1"}, bson.M{"$unset": bson.M{"activeKey": ""}}); err != nil {
+		t.Fatal(err)
+	}
+	active, err := fixture.repository.FindActive(fixture.ctx, "house-1", "shared-game")
+	if err != nil || active.Snapshot().SessionID != "session-1" {
+		t.Fatalf("legacy active lookup = %v", err)
+	}
+	duplicate := newPersistenceTestSessionWithID(t, "session-2")
+	if _, err := fixture.repository.Create(fixture.ctx, duplicate.Snapshot(), duplicate.PendingEvents(), persistenceCommand("create-2", "gameSession.create", "create-2")); !errors.Is(err, gameAbstract.ErrActiveGameSessionExists) {
+		t.Fatalf("second active session error = %v, want ErrActiveGameSessionExists", err)
+	}
 }
 
 func TestGameSessionRepositoryRejectsInconsistentPersistenceBatch(t *testing.T) {
@@ -252,8 +293,13 @@ func TestGameSessionRepositoryRejectsInconsistentPersistenceBatch(t *testing.T) 
 
 func newPersistenceTestSession(t *testing.T) *gameDomain.GameSession {
 	t.Helper()
+	return newPersistenceTestSessionWithID(t, "session-1")
+}
+
+func newPersistenceTestSessionWithID(t *testing.T, sessionID string) *gameDomain.GameSession {
+	t.Helper()
 	session, err := gameDomain.NewGameSession(gameDomain.NewSessionParams{
-		SessionID:       "session-1",
+		SessionID:       sessionID,
 		HouseID:         "house-1",
 		GameKey:         "shared-game",
 		ProtocolVersion: 1,
@@ -292,16 +338,34 @@ func seedGameSession(
 	return session, events[0].EventID
 }
 
-func assertOutboxMessageCount(t *testing.T, fixture *gameSessionPersistenceFixture, expected int64) {
+func assertReceiptCount(t *testing.T, fixture *gameSessionPersistenceFixture, expected int64) {
 	t.Helper()
-	count, err := fixture.db.Collection(entities.OutboxMessageCollectionName).
+	count, err := fixture.db.Collection(entities.GameSessionCommandReceiptCollectionName).
 		CountDocuments(fixture.ctx, bson.M{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != expected {
-		t.Fatalf("outbox message count = %d, want %d", count, expected)
+		t.Fatalf("command receipt count = %d, want %d", count, expected)
 	}
+}
+
+func assertStoredSessionFields(t *testing.T, fixture *gameSessionPersistenceFixture, sessionID, activeKey string, expires bool) time.Time {
+	t.Helper()
+	var document struct {
+		ActiveKey string     `bson:"activeKey"`
+		ExpiresAt *time.Time `bson:"expiresAt"`
+	}
+	if err := fixture.db.Collection(database.GameSessionCollectionName).FindOne(fixture.ctx, bson.M{"_id": sessionID}).Decode(&document); err != nil {
+		t.Fatal(err)
+	}
+	if document.ActiveKey != activeKey || (document.ExpiresAt != nil) != expires {
+		t.Fatalf("stored activeKey/expiresAt = %q/%v, want %q/%t", document.ActiveKey, document.ExpiresAt, activeKey, expires)
+	}
+	if document.ExpiresAt == nil {
+		return time.Time{}
+	}
+	return document.ExpiresAt.UTC()
 }
 
 func persistenceTestTime() time.Time {

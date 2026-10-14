@@ -14,9 +14,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// roomFenceRetention bounds the per-room fence counter. Tokens are compared by
+// equality against the live lease value and MongoDB's runtime generation is the
+// durable fence, so a counter restarting after a day without acquisitions is safe.
+const roomFenceRetention = 24 * time.Hour
+
 var acquireRoomScript = redis.NewScript(
 	"if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end " +
 		"local fencingToken = redis.call('INCR', KEYS[2]) " +
+		"redis.call('PEXPIRE', KEYS[2], ARGV[4]) " +
 		"local leaseValue = ARGV[1] .. '|' .. ARGV[2] .. '|' .. tostring(fencingToken) " +
 		"redis.call('PSETEX', KEYS[1], ARGV[3], leaseValue) " +
 		"return fencingToken",
@@ -54,6 +60,7 @@ func (coordinator *RedisCoordinator) AcquireRoom(
 		encodeKeyPart(coordinator.instanceID),
 		leaseID,
 		ttl.Milliseconds(),
+		roomFenceRetention.Milliseconds(),
 	).Int64()
 	if err != nil {
 		coordinator.available.Store(false)

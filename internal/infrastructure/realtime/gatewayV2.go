@@ -154,11 +154,7 @@ func (hub *roomHub) broadcastEvent(event coordinationAbstract.MessageEnvelope) {
 	}
 	hub.mutex.RUnlock()
 	for _, client := range clients {
-		if client.v2 != nil {
-			client.handleV2Event(event)
-		} else {
-			client.enqueue(serverMessageFromEvent(event))
-		}
+		client.handleV2Event(event)
 	}
 }
 

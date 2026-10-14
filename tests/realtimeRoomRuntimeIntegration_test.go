@@ -126,7 +126,6 @@ func TestRoomRuntimeRoutesCommandsInOrderAndReplaysIdempotently(t *testing.T) {
 		t.Fatalf("stored session version/players = %d/%d, want 2/1", stored.Version(), len(stored.Players()))
 	}
 	assertCollectionCount(t, fixture, entities.GameSessionCommandReceiptCollectionName, 2)
-	assertCollectionCount(t, fixture, entities.OutboxMessageCollectionName, 2)
 }
 
 func TestRoomRuntimeRecoversPersistedDeadlinesAfterOwnerHandoff(t *testing.T) {

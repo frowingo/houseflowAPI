@@ -145,9 +145,8 @@ func TestHouseRocketsDefinitionContract(t *testing.T) {
 	if _, err := catalog.Find(houseRockets.GameKey); !errors.Is(err, gameAbstract.ErrGameDefinitionNotFound) || fixture.LiveGatewayAvailable {
 		t.Fatal("contract-only game must not be advertised as playable")
 	}
-	flappyBird, err := catalog.Find(game.FlappyBirdGameKey)
-	if err != nil || flappyBird.ProtocolVersion != 1 || realtime.ProtocolVersion != 1 {
-		t.Fatal("existing v1 catalog/protocol changed")
+	if _, err := catalog.Find("flappyBird"); !errors.Is(err, gameAbstract.ErrGameDefinitionNotFound) || realtime.V2ProtocolVersion != definition.ProtocolVersion {
+		t.Fatal("retired v1 game must stay out of the catalog")
 	}
 }
 

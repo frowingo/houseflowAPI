@@ -12,7 +12,8 @@ var (
 )
 
 // MatchCompletion is one atomic terminal transition, including the owner fence,
-// command receipts, immutable result, active slot release and outbox events.
+// the client cancellation receipt, immutable result and active slot release.
+// Events are validated against the version change but are not persisted.
 type MatchCompletion struct {
 	ExpectedVersion int64
 	Session         gameDomain.SessionSnapshot
@@ -27,5 +28,4 @@ type MatchCompletion struct {
 type GameMatchRepository interface {
 	FindResult(ctx context.Context, sessionID string) (gameDomain.MatchResult, error)
 	Complete(ctx context.Context, completion MatchCompletion) (gameDomain.MatchResult, error)
-	MarkPublished(ctx context.Context, sessionID string) error
 }

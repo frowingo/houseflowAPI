@@ -138,6 +138,12 @@ func TestHouseRocketsRecoveryRestoresTerminalProposalAndCleansCheckpoint(t *test
 	if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, houseRockets.GameKey); !errors.Is(err, gameAbstract.ErrGameSessionNotFound) {
 		t.Fatalf("active slot retained: %v", err)
 	}
+	// The commit is visible before the room deletes its checkpoint; the lease is
+	// released only after that cleanup, so wait for it before closing.
+	eventually(t, 2*time.Second, func() bool {
+		_, owned, err := second.CurrentRoomOwner(fixture.ctx, snapshot.SessionID)
+		return err == nil && !owned
+	})
 	closeRoomManager(t, manager)
 	cleanupLease, acquired, err := second.AcquireRoom(fixture.ctx, snapshot.SessionID, time.Second)
 	if err != nil || !acquired {
@@ -401,9 +407,7 @@ func TestHouseRocketsRecoveryFinalizationBudgetPreservesProposalForNextOwner(t *
 	if _, err := first.ReleaseRoom(fixture.ctx, lease); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{"eventType": bson.M{"$ne": houseRockets.ResultMessageType}}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	rejectMatchResults(t, fixture)
 	manager := newRecoveryManager(t, fixture, second, realtime.RoomManagerOptions{FinalizationTimeout: 400 * time.Millisecond})
 	if _, err := manager.EnsureRoom(fixture.ctx, snapshot.SessionID); err != nil {
 		t.Fatal(err)
@@ -425,9 +429,7 @@ waitBudget:
 	if _, err := fixture.repository.FindActive(fixture.ctx, fixture.houseID, houseRockets.GameKey); err != nil {
 		t.Fatalf("failed transaction released active slot: %v", err)
 	}
-	if err := fixture.db.RunCommand(fixture.ctx, bson.D{{Key: "collMod", Value: entities.OutboxMessageCollectionName}, {Key: "validator", Value: bson.M{}}}).Err(); err != nil {
-		t.Fatal(err)
-	}
+	acceptMatchResults(t, fixture)
 	recovered := newRecoveryManager(t, fixture, third, realtime.RoomManagerOptions{RecoveryMaxAge: time.Nanosecond})
 	if _, err := recovered.EnsureRoom(fixture.ctx, snapshot.SessionID); err != nil {
 		t.Fatal(err)
