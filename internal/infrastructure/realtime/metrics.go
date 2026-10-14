@@ -21,6 +21,8 @@ type Metrics struct {
 	checkpointFailures  atomic.Uint64
 	checkpointBytes     atomic.Uint64
 	roomPublishedBytes  atomic.Uint64
+	roomPublishedEvents atomic.Uint64
+	localOnlyEvents     atomic.Uint64
 	socketWrittenBytes  atomic.Uint64
 	inputBytes          atomic.Uint64
 	slowConsumers       atomic.Uint64
@@ -47,6 +49,8 @@ type MetricsSnapshot struct {
 	CheckpointFailures        uint64                    `json:"checkpointFailures"`
 	CheckpointPayloadBytes    uint64                    `json:"checkpointPayloadBytes"`
 	RoomPublishedPayloadBytes uint64                    `json:"roomPublishedPayloadBytes"`
+	RoomPublishedEvents       uint64                    `json:"roomPublishedEvents"`
+	LocalOnlyEvents           uint64                    `json:"localOnlyEvents"`
 	SocketWrittenPayloadBytes uint64                    `json:"socketWrittenPayloadBytes"`
 	InputPayloadBytes         uint64                    `json:"inputPayloadBytes"`
 	SlowConsumers             uint64                    `json:"slowConsumers"`
@@ -70,7 +74,7 @@ func (metrics *Metrics) ObserveRuntime(observation module.RuntimeObservation) {
 }
 
 func (metrics *Metrics) Snapshot() MetricsSnapshot {
-	return MetricsSnapshot{PhysicsGap: metrics.stepGap.Snapshot(), PhysicsStep: metrics.stepDuration.Snapshot(), ServerInputAge: metrics.inputAge.Snapshot(), CheckpointWrite: metrics.checkpointDuration.Snapshot(), SocketWrite: metrics.socketWriteDuration.Snapshot(), FramesCoalesced: metrics.framesCoalesced.Load(), InputsCoalesced: metrics.inputsCoalesced.Load(), RuntimeOverloads: metrics.overloads.Load(), CheckpointWrites: metrics.checkpoints.Load(), CheckpointFailures: metrics.checkpointFailures.Load(), CheckpointPayloadBytes: metrics.checkpointBytes.Load(), RoomPublishedPayloadBytes: metrics.roomPublishedBytes.Load(), SocketWrittenPayloadBytes: metrics.socketWrittenBytes.Load(), InputPayloadBytes: metrics.inputBytes.Load(), SlowConsumers: metrics.slowConsumers.Load(), AdmissionRejected: metrics.admissionRejected.Load(), Errors: metrics.errors.Load()}
+	return MetricsSnapshot{PhysicsGap: metrics.stepGap.Snapshot(), PhysicsStep: metrics.stepDuration.Snapshot(), ServerInputAge: metrics.inputAge.Snapshot(), CheckpointWrite: metrics.checkpointDuration.Snapshot(), SocketWrite: metrics.socketWriteDuration.Snapshot(), FramesCoalesced: metrics.framesCoalesced.Load(), InputsCoalesced: metrics.inputsCoalesced.Load(), RuntimeOverloads: metrics.overloads.Load(), CheckpointWrites: metrics.checkpoints.Load(), CheckpointFailures: metrics.checkpointFailures.Load(), CheckpointPayloadBytes: metrics.checkpointBytes.Load(), RoomPublishedPayloadBytes: metrics.roomPublishedBytes.Load(), RoomPublishedEvents: metrics.roomPublishedEvents.Load(), LocalOnlyEvents: metrics.localOnlyEvents.Load(), SocketWrittenPayloadBytes: metrics.socketWrittenBytes.Load(), InputPayloadBytes: metrics.inputBytes.Load(), SlowConsumers: metrics.slowConsumers.Load(), AdmissionRejected: metrics.admissionRejected.Load(), Errors: metrics.errors.Load()}
 }
 
 func (metrics *Metrics) observeSocketWrite(start time.Time, bytes int, err error) {

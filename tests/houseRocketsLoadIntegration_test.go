@@ -355,9 +355,15 @@ func runHouseRocketsLoad(t *testing.T, roomCount, playerCount int, duration time
 		ready      loadClientReady
 	}
 	var clients []client
+	// split alternates a room's players between instances; colocated keeps
+	// them on one instance, as instance-affine routing would.
+	colocated := os.Getenv("HOUSEFLOW_LOAD_PLACEMENT") == "colocated"
 	for roomIndex, room := range rooms {
 		for playerIndex, id := range room.players {
 			worker := workers[(roomIndex+playerIndex)%2]
+			if colocated {
+				worker = workers[roomIndex%2]
+			}
 			if playerIndex == 0 {
 				request, _ := http.NewRequest(http.MethodPut, worker.url+"/api/v1/game/houseRockets/session", strings.NewReader(fmt.Sprintf(`{"houseId":%q}`, room.houseID)))
 				request.Header.Set("Authorization", "Bearer "+generateGatewayToken(t, jwt, id))
@@ -439,7 +445,7 @@ func runHouseRocketsLoad(t *testing.T, roomCount, playerCount int, duration time
 			t.Error("worker exceeded reference 256 MiB RSS budget")
 		}
 		cpuDelta := report.CPUSeconds - before[index].CPUSeconds
-		t.Logf("LOAD_WORKER rooms=%d players=%d worker=%d cpuCorePercent=%.2f redisClientCommandsPerSecond=%.2f socketPayloadBytesPerSecond=%.2f checkpointWritesPerSecond=%.2f metrics=%s", roomCount, playerCount, index, 100*cpuDelta/duration.Seconds(), float64(report.Redis.ClientCommands-before[index].Redis.ClientCommands)/duration.Seconds(), float64(report.Realtime.SocketWrittenPayloadBytes-before[index].Realtime.SocketWrittenPayloadBytes)/duration.Seconds(), float64(report.Realtime.CheckpointWrites-before[index].Realtime.CheckpointWrites)/duration.Seconds(), mustJSON(t, report))
+		t.Logf("LOAD_WORKER rooms=%d players=%d worker=%d cpuCorePercent=%.2f redisClientCommandsPerSecond=%.2f roomPublishesPerSecond=%.2f localOnlyEventsPerSecond=%.2f socketPayloadBytesPerSecond=%.2f checkpointWritesPerSecond=%.2f metrics=%s", roomCount, playerCount, index, 100*cpuDelta/duration.Seconds(), float64(report.Redis.ClientCommands-before[index].Redis.ClientCommands)/duration.Seconds(), float64(report.Realtime.RoomPublishedEvents-before[index].Realtime.RoomPublishedEvents)/duration.Seconds(), float64(report.Realtime.LocalOnlyEvents-before[index].Realtime.LocalOnlyEvents)/duration.Seconds(), float64(report.Realtime.SocketWrittenPayloadBytes-before[index].Realtime.SocketWrittenPayloadBytes)/duration.Seconds(), float64(report.Realtime.CheckpointWrites-before[index].Realtime.CheckpointWrites)/duration.Seconds(), mustJSON(t, report))
 	}
 	var maxACK float64
 	var worstP95 float64

@@ -1,6 +1,7 @@
 package houseRockets
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -125,14 +126,99 @@ func (gameModule) PreviewFrame(params module.PreviewParams) (module.Frame, error
 	return module.Frame{Sequence: params.Sequence, Payload: payload}, err
 }
 
-func (gameModule) ProjectFrame(payload json.RawMessage, viewer module.Viewer) (any, error) {
-	var frame wireFrame
-	if err := json.Unmarshal(payload, &frame); err != nil {
+func (gameModule) PrepareFrame(payload json.RawMessage) (module.FrameView, error) {
+	view := &frameView{}
+	if err := json.Unmarshal(payload, &view.frame); err != nil {
 		return nil, err
 	}
-	model := SnapshotForConnection(frame.RuntimeFrame, viewer.PlayerID, viewer.ConnectionID, viewer.Grant)
-	model.CountdownEndsAt = frame.CountdownEndsAt
-	return model, nil
+	return view, nil
+}
+
+// frameView renders the public snapshot once. A controlling connection's
+// snapshot differs only by its own player's controlGeneration, which is
+// spliced into the shared bytes instead of encoding the snapshot again.
+type frameView struct {
+	frame  wireFrame
+	shared json.RawMessage
+}
+
+var nullControlGeneration = []byte(`"controlGeneration":null`)
+
+func (view *frameView) Header() module.FrameHeader {
+	frame := view.frame.RuntimeFrame
+	header := module.FrameHeader{RuntimeEpoch: frame.RuntimeEpoch, StateSequence: frame.StateSequence, Phase: frame.Phase,
+		Controls: make([]module.FrameControl, 0, len(frame.Controls))}
+	header.World.SessionID = frame.World.SessionID
+	header.World.Players = make([]module.FramePlayer, 0, len(frame.World.Players))
+	for _, player := range frame.World.Players {
+		header.World.Players = append(header.World.Players, module.FramePlayer{PlayerID: player.PlayerID, IsAlive: player.IsAlive})
+	}
+	for _, control := range frame.Controls {
+		header.Controls = append(header.Controls, module.FrameControl{PlayerID: control.PlayerID, ConnectionID: control.ConnectionID})
+	}
+	return header
+}
+
+// controlledIndex is the player whose generation this viewer may see.
+func (view *frameView) controlledIndex(viewer module.Viewer) int {
+	frame, grant := view.frame.RuntimeFrame, viewer.Grant
+	if frame.Phase != PhasePlaying || grant == nil || grant.RuntimeEpoch != frame.RuntimeEpoch || grant.PlayerID != viewer.PlayerID {
+		return -1
+	}
+	for index, player := range frame.World.Players {
+		if player.PlayerID != viewer.PlayerID {
+			continue
+		}
+		if player.IsAlive && index < len(frame.Controls) && frame.Controls[index].PlayerID == player.PlayerID && frame.Controls[index].ConnectionID == viewer.ConnectionID && frame.Controls[index].Connected {
+			return index
+		}
+		return -1
+	}
+	return -1
+}
+
+func (view *frameView) ViewKey(viewer module.Viewer) string {
+	if view.controlledIndex(viewer) < 0 {
+		return ""
+	}
+	return viewer.PlayerID + "\x00" + viewer.Grant.ControlGeneration
+}
+
+func (view *frameView) Render(viewer module.Viewer) (json.RawMessage, error) {
+	if view.shared == nil {
+		model := SnapshotForConnection(view.frame.RuntimeFrame, "", "", nil)
+		model.CountdownEndsAt = view.frame.CountdownEndsAt
+		shared, err := json.Marshal(model)
+		if err != nil {
+			return nil, err
+		}
+		view.shared = shared
+	}
+	index := view.controlledIndex(viewer)
+	if index < 0 {
+		return view.shared, nil
+	}
+	offset := 0
+	for occurrence := 0; ; occurrence++ {
+		found := bytes.Index(view.shared[offset:], nullControlGeneration)
+		if found < 0 {
+			return nil, ErrInvalidSimulationState
+		}
+		offset += found
+		if occurrence == index {
+			break
+		}
+		offset += len(nullControlGeneration)
+	}
+	generation, err := json.Marshal(viewer.Grant.ControlGeneration)
+	if err != nil {
+		return nil, err
+	}
+	valueAt := offset + len(nullControlGeneration) - len("null")
+	rendered := make([]byte, 0, len(view.shared)+len(generation))
+	rendered = append(rendered, view.shared[:valueAt]...)
+	rendered = append(rendered, generation...)
+	return append(rendered, view.shared[valueAt+len("null"):]...), nil
 }
 
 func (gameModule) CancellationResult(session gameDomain.SessionSnapshot, reason string, now time.Time) (gameDomain.MatchResult, error) {

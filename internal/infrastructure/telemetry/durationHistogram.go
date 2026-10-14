@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-var durationBounds = [...]time.Duration{time.Millisecond, 5 * time.Millisecond, 10 * time.Millisecond, 20 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond, 250 * time.Millisecond, time.Second}
+// The 15-25 ms buckets resolve jitter around the 16.7 ms step of a 60 Hz scheduler.
+var durationBounds = [...]time.Duration{time.Millisecond, 2 * time.Millisecond, 5 * time.Millisecond, 10 * time.Millisecond, 15 * time.Millisecond, 17 * time.Millisecond, 20 * time.Millisecond, 25 * time.Millisecond, 33 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond, 250 * time.Millisecond, time.Second}
 
 // Fixed buckets keep memory bounded regardless of traffic/room/user count.
 type DurationHistogram struct {
@@ -20,6 +21,7 @@ type DurationSummary struct {
 	MeanMilliseconds     float64 `json:"meanMilliseconds"`
 	MaxMilliseconds      float64 `json:"maxMilliseconds"`
 	P95UpperMilliseconds float64 `json:"p95UpperMilliseconds"`
+	P99UpperMilliseconds float64 `json:"p99UpperMilliseconds"`
 }
 
 func (histogram *DurationHistogram) Observe(duration time.Duration) {
@@ -54,15 +56,20 @@ func (histogram *DurationHistogram) Snapshot() DurationSummary {
 		return result
 	}
 	result.MeanMilliseconds = float64(histogram.sum.Load()) / float64(count) / float64(time.Millisecond)
-	target := count - count/20
+	result.P95UpperMilliseconds = histogram.upperBound(count-count/20, result.MaxMilliseconds)
+	result.P99UpperMilliseconds = histogram.upperBound(count-count/100, result.MaxMilliseconds)
+	return result
+}
+
+// upperBound is the first bucket bound covering target observations, or the
+// maximum when they fall in the overflow bucket.
+func (histogram *DurationHistogram) upperBound(target uint64, maximum float64) float64 {
 	var cumulative uint64
-	result.P95UpperMilliseconds = result.MaxMilliseconds
 	for index, bound := range durationBounds {
 		cumulative += histogram.buckets[index].Load()
 		if cumulative >= target {
-			result.P95UpperMilliseconds = float64(bound) / float64(time.Millisecond)
-			break
+			return float64(bound) / float64(time.Millisecond)
 		}
 	}
-	return result
+	return maximum
 }

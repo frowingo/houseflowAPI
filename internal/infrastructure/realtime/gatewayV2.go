@@ -1,9 +1,11 @@
 package realtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
@@ -24,10 +26,70 @@ type v2PendingMessage struct {
 	sequence int64
 }
 
-// tickFrame is a published runtime frame with its header decoded once per hub.
+// tickFrame is a published runtime frame decoded once per hub. Its periodic
+// snapshot is encoded once per distinct view and the bytes are shared by every
+// connection that sees that view.
 type tickFrame struct {
 	header  module.FrameHeader
-	payload json.RawMessage
+	gameKey string
+	sentAt  time.Time
+	mutex   sync.Mutex
+	view    module.FrameView
+	head    []byte
+	shared  map[string][]byte
+}
+
+func newTickFrame(game module.TickModule, payload json.RawMessage, sentAt time.Time) (*tickFrame, error) {
+	view, err := game.PrepareFrame(payload)
+	if err != nil {
+		return nil, err
+	}
+	return &tickFrame{header: view.Header(), gameKey: game.Definition().GameKey, sentAt: sentAt, view: view}, nil
+}
+
+// message encodes the frame as viewer's snapshot. A response to a request
+// carries its message ID and time and is never shared.
+func (frame *tickFrame) message(viewer module.Viewer, messageID string, sentAt time.Time) ([]byte, error) {
+	frame.mutex.Lock()
+	defer frame.mutex.Unlock()
+	shareable := messageID == "" && sentAt.Equal(frame.sentAt)
+	key := frame.view.ViewKey(viewer)
+	if encoded, exists := frame.shared[key]; shareable && exists {
+		return encoded, nil
+	}
+	payload, err := frame.view.Render(viewer)
+	if err != nil {
+		return nil, err
+	}
+	head := frame.head
+	if !shareable || head == nil {
+		if head, err = snapshotMessageHead(frame.gameKey, messageID, frame.header.StateSequence, sentAt); err != nil {
+			return nil, err
+		}
+	}
+	encoded := make([]byte, 0, len(head)+len(payload)+1)
+	encoded = append(append(append(encoded, head...), payload...), '}')
+	if !shareable {
+		return encoded, nil
+	}
+	if frame.shared == nil {
+		frame.head, frame.shared = head, make(map[string][]byte, 1)
+	}
+	frame.shared[key] = encoded
+	return encoded, nil
+}
+
+// snapshotMessageHead is a snapshot server message up to its payload, the
+// last field, so a rendered payload is embedded without being scanned again.
+func snapshotMessageHead(gameKey, messageID string, sequence int64, sentAt time.Time) ([]byte, error) {
+	encoded, err := json.Marshal(NewV2ServerMessage(module.SnapshotMessageType(gameKey), messageID, &sequence, sentAt, json.RawMessage("null")))
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.HasSuffix(encoded, []byte(`"payload":null}`)) {
+		return nil, errors.New("snapshot payload is not the last message field")
+	}
+	return encoded[:len(encoded)-len("null}")], nil
 }
 
 // v2ClientState is one connection's view of its room's runtime: the newest
@@ -167,12 +229,19 @@ func (hub *roomHub) broadcastEvent(event coordinationAbstract.MessageEnvelope) {
 		}
 	}
 	hub.mutex.RUnlock()
+	if len(clients) == 0 {
+		return
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now()
+	}
 	var frame *tickFrame
 	if event.Type == GameRuntimeSnapshotEventType {
-		frame = &tickFrame{payload: event.Payload}
-		if json.Unmarshal(event.Payload, &frame.header) != nil {
+		decoded, err := newTickFrame(clients[0].v2.game, event.Payload, event.CreatedAt)
+		if err != nil {
 			return
 		}
+		frame = decoded
 	}
 	for _, client := range clients {
 		client.handleV2Event(event, frame)
@@ -181,9 +250,6 @@ func (hub *roomHub) broadcastEvent(event coordinationAbstract.MessageEnvelope) {
 
 func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnvelope, frame *tickFrame) {
 	sentAt := event.CreatedAt
-	if sentAt.IsZero() {
-		sentAt = time.Now()
-	}
 	gameKey := client.v2.gameKey()
 	switch event.Type {
 	case GameRoomAccessEventType:
@@ -207,7 +273,7 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 		client.signalControl()
 	case GameRuntimeSnapshotEventType:
 		if frame != nil {
-			client.enqueueGameFrame(*frame, event.MessageID, event.ConnectionID != "", sentAt)
+			client.enqueueGameFrame(frame, event.MessageID, event.ConnectionID != "", sentAt)
 		}
 	case module.ResultMessageType(gameKey):
 		var result struct {
@@ -249,7 +315,7 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 	}
 }
 
-func (client *gatewayClient) enqueueGameFrame(frame tickFrame, messageID string, targeted bool, sentAt time.Time) {
+func (client *gatewayClient) enqueueGameFrame(frame *tickFrame, messageID string, targeted bool, sentAt time.Time) {
 	client.mutex.Lock()
 	if frame.header.World.SessionID != client.roomID || frame.header.RuntimeEpoch < client.v2.epoch {
 		client.mutex.Unlock()
@@ -263,7 +329,7 @@ func (client *gatewayClient) enqueueGameFrame(frame tickFrame, messageID string,
 			client.mutex.Unlock()
 			return
 		}
-		frame = *client.v2.frame
+		frame = client.v2.frame
 	}
 	if frame.header.RuntimeEpoch > client.v2.epoch {
 		client.v2.grant = nil
@@ -272,7 +338,7 @@ func (client *gatewayClient) enqueueGameFrame(frame tickFrame, messageID string,
 		client.v2.lastBind = time.Time{}
 	}
 	client.v2.epoch, client.v2.sequence, client.v2.phase = frame.header.RuntimeEpoch, frame.header.StateSequence, frame.header.Phase
-	client.v2.frame = &frame
+	client.v2.frame = frame
 	if !targeted {
 		messageID = ""
 	}
@@ -309,12 +375,8 @@ func (client *gatewayClient) enqueueGameFrame(frame tickFrame, messageID string,
 
 // projectFrame renders the frame as this connection's public snapshot; only
 // its own control generation is ever included. Called with client.mutex held.
-func (client *gatewayClient) projectFrame(frame tickFrame, messageID string, sentAt time.Time) ([]byte, error) {
-	model, err := client.v2.game.ProjectFrame(frame.payload, module.Viewer{PlayerID: client.userID, ConnectionID: client.id, Grant: client.v2.grant})
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(NewV2ServerMessage(module.SnapshotMessageType(client.v2.gameKey()), messageID, &frame.header.StateSequence, sentAt, model))
+func (client *gatewayClient) projectFrame(frame *tickFrame, messageID string, sentAt time.Time) ([]byte, error) {
+	return frame.message(module.Viewer{PlayerID: client.userID, ConnectionID: client.id, Grant: client.v2.grant}, messageID, sentAt)
 }
 
 func (client *gatewayClient) readV2Loop() {

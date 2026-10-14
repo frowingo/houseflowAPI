@@ -36,6 +36,8 @@ type managedRoom struct {
 	lobby         lobbyState
 	tick          tickState
 	completion    completionState
+	publishMutex  sync.Mutex
+	audience      audienceState
 }
 
 type roomActivation struct {
@@ -400,9 +402,8 @@ func (room *managedRoom) publishSnapshot(messageID string, snapshot gameDomain.S
 	if err != nil {
 		return err
 	}
-	return room.manager.coordinator.PublishRoomEvent(room.ctx, room.lease, coordinationAbstract.MessageEnvelope{
+	return room.publish(room.ctx, coordinationAbstract.MessageEnvelope{
 		MessageID: messageID,
-		RoomID:    room.lease.RoomID,
 		Type:      GameSessionSnapshotEventType,
 		Sequence:  snapshot.Version,
 		Payload:   payload,
@@ -417,9 +418,8 @@ func (room *managedRoom) publishCommandRejected(
 	if err != nil {
 		return err
 	}
-	return room.manager.coordinator.PublishRoomEvent(room.ctx, room.lease, coordinationAbstract.MessageEnvelope{
+	return room.publish(room.ctx, coordinationAbstract.MessageEnvelope{
 		MessageID:    envelope.MessageID,
-		RoomID:       room.lease.RoomID,
 		Type:         CommandRejectedMessageType,
 		ConnectionID: envelope.ConnectionID,
 		Payload:      payload,

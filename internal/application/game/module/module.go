@@ -269,7 +269,19 @@ type TickModule interface {
 	// settings.
 	RestoreRuntime(checkpoint json.RawMessage, params RestoreParams) (TickRuntime, error)
 	PreviewFrame(params PreviewParams) (Frame, error)
-	ProjectFrame(payload json.RawMessage, viewer Viewer) (any, error)
+	// PrepareFrame decodes a published frame once per instance; the view then
+	// renders it for every connection of the room.
+	PrepareFrame(payload json.RawMessage) (FrameView, error)
+}
+
+// FrameView renders one decoded frame as public snapshots. Viewers with the
+// same ViewKey receive byte-identical snapshots, so the core renders once per
+// key and shares the bytes. Render returns compact JSON, which the core embeds
+// without re-encoding. A view is used by one goroutine at a time.
+type FrameView interface {
+	Header() FrameHeader
+	ViewKey(viewer Viewer) string
+	Render(viewer Viewer) (json.RawMessage, error)
 }
 
 var ErrUnsupportedIntent = errors.New("unsupported gameplay message type")

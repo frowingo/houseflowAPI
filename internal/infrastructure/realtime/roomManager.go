@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
@@ -93,6 +94,30 @@ type RoomManager struct {
 	gameplaySubscription coordinationAbstract.RoomEventSubscription
 	errors               chan RuntimeError
 	workers              sync.WaitGroup
+	// local is this instance's gateway, attached when the gateway is built.
+	local atomic.Value
+}
+
+type audienceHolder struct{ audience localAudience }
+
+func (manager *RoomManager) attachAudience(audience localAudience) {
+	manager.local.Store(audienceHolder{audience})
+}
+
+func (manager *RoomManager) audience() localAudience {
+	holder, _ := manager.local.Load().(audienceHolder)
+	return holder.audience
+}
+
+// track registers a background worker unless the manager is closing.
+func (manager *RoomManager) track() bool {
+	manager.mutex.Lock()
+	defer manager.mutex.Unlock()
+	if manager.closed {
+		return false
+	}
+	manager.workers.Add(1)
+	return true
 }
 
 func NewRoomManager(

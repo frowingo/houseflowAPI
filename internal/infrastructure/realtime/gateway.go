@@ -109,7 +109,7 @@ func NewGateway(
 	if options.PresenceRefresh >= options.PresenceTTL {
 		return nil, errors.New("presence refresh interval must be shorter than presence TTL")
 	}
-	return &Gateway{
+	gateway := &Gateway{
 		coordinator:  coordinator,
 		manager:      manager,
 		sender:       sender,
@@ -118,7 +118,33 @@ func NewGateway(
 		clients:      make(map[string]*gatewayClient),
 		reservations: make(map[*connectionReservation]struct{}),
 		errors:       make(chan RuntimeError, 32),
-	}, nil
+	}
+	manager.attachAudience(gateway)
+	return gateway, nil
+}
+
+// deliverLocal hands an event published by a room this instance owns to the
+// room's local sockets; the Redis copy of the same event is ignored.
+func (gateway *Gateway) deliverLocal(event coordinationAbstract.MessageEnvelope) {
+	gateway.mutex.Lock()
+	hub := gateway.hubs[event.RoomID]
+	gateway.mutex.Unlock()
+	if hub != nil {
+		hub.broadcastEvent(event)
+	}
+}
+
+func (gateway *Gateway) hasConnection(roomID, connectionID string) bool {
+	gateway.mutex.Lock()
+	hub := gateway.hubs[roomID]
+	gateway.mutex.Unlock()
+	if hub == nil {
+		return false
+	}
+	hub.mutex.RLock()
+	defer hub.mutex.RUnlock()
+	_, exists := hub.clients[connectionID]
+	return exists
 }
 
 func (gateway *Gateway) Start(ctx context.Context) error {
@@ -708,6 +734,10 @@ func (hub *roomHub) run() {
 		case event, open := <-hub.subscription.Messages():
 			if !open {
 				return
+			}
+			// This instance's own rooms already delivered it from memory.
+			if event.SourceInstanceID == hub.gateway.coordinator.InstanceID() {
+				continue
 			}
 			hub.broadcastEvent(event)
 		case err, open := <-hub.subscription.Errors():

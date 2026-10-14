@@ -219,7 +219,7 @@ func (room *managedRoom) announceCompletion(result gameDomain.MatchResult) bool 
 		if !room.leaseValid() {
 			return true
 		}
-		if err = room.manager.coordinator.PublishRoomEvent(ctx, room.lease, event); err != nil {
+		if err = room.publish(ctx, event); err != nil {
 			room.manager.report(room.lease.RoomID, err)
 			return true
 		}

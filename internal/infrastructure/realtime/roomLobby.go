@@ -56,7 +56,7 @@ func (room *managedRoom) refreshParticipants(snapshot gameDomain.SessionSnapshot
 		return nil
 	}
 	payload, _ := json.Marshal(ids)
-	return room.manager.coordinator.PublishRoomEvent(ctx, room.lease, coordinationAbstract.MessageEnvelope{MessageID: fmt.Sprintf("access:%s:%d", snapshot.SessionID, time.Now().UnixNano()), Type: GameRoomAccessEventType, Payload: payload})
+	return room.publish(ctx, coordinationAbstract.MessageEnvelope{MessageID: fmt.Sprintf("access:%s:%d", snapshot.SessionID, time.Now().UnixNano()), Type: GameRoomAccessEventType, Payload: payload})
 }
 
 func sameMembers(current, next map[string]string) bool {

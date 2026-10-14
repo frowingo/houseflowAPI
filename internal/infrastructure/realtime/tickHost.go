@@ -89,6 +89,7 @@ func (manager *RoomManager) gameplayLoop(ctx context.Context, subscription coord
 			if room == nil || envelope.Type != GameplayInputMessageType || envelope.FencingToken != room.lease.FencingToken {
 				continue
 			}
+			room.noteRemoteInput()
 			if err := room.submitGameplay(envelope); err != nil {
 				manager.report(envelope.RoomID, err)
 				room.rejectRemoteInput(envelope, err)
@@ -264,11 +265,7 @@ func (room *managedRoom) announceRecovery(runtime module.TickRuntime) error {
 	}
 	ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
 	defer cancel()
-	err = room.manager.coordinator.PublishRoomEvent(ctx, room.lease, coordinationAbstract.MessageEnvelope{MessageID: uuid.NewString(), Type: GameRuntimeSnapshotEventType, Sequence: frame.Sequence, Payload: frame.Payload})
-	if err == nil {
-		room.manager.options.Metrics.roomPublishedBytes.Add(uint64(len(frame.Payload)))
-	}
-	return err
+	return room.publish(ctx, coordinationAbstract.MessageEnvelope{MessageID: uuid.NewString(), Type: GameRuntimeSnapshotEventType, Sequence: frame.Sequence, Payload: frame.Payload})
 }
 
 // publishTickUpdates fans runtime publications out to every instance. A
@@ -305,10 +302,7 @@ func (room *managedRoom) publishTickUpdates(runtime module.TickRuntime) {
 			}
 		}
 		ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-		err = room.manager.coordinator.PublishRoomEvent(ctx, room.lease, event)
-		if err == nil {
-			room.manager.options.Metrics.roomPublishedBytes.Add(uint64(len(event.Payload)))
-		}
+		err = room.publish(ctx, event)
 		cancel()
 		if err != nil {
 			room.manager.report(room.lease.RoomID, err)
@@ -362,5 +356,5 @@ func (room *managedRoom) publishPreviewLocked(connectionID, messageID string) er
 	}
 	ctx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
 	defer cancel()
-	return room.manager.coordinator.PublishRoomEvent(ctx, room.lease, coordinationAbstract.MessageEnvelope{MessageID: messageID, Type: GameRuntimeSnapshotEventType, ConnectionID: connectionID, Sequence: frame.Sequence, Payload: frame.Payload})
+	return room.publish(ctx, coordinationAbstract.MessageEnvelope{MessageID: messageID, Type: GameRuntimeSnapshotEventType, ConnectionID: connectionID, Sequence: frame.Sequence, Payload: frame.Payload})
 }

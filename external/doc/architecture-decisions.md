@@ -784,3 +784,62 @@ Bu yüzden ayarlar rollout tamamlanmadan değiştirilmemelidir. Geri dönüşte 
 `Game` collection'ını yok sayar ve `HOUSE_ROCKETS_ENABLED` secret'ını okur. Bu nedenle Fly
 secret'ı Release 1 kararlı olana kadar silinmez.
 
+
+## ADR-020 — Tick hattında paylaşımlı projeksiyon ve local kısa yol
+
+Bu değişiklikle protokol değişmedi; client'a giden byte'lar öncekiyle birebir aynı ve bu bir
+testle sabitlendi.
+
+**Paylaşımlı projeksiyon.** Önceden her bağlantı yayınlanan frame'i ayrı ayrı decode ediyor,
+kendi snapshot modelini kuruyor ve marshal ediyordu. Şimdi hub frame'i bir kez çözüyor
+(`TickModule.PrepareFrame`). Modülün `FrameView`'u, aynı byte'ları görecek bağlantıları
+`ViewKey` ile gruplar; core her anahtar için bir kez kodlar ve byte'ları paylaştırır. House
+Rockets'ta bağlantıya özel tek alan kontrol eden oyuncunun `controlGeneration`'ıdır. Paylaşılan
+JSON bir kez üretilir, kontrol eden bağlantının varyantı bu alanın değerinin yerine
+yazılmasıyla elde edilir. Snapshot mesajının zarfı da frame başına bir kez kodlanır; payload
+son alan olduğu için yeniden taranmadan araya eklenir. Frame başlığı (`FrameHeader`) da
+modülün görünümünden gelir, frame hub başına tek kez decode edilir.
+
+**Local kısa yol.** Odayı yöneten instance tüm room event'lerini kendi socket'lerine bellekten
+teslim eder (`managedRoom.publish`). Hub, kendi instance'ının Redis'ten dönen kopyasını yok
+sayar. Redis yalnız iki durumda atlanır: local bir bağlantıya hedeflenmiş event'lerde ve başka
+instance'ta socket yokken periyodik frame'lerde. Session, sonuç ve erişim event'leri her zaman
+Redis'ten de gider. Uzak socket bilgisi:
+- presence'tan en fazla 1 saniyelik gecikmeyle okunur;
+- bir uzak socket gameplay bus'tan girdi gönderdiğinde hemen işaretlenir. Yeni bağlanan uzak
+  socket'in ilk işi snapshot istemek olduğundan frame kaçırmaz.
+
+Okunamayan veya bilinmeyen presence "uzakta socket var" sayılır. Redis publish'i Lua ile lease'i
+doğruluyordu; local teslimat aynı korumayı `leaseValid()` ile sağlar. Bu kontrol runtime'ı da
+yöneten, yerelde muhafazakâr hesaplanan lease süresidir. Publish'ler oda başına sıralıdır; local
+ve Redis teslimatı aynı sırayı görür.
+
+**`CriticalKey`.** Her frame'de `fmt.Sprintf` ve outcome için `json.Marshal` yerine tek
+buffer'da kurulur; anlamı aynıdır.
+
+**Ölçüm.** Süre histogramına 60 Hz adımı çevresinde ara bucket'lar (15, 17, 25, 33 ms) ve p99
+eklendi. Yük testi Redis publish ve yalnız local teslim edilen event sayısını raporlar.
+`HOUSEFLOW_LOAD_PLACEMENT=colocated` bir odanın tüm oyuncularını aynı instance'a yerleştirir.
+
+**Paylaşımlı scheduler yapılmadı.** Plan bunu yük testi sonucuna bağlıyordu:
+- Fizik adımı ortalama 0,05 ms sürüyor.
+- Tick aralığı 8 oda × 8 oyuncuda da ortalama 16,67 ms. p99 üst sınırı 20 ms bucket'ında,
+  yani 60 Hz adımının hemen üstünde.
+- Oda başına bir ticker, 8 odada saniyede ~480 uyanma demek; ölçülebilir bir maliyet değil.
+
+Fanout iyileştirmeleri fizik goroutine'inde çalışmadığı için tick aralığını değiştirmez.
+
+**Altyapı.** `min_machines_running` 0'da bırakıldı. Client oyuna gelmeden önce auth ve house
+endpoint'lerine istek attığı için makineyi zaten başlatmış olur. Açık WebSocket'ler Fly proxy'si
+için bağlantı sayıldığından maç sürerken makine otomatik durdurulmaz. Sürekli açık bir makine,
+canlıya çıkıştan sonra trafik ve cold start süresi ölçülerek değerlendirilecek. Performance CPU'ya
+geçilmedi.
+Yük testinde bir oda × 8 oyuncu, M serisi tek çekirdeğin ~%6-7'sini kullanıyor. Fly'ın paylaşımlı
+CPU'su sürekli yükte kotayla sınırlandığından production limitini (`REALTIME_MAX_OWNED_ROOMS=1`)
+artırmadan önce Fly metriklerinde CPU throttling izlenmeli.
+
+**Sonraki adım (yapılmadı).** Dağınık yerleşimde her frame Redis'ten geçmek zorunda. Bir odanın
+socket'leri hangi instance'a düştüyse orada kalıyor. Upgrade isteği, odanın sahibi olan makineye
+Fly'ın `fly-replay` header'ıyla yönlendirilirse bütün odalar colocated olur ve local kısa yol
+frame trafiğinin tamamını Redis'ten çıkarır. Bu, Fly'a bağımlı bir routing kararı olduğu için
+ayrıca değerlendirilmelidir.

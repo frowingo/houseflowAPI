@@ -142,3 +142,36 @@ Kalıcı veri değişimi:
 - Session dokümanı `configVersion` ve ~200 byte'lık `settings` alır.
 - `Game` collection'ında oyun başına bir doküman tutulur.
 - Instance başına config okuması 30 saniyede bir sorgudur.
+
+## 8. Faz 4 sonrası — 14 Ekim 2026
+
+Protokol ve wire byte'ları değişmedi (ADR-020, byte eşitliği testi).
+
+| Benchmark (8 oyuncu) | Faz 0 | Faz 3 | Faz 4 |
+|---|---|---|---|
+| `FramePublish` ns/frame | 8.461 | 8.167 | ~7.000 |
+| `FramePublish` alloc/frame | 44 | 44 | 6 |
+| `FrameFanout` ns/frame | 337.243 | 360.105 | ~61.000 |
+| `FrameFanout` alloc/frame | 817 | 885 | 151 |
+| Wire byte/bağlantı | 3.805 | 3.805 | 3.805 |
+
+Yük testi Faz 3 (HEAD worktree) ve Faz 4 aynı oturumda, 5 saniyelik koşularla dönüşümlü
+çalıştırıldı. Değerler iki worker'ın toplamı ve koşuların ortalamasıdır.
+
+| Yerleşim | Senaryo | CPU % (F3 → F4) | Redis komut/s (F3 → F4) |
+|---|---|---|---|
+| colocated | 1 oda × 8 | 7,7 → 6,3 | 25 → 6 |
+| colocated | 4 oda × 8 | 24,3 → 18,7 | 90 → 14 |
+| colocated | 8 oda × 8 | 40,3 → 31,0 | 175 → 23 |
+| split | 4 oda × 8 | 30,2 → 28,0 | 733 → 734 |
+| split | 8 oda × 8 | 38,4 → 40,0 | 1.448 → 1.459 |
+
+- **Colocated** (odanın tüm socket'leri aynı instance'ta): frame'ler Redis'e hiç gitmiyor
+  (`roomPublishesPerSecond=0`). Redis komutları ~%87, CPU ~%23 düşüyor.
+- **Split** (oyuncular instance'lara dönüşümlü): her odada uzak socket olduğu için frame'ler Redis'ten
+  gitmek zorunda; Redis hacmi aynı. CPU farkı bu makinede ölçüm gürültüsünün içinde. Fanout
+  kazancı oda başına saniyede birkaç ms; toplam CPU'yu Redis ve socket I/O belirliyor.
+- **Tick aralığı p99**: iki sürümde de 20 ms bucket'ında, ortalama 16,67 ms. Fanout fizik
+  goroutine'inde çalışmadığından bu değer değişmedi. İlk turda iki sürümde de iki worker'da aynı
+  anda görülen 40-77 ms'lik tekil boşluklar makine kaynaklıydı; dönüşümlü tekrar koşularında
+  görülmedi (maksimum 18-28 ms).

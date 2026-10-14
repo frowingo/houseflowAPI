@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -118,6 +120,9 @@ func verifyTickModule(t *testing.T, game module.TickModule) {
 	if header := decodeFrameHeader(t, preview.Payload); header.Phase != module.PhaseCountdown || header.RuntimeEpoch != 1 || header.StateSequence != 3 || preview.Sequence != 3 || header.World.SessionID != session.SessionID {
 		t.Fatalf("preview header = %+v", header)
 	}
+	if previewView, err := game.PrepareFrame(preview.Payload); err != nil || !reflect.DeepEqual(previewView.Header(), decodeFrameHeader(t, preview.Payload)) {
+		t.Fatalf("preview view header: %v", err)
+	}
 
 	runtime, err := game.NewRuntime(module.RuntimeParams{SessionID: session.SessionID, HouseID: session.HouseID, StartedAt: session.StartedAt, Players: players, Epoch: 1, Now: session.StartedAt})
 	if err != nil {
@@ -131,8 +136,25 @@ func verifyTickModule(t *testing.T, game module.TickModule) {
 	if header.Phase != module.PhasePlaying || header.RuntimeEpoch != 1 || header.StateSequence != update.Frame.Sequence || len(header.World.Players) != len(players) || !header.Alive("contract-a") {
 		t.Fatalf("frame header = %+v", header)
 	}
-	if _, err := game.ProjectFrame(update.Frame.Payload, module.Viewer{PlayerID: "contract-a", ConnectionID: "contract-connection"}); err != nil {
+	// Connections without a private view share one encoding, so their
+	// snapshots must not depend on who is watching.
+	view, err := game.PrepareFrame(update.Frame.Payload)
+	if err != nil {
 		t.Fatal(err)
+	}
+	// The transport routes frames by the view's header; it must describe the
+	// published payload exactly.
+	if !reflect.DeepEqual(view.Header(), header) {
+		t.Fatalf("view header = %+v, payload header = %+v", view.Header(), header)
+	}
+	spectators := []module.Viewer{{PlayerID: "contract-a", ConnectionID: "contract-connection"}, {PlayerID: "contract-outsider", ConnectionID: "other-connection"}}
+	first, err := view.Render(spectators[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := view.Render(spectators[1])
+	if err != nil || view.ViewKey(spectators[0]) != view.ViewKey(spectators[1]) || !bytes.Equal(first, second) || !json.Valid(first) {
+		t.Fatalf("spectator views differ: %s %s %v", first, second, err)
 	}
 
 	checkpoint := runtime.Checkpoint()

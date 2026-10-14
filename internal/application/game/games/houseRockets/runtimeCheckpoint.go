@@ -2,7 +2,7 @@ package houseRockets
 
 import (
 	"encoding/json"
-	"fmt"
+	"strconv"
 	"time"
 
 	gameDomain "houseflowApi/internal/application/game/domain"
@@ -46,13 +46,33 @@ type RuntimeCheckpoint struct {
 
 // CriticalKey excludes movement/input ACK changes. A control handover, an
 // elimination or a terminal proposal must be protected before it is announced.
+// It is computed for every published frame, so it is built in one buffer.
 func (checkpoint RuntimeCheckpoint) CriticalKey() string {
-	key := ""
+	size := 16
 	for index, player := range checkpoint.World.Players {
-		key += fmt.Sprintf("%s:%t:%s:%s;", player.PlayerID, player.IsAlive, checkpoint.Controls[index].ConnectionID, checkpoint.Controls[index].Generation)
+		size += len(player.PlayerID) + len(checkpoint.Controls[index].ConnectionID) + len(checkpoint.Controls[index].Generation) + 5
 	}
-	payload, _ := json.Marshal(checkpoint.World.Outcome)
-	return key + string(payload)
+	key := make([]byte, 0, size)
+	for index, player := range checkpoint.World.Players {
+		key = append(key, player.PlayerID...)
+		key = append(key, ':')
+		key = strconv.AppendBool(key, player.IsAlive)
+		key = append(key, ':')
+		key = append(key, checkpoint.Controls[index].ConnectionID...)
+		key = append(key, ':')
+		key = append(key, checkpoint.Controls[index].Generation...)
+		key = append(key, ';')
+	}
+	if outcome := checkpoint.World.Outcome; outcome != nil {
+		key = append(key, outcome.Status...)
+		key = append(key, ':')
+		key = append(key, outcome.EndReason...)
+		if outcome.WinnerID != nil {
+			key = append(key, ':')
+			key = append(key, *outcome.WinnerID...)
+		}
+	}
+	return string(key)
 }
 
 func (runtime *Runtime) checkpointLocked() RuntimeCheckpoint {
