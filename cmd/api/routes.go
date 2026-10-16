@@ -27,6 +27,7 @@ import (
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
+	infrastructureAppEvents "houseflowApi/internal/infrastructure/appEvents"
 	"houseflowApi/internal/infrastructure/cqrs"
 	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
 	"houseflowApi/internal/infrastructure/middleware"
@@ -47,7 +48,7 @@ func SetupRoutes(
 	dbName string,
 	cfg config.ConfigInternal,
 	coordinator coordinationAbstract.Coordinator,
-) (*realtime.Service, error) {
+) (*realtime.Service, *infrastructureAppEvents.Service, error) {
 	applicationMediator := cqrs.New()
 	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
@@ -93,6 +94,11 @@ func SetupRoutes(
 	// - AUTH -
 	userRepository := database.NewDbContext[entities.User](client, dbName)
 	houseRepository := database.NewDbContext[entities.House](client, dbName)
+	appEventBus, _ := coordinator.(coordinationAbstract.AppEventBus)
+	appEventService := infrastructureAppEvents.NewService(appEventBus, houseRepository, userRepository, webSocketAllowedOrigins())
+	// The socket sends ready, house.changed and user.changed; clients refetch over HTTP.
+	appEventRoutes := api.Group("/events", middleware.AuthRequired(jwtService, localizationCache))
+	appEventRoutes.Get("", appEventService.UpgradeMiddleware(), appEventService.Handler())
 	userInfoHistoryRepository := database.NewDbContext[entities.UserInfoHistory](client, dbName)
 	notificationService := services.NewNotificationService(cfg.SMTP.Password)
 	loginHandler := authCommands.NewLoginHandler(userRepository, jwtService)
@@ -115,7 +121,12 @@ func SetupRoutes(
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ForgotPasswordCommand](applicationMediator, forgotPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ResetPasswordCommand](applicationMediator, resetPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.SendEmailVerificationCodeCommand](applicationMediator, sendEmailVerificationCodeHandler)
-	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](applicationMediator, validateEmailHandler)
+	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(validateEmailHandler, func(ctx context.Context, command authCommands.ValidateEmailCommand, _ cqrs.NoResult) {
+			if user, err := userRepository.FindByColumn(ctx, "email", command.Email); err == nil && user != nil {
+				appEventService.UsersChanged(ctx, user.Id.Hex())
+			}
+		}))
 	cqrs.MustRegister[*dtos.AuthUserResultModel, authQueries.ValidateAuthQuery](applicationMediator, validateAuthHandler)
 	authController := controllers.NewAuthController(applicationMediator, localizationCache)
 
@@ -138,7 +149,7 @@ func SetupRoutes(
 	// Realtime games need the coordinator; without it no game module is registered.
 	gameRegistry, err := games.NewRegistry(games.Options{Realtime: coordinator != nil})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	gameConfigRepository := database.NewGameConfigRepository(client, dbName)
 	gameConfigBus, _ := coordinator.(coordinationAbstract.GameConfigBus)
@@ -185,8 +196,15 @@ func SetupRoutes(
 	getImageByPublicIDHandler := imageAssetQueries.NewGetImageByPublicIDHandler(imageAssetRepository)
 
 	cqrs.MustRegister[*dtos.NewUserModel, userCommands.CreateUserCommand](applicationMediator, createUserHandler)
-	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](applicationMediator, deleteUserHandler)
-	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](applicationMediator, updateProfileHandler)
+	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](applicationMediator,
+		appEventService.NotifyDeleteUser(deleteUserHandler, houseRepository))
+	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(updateProfileHandler, func(ctx context.Context, _ userCommands.UpdateProfileCommand, result *dtos.UserResultModel) {
+			appEventService.UsersChanged(ctx, result.Id)
+			for _, houseID := range result.HouseIds {
+				appEventService.HouseChanged(ctx, houseID, false)
+			}
+		}))
 	cqrs.MustRegister[*dtos.UserResultModel, userQueries.GetUserByEmailQuery](applicationMediator, getUserByEmailHandler)
 	cqrs.MustRegister[[]dtos.UserResultModel, userQueries.ListUsersQuery](applicationMediator, listUsersHandler)
 	cqrs.MustRegister[[]dtos.UserResultModel, userQueries.GetUsersByHouseQuery](applicationMediator, getUsersByHouseHandler)
@@ -266,12 +284,29 @@ func SetupRoutes(
 		houseChoreReviewVoteRepository,
 		houseAnnouncementRepository,
 	)
-	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](applicationMediator, createHouseHandler)
+	cqrs.MustRegister[*entities.House, housecommands.CreateHouseCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(createHouseHandler, func(ctx context.Context, _ housecommands.CreateHouseCommand, result *entities.House) {
+			appEventService.HouseChanged(ctx, result.Id.Hex(), true)
+		}))
 	cqrs.MustRegister[*dtos.HouseInviteCodeResponseModel, housecommands.GenerateHouseInviteCodeCommand](applicationMediator, generateHouseInviteCodeHandler)
-	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](applicationMediator, joinHouseHandler)
-	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](applicationMediator, createAnnouncementHandler)
-	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housecommands.UpdateHouseProfileCommand](applicationMediator, updateHouseProfileHandler)
-	cqrs.MustRegister[cqrs.NoResult, housecommands.ExitHouseCommand](applicationMediator, exitHouseHandler)
+	cqrs.MustRegister[*entities.House, housecommands.JoinHouseCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(joinHouseHandler, func(ctx context.Context, command housecommands.JoinHouseCommand, result *entities.House) {
+			appEventService.HouseChanged(ctx, result.Id.Hex(), false)
+			appEventService.UsersChanged(ctx, command.UserID)
+		}))
+	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(createAnnouncementHandler, func(ctx context.Context, command housecommands.CreateAnnouncementCommand, _ *dtos.AnnouncementResponseModel) {
+			appEventService.HouseChanged(ctx, command.HouseID, false)
+		}))
+	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housecommands.UpdateHouseProfileCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(updateHouseProfileHandler, func(ctx context.Context, command housecommands.UpdateHouseProfileCommand, _ *dtos.HouseInfosResponseModel) {
+			appEventService.HouseChanged(ctx, command.HouseID, true)
+		}))
+	cqrs.MustRegister[cqrs.NoResult, housecommands.ExitHouseCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(exitHouseHandler, func(ctx context.Context, command housecommands.ExitHouseCommand, _ cqrs.NoResult) {
+			appEventService.HouseChanged(ctx, command.HouseID, false)
+			appEventService.UsersChanged(ctx, command.TargetUserID)
+		}))
 	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housequeries.GetHouseInfosQuery](applicationMediator, getHouseInfosHandler)
 	cqrs.MustRegister[*dtos.HouseDetailsModel, housequeries.GetHouseDetailsQuery](applicationMediator, getHouseDetailsHandler)
 	houseController := controllers.NewHouseController(
@@ -320,10 +355,24 @@ func SetupRoutes(
 		houseMembershipPolicy,
 		choreWorkflowPolicy,
 	)
-	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](applicationMediator, createChoreHandler)
-	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](applicationMediator, updateChoreHandler)
-	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](applicationMediator, updateChoreStatusHandler)
-	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](applicationMediator, reviewChoreHandler)
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(createChoreHandler, func(ctx context.Context, _ choreCommands.CreateChoreCommand, result *dtos.ChoreResponseModel) {
+			appEventService.HouseChanged(ctx, result.HouseId, false)
+		}))
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(updateChoreHandler, func(ctx context.Context, _ choreCommands.UpdateChoreCommand, result *dtos.ChoreResponseModel) {
+			appEventService.HouseChanged(ctx, result.HouseId, false)
+		}))
+	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(updateChoreStatusHandler, func(ctx context.Context, command choreCommands.UpdateChoreStatusCommand, result []dtos.ChoreResponseModel) {
+			if len(result) > 0 {
+				appEventService.HouseChanged(ctx, command.HouseID, false)
+			}
+		}))
+	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(reviewChoreHandler, func(ctx context.Context, _ choreCommands.ReviewChoreCommand, result *dtos.ChoreResponseModel) {
+			appEventService.HouseChanged(ctx, result.HouseId, false)
+		}))
 	choreController := controllers.NewChoreController(applicationMediator, localizationCache)
 
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
@@ -366,11 +415,11 @@ func SetupRoutes(
 				)
 			})
 		}
-		return nil, nil
+		return nil, appEventService, nil
 	}
 	limits, err := config.LoadRealtimeLimits()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	realtimeService, err := realtime.NewService(
 		coordinator,
@@ -384,13 +433,14 @@ func SetupRoutes(
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := realtimeService.Start(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, path := range realtimePaths {
 		gameRoutes.Get(path, realtimeService.UpgradeMiddleware(), realtimeService.Handler())
 	}
-	return realtimeService, nil
+	appEventService.Start(ctx)
+	return realtimeService, appEventService, nil
 }
