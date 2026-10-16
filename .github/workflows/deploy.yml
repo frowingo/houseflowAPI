@@ -92,8 +92,8 @@ jobs:
           JOIN_CODE_SECRET="${{ secrets.JOIN_CODE_SECRET }}"
           SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}"
           APP_ENV="production"
-          REALTIME_MAX_OWNED_ROOMS="1"
-          REALTIME_MAX_CONNECTIONS="8"
+          REALTIME_MAX_OWNED_ROOMS="4"
+          REALTIME_MAX_CONNECTIONS="32"
           --app houseflowapi
           --stage
         env:

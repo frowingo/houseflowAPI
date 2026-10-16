@@ -909,3 +909,28 @@ kullanır.
 
 **Rolling deploy.** Turn oyunu açılmadıkça yeni alan yazılmaz. Pilot kapalı çıktığı için önceki
 sürüm turn session'ı görmez. Tick oyunlarının davranışı ve wire formatları değişmedi.
+
+## ADR-022 — WebSocket sıkıştırması ve oda kapasitesi
+
+Gateway permessage-deflate'i destekler (`EnableCompression`). Sıkıştırma bağlantı başına
+anlaşılarak açılır:
+- teklif eden client sıkıştırılmış snapshot alır;
+- etmeyen client eskisi gibi düz veri alır.
+
+Bu yüzden değişiklik geriye uyumludur ve protokolü değiştirmez. Android client'ı (OkHttp 4.12)
+sıkıştırmayı kendiliğinden teklif eder. iOS'taki `URLSessionWebSocketTask`'ın teklif edip
+etmediği canlıda handshake'ten görülecek.
+
+Ölçüm:
+- **Gerçek gateway, 2 oyunculu maç:** ağdan okunan byte snapshot başına 1.566'dan 684'e
+  iniyor (%56).
+- **8 oyunculu snapshot:** 3.805'ten yaklaşık 950 byte'a iniyor (%75).
+- **Sunucu maliyeti:** Sıkıştırma her bağlantı için ayrı yapılır. Bir worker'da 4 oda × 8 oyuncu
+  varken CPU %15'ten %18,5'e çıkıyor (yerel ölçüm, `GOMAXPROCS=1`); ACK süreleri ve hata sayıları
+  değişmiyor.
+
+Production limitleri makine başına 1 oda / 8 bağlantıdan 4 oda / 32 bağlantıya çıkarıldı. Önceki
+değerler ilk canlı test için seçilmişti ve aynı anda en fazla 2 evin oda açmasına izin veriyordu.
+Yerel ölçümde bir makinenin 4 dolu odası tek M serisi çekirdeğin yaklaşık %19'unu kullanıyor.
+Fly'ın paylaşımlı CPU'su daha yavaş ve sürekli yükte kotayla sınırlı olduğundan bu limit
+staging'de Fly üzerinde yük testiyle doğrulanmalı. Canlıda da CPU throttling izlenmelidir.

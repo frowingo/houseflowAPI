@@ -175,3 +175,17 @@ Yük testi Faz 3 (HEAD worktree) ve Faz 4 aynı oturumda, 5 saniyelik koşularla
   goroutine'inde çalışmadığından bu değer değişmedi. İlk turda iki sürümde de iki worker'da aynı
   anda görülen 40-77 ms'lik tekil boşluklar makine kaynaklıydı; dönüşümlü tekrar koşularında
   görülmedi (maksimum 18-28 ms).
+
+## 9. WebSocket sıkıştırması — 17 Ekim 2026
+
+`HOUSEFLOW_LOAD_COMPRESSION=true` yük testi client'larının permessage-deflate teklif etmesini
+sağlar. Yerleşim colocated, 5 saniyelik koşu, iki turun ortalaması, worker başına CPU:
+
+| Senaryo | Sıkıştırmasız | Sıkıştırmalı |
+|---|---|---|
+| 4 oda × 8 oyuncu (worker başına 2 oda) | %10,1 | %12,4 |
+| 8 oda × 8 oyuncu (worker başına 4 oda) | %15,0 | %18,5 |
+
+Yük testi client'ının raporladığı `receivedBytesPerSecond` açılmış mesaj boyutudur. Ağdaki
+kazancı `TestRealtimeCompressionIsNegotiatedPerConnection` ölçer: 2 oyuncuda snapshot başına
+%56.
