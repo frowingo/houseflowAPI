@@ -383,7 +383,10 @@ func runHouseRocketsLoad(t *testing.T, roomCount, playerCount int, duration time
 					t.Fatal("HTTP discovery did not reuse unique active room")
 				}
 			}
-			connection, _, err := ws.DefaultDialer.Dial("ws"+worker.url[4:]+"/api/v1/game/"+room.sessionID+"/realtime?protocolVersion=2", http.Header{"Authorization": []string{"Bearer " + generateGatewayToken(t, jwt, id)}})
+			// HOUSEFLOW_LOAD_COMPRESSION=true makes clients offer permessage-deflate.
+			dialer := *ws.DefaultDialer
+			dialer.EnableCompression = os.Getenv("HOUSEFLOW_LOAD_COMPRESSION") == "true"
+			connection, _, err := dialer.Dial("ws"+worker.url[4:]+"/api/v1/game/"+room.sessionID+"/realtime?protocolVersion=2", http.Header{"Authorization": []string{"Bearer " + generateGatewayToken(t, jwt, id)}})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -20,6 +20,7 @@ import (
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
+	"houseflowApi/internal/infrastructure/appEvents"
 	"houseflowApi/internal/infrastructure/realtime"
 )
 
@@ -118,12 +119,13 @@ func runAPI() error {
 		controllers.ReadinessController(coordinationReadiness(coordinator)),
 	)
 
-	realtimeService, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, coordinator)
+	realtimeService, appEventService, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, coordinator)
 	if err != nil {
 		return fmt.Errorf("initialize realtime room runtime: %w", err)
 	}
 	defer closeRealtimeService(realtimeService)
-	go observeRealtime(rootCtx, coordinator, realtimeService)
+	defer closeAppEventService(appEventService)
+	go observeRealtime(rootCtx, coordinator, realtimeService, appEventService)
 
 	listenError := make(chan error, 1)
 	go func() {
@@ -166,6 +168,17 @@ func closeRealtimeService(service *realtime.Service) {
 	defer cancel()
 	if err := service.Close(ctx); err != nil && err != context.Canceled {
 		log.Printf("realtime service shutdown failed: %v", err)
+	}
+}
+
+func closeAppEventService(service *appEvents.Service) {
+	if service == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	if err := service.Close(ctx); err != nil && err != context.Canceled {
+		log.Printf("app event service shutdown failed: %v", err)
 	}
 }
 

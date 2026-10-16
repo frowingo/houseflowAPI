@@ -9,11 +9,12 @@ import (
 	"time"
 
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
+	"houseflowApi/internal/infrastructure/appEvents"
 	"houseflowApi/internal/infrastructure/coordination"
 	"houseflowApi/internal/infrastructure/realtime"
 )
 
-func observeRealtime(ctx context.Context, coordinator coordinationAbstract.Coordinator, service *realtime.Service) {
+func observeRealtime(ctx context.Context, coordinator coordinationAbstract.Coordinator, service *realtime.Service, appEvents *appEvents.Service) {
 	if service == nil {
 		return
 	}
@@ -36,6 +37,9 @@ func observeRealtime(ctx context.Context, coordinator coordinationAbstract.Coord
 				Metrics() coordination.RedisMetricsSnapshot
 			}); ok {
 				attributes = append(attributes, "redis", provider.Metrics())
+			}
+			if appEvents != nil {
+				attributes = append(attributes, "appEvents", appEvents.Stats())
 			}
 			logger.Info("realtimeMetrics", attributes...)
 		}
