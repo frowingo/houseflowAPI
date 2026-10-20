@@ -62,6 +62,7 @@ const (
 	ErrorKindConflict
 	ErrorKindRateLimited
 	ErrorKindUnavailable
+	ErrorKindUnauthorized
 )
 
 type ApplicationError struct {
@@ -97,6 +98,10 @@ func NewConflictError(key string, args ...string) error {
 
 func NewRateLimitError(key string, args ...string) error {
 	return newApplicationError(ErrorKindRateLimited, key, nil, args...)
+}
+
+func NewUnauthorizedError(key string, args ...string) error {
+	return newApplicationError(ErrorKindUnauthorized, key, nil, args...)
 }
 
 func NewUnavailableError(key string, cause error, args ...string) error {

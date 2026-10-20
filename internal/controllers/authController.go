@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"houseflowApi/external/validator"
+	authAbstract "houseflowApi/internal/application/auth/abstract"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authQueries "houseflowApi/internal/application/auth/queries"
+	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
@@ -127,6 +129,55 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 	}
 
 	return c.Status(201).JSON(fiber.Map{"token": token})
+}
+
+// @Summary Social Sign-In
+// @Description Signs in with a Google or Apple credential, creating the account on first use. Google sends idToken (and nonce if one was used). Apple sends idToken, the raw nonce whose SHA-256 hex digest was given to Apple, and on the first authorization authorizationCode, firstName and lastName. Returns 201 when a new account was created.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param provider path string true "Provider" Enums(google, apple)
+// @Param body body dtos.SocialAuthRequestModel true "Provider credential"
+// @Success 200 {object} dtos.SocialAuthResponseModel "Signed in to an existing account"
+// @Success 201 {object} dtos.SocialAuthResponseModel "New account created"
+// @Failure 400 {object} map[string]interface{} "Bad request, provider not supported or email missing"
+// @Failure 401 {object} map[string]interface{} "Provider credential could not be verified"
+// @Failure 409 {object} map[string]interface{} "Email registered with another sign-in method"
+// @Failure 503 {object} map[string]interface{} "Provider temporarily unavailable"
+// @Router /auth/social/{provider} [post]
+func (r *AuthController) SocialAuth(c *fiber.Ctx) error {
+	provider, ok := entities.ParseSocialProvider(strings.ToLower(c.Params("provider")))
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "auth.error.provider_not_supported"))
+	}
+
+	model := new(dtos.SocialAuthRequestModel)
+	if err := c.BodyParser(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.cannot_parse_json"))
+	}
+	if err := r.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+	}
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	result, err := cqrs.Send[dtos.SocialAuthResponseModel](ctx, r.sender, authCommands.SocialAuthCommand{
+		Provider: provider,
+		Credential: authAbstract.SocialCredential{
+			IDToken: model.IDToken, AccessToken: model.AccessToken,
+			Nonce: model.Nonce, AuthorizationCode: model.AuthorizationCode,
+		},
+		Firstname: model.Firstname, Lastname: model.Lastname, Language: model.Language,
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	status := fiber.StatusOK
+	if result.IsNewUser {
+		status = fiber.StatusCreated
+	}
+	return c.Status(status).JSON(result)
 }
 
 // @Summary Forgot Password

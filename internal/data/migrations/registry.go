@@ -78,5 +78,9 @@ func AllMigrations() []Migration {
 		&gameConfig{},
 		// --- Turn-Based Games ---
 		&turnGameLocalizations{},
+		// --- Social Sign-In ---
+		&userAddSignUpProvider{},
+		&userIdentityCollectionMigration{},
+		&socialAuthLocalizations{},
 	}
 }

@@ -47,6 +47,7 @@ func SetupRoutes(
 	client *mongo.Client,
 	dbName string,
 	cfg config.ConfigInternal,
+	socialAuthConfig config.ConfigSocialAuth,
 	coordinator coordinationAbstract.Coordinator,
 ) (*realtime.Service, *infrastructureAppEvents.Service, error) {
 	applicationMediator := cqrs.New()
@@ -115,15 +116,24 @@ func SetupRoutes(
 	validateEmailHandler := authCommands.NewValidateEmailHandler(
 		userRepository, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
-	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository, houseRepository, jwtService)
+	userIdentityRepository := database.NewDbContext[entities.UserIdentity](client, dbName)
+	socialVerifiers, socialKeepers, err := socialAuthAdapters(socialAuthConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	socialAuthHandler := authCommands.NewSocialAuthHandler(
+		userRepository, userIdentityRepository, userInfoHistoryRepository, jwtService, socialVerifiers, socialKeepers,
+	)
+	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository, houseRepository, userIdentityRepository, jwtService)
 	cqrs.MustRegister[string, authCommands.LoginCommand](applicationMediator, loginHandler)
 	cqrs.MustRegister[string, authCommands.SignUpCommand](applicationMediator, signUpHandler)
+	cqrs.MustRegister[dtos.SocialAuthResponseModel, authCommands.SocialAuthCommand](applicationMediator, socialAuthHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ForgotPasswordCommand](applicationMediator, forgotPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ResetPasswordCommand](applicationMediator, resetPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.SendEmailVerificationCodeCommand](applicationMediator, sendEmailVerificationCodeHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](applicationMediator,
 		infrastructureAppEvents.NotifyAfter(validateEmailHandler, func(ctx context.Context, command authCommands.ValidateEmailCommand, _ cqrs.NoResult) {
-			if user, err := userRepository.FindByColumn(ctx, "email", command.Email); err == nil && user != nil {
+			if user, err := userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email)); err == nil && user != nil {
 				appEventService.UsersChanged(ctx, user.Id.Hex())
 			}
 		}))
@@ -134,6 +144,7 @@ func SetupRoutes(
 	authRoutes.Get("/isAuth", authController.IsAuth)
 	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
+	authRoutes.Post("/social/:provider", authController.SocialAuth)
 	authRoutes.Post("/forget", authController.ForgotPassword)
 	authRoutes.Post("/reset", authController.ResetPassword)
 	authRoutes.Get("/validate-email", middleware.AuthRequired(jwtService, localizationCache), authController.SendEmailVerificationCode)
@@ -185,7 +196,7 @@ func SetupRoutes(
 	)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
-	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository, userIdentityRepository, socialKeepers)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(userRepository, userInfoHistoryRepository)
 	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(userRepository)
 	listUsersHandler := userQueries.NewListUsersHandler(userRepository)
@@ -233,6 +244,8 @@ func SetupRoutes(
 	userRoutes.Post("/images", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.CreateImageAsset)
 	userRoutes.Put("/images", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.UpdateImageAsset)
 	userRoutes.Put("/profile/:id", userController.UpdateProfile)
+	// Registered before "/:id" so "me" is not taken as a user id.
+	userRoutes.Delete("/me", userController.DeleteMe)
 	userRoutes.Delete("/:id", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.DeleteUser)
 	// ----------
 

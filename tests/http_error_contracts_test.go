@@ -23,6 +23,7 @@ func TestApplicationErrorsMapToHTTPContract(t *testing.T) {
 		{name: "forbidden", err: helpers.NewForbiddenError("resource.forbidden"), wantStatus: fiber.StatusForbidden, wantError: "resource.forbidden"},
 		{name: "conflict", err: helpers.NewConflictError("resource.conflict"), wantStatus: fiber.StatusConflict, wantError: "resource.conflict"},
 		{name: "rate limited", err: helpers.NewRateLimitError("resource.rate_limited"), wantStatus: fiber.StatusTooManyRequests, wantError: "resource.rate_limited"},
+		{name: "unauthorized", err: helpers.NewUnauthorizedError("resource.unauthorized"), wantStatus: fiber.StatusUnauthorized, wantError: "resource.unauthorized"},
 		{name: "unavailable", err: helpers.NewUnavailableError("resource.unavailable", errors.New("connection failed")), wantStatus: fiber.StatusServiceUnavailable, wantError: "resource.unavailable"},
 		{name: "unknown errors are hidden", err: errors.New("database credentials leaked"), wantStatus: fiber.StatusInternalServerError, wantError: "common.error.internal_server_error"},
 	}

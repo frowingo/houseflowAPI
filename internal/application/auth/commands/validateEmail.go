@@ -37,11 +37,11 @@ func NewValidateEmailHandler(
 }
 
 func (h *ValidateEmailHandler) Handle(ctx context.Context, command ValidateEmailCommand) (cqrs.NoResult, error) {
-	if !helpers.IsResetCodeValid(command.Email, command.Code, h.resetSecret, h.validityMinutes) {
+	if !helpers.IsResetCodeValid(helpers.NormalizeEmail(command.Email), command.Code, h.resetSecret, h.validityMinutes) {
 		return cqrs.NoResult{}, helpers.NewLocalizedError("auth.error.invalid_or_expired_email_verification_code")
 	}
 
-	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
 	if err != nil {
 		return cqrs.NoResult{}, err
 	}

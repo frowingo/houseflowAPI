@@ -238,6 +238,85 @@
                 }
             }
         },
+        "/auth/social/{provider}": {
+            "post": {
+                "description": "Signs in with a Google or Apple credential, creating the account on first use. Google sends idToken (and nonce if one was used). Apple sends idToken, the raw nonce whose SHA-256 hex digest was given to Apple, and on the first authorization authorizationCode, firstName and lastName. Returns 201 when a new account was created.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Social Sign-In",
+                "parameters": [
+                    {
+                        "enum": [
+                            "google",
+                            "apple"
+                        ],
+                        "type": "string",
+                        "description": "Provider",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Provider credential",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Signed in to an existing account",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthResponseModel"
+                        }
+                    },
+                    "201": {
+                        "description": "New account created",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request, provider not supported or email missing",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Provider credential could not be verified",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Email registered with another sign-in method",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Provider temporarily unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/auth/validate-email": {
             "get": {
                 "description": "Sends a 6-character verification code to the authenticated user's email address.",
@@ -1996,6 +2075,42 @@
                 ]
             }
         },
+        "/user/me": {
+            "delete": {
+                "description": "Permanently deletes the signed-in user's account. Houses the user shares pass to their first remaining member when the user owns them; houses with no other member are deleted with their chores, announcements, notifications and history. A linked Apple authorization is revoked.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Delete own account",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
         "/user/profile/{id}": {
             "put": {
                 "description": "Update user profile fields. Only provided (non-null) fields will be updated.",
@@ -2149,6 +2264,23 @@
         }
     },
     "definitions": {
+        "houseflowApi_internal_data_entities.AuthProvider": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4
+            ],
+            "x-enum-varnames": [
+                "ProviderHouseflow",
+                "ProviderGoogle",
+                "ProviderApple",
+                "ProviderFacebook",
+                "ProviderSnapchat"
+            ]
+        },
         "houseflowApi_internal_data_entities.ChoreLevel": {
             "type": "integer",
             "enum": [
@@ -2407,6 +2539,9 @@
                 "firstName": {
                     "type": "string"
                 },
+                "hasPassword": {
+                    "type": "boolean"
+                },
                 "houseList": {
                     "type": "array",
                     "items": {
@@ -2437,8 +2572,22 @@
                 "lastName": {
                     "type": "string"
                 },
+                "linkedProviders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_data_entities.AuthProvider"
+                    }
+                },
                 "phoneNumber": {
                     "type": "string"
+                },
+                "signUpProvider": {
+                    "description": "SignUpProvider is where the account was created: 0 email/password,\n1 Google, 2 Apple, 3 Facebook, 4 Snapchat.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/houseflowApi_internal_data_entities.AuthProvider"
+                        }
+                    ]
                 },
                 "updatedOn": {
                     "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
@@ -3296,6 +3445,53 @@
                 "password": {
                     "type": "string",
                     "minLength": 6
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.SocialAuthRequestModel": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string",
+                    "maxLength": 8192
+                },
+                "authorizationCode": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "firstName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "idToken": {
+                    "type": "string",
+                    "maxLength": 8192
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "en",
+                        "tr"
+                    ]
+                },
+                "lastName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "nonce": {
+                    "type": "string",
+                    "maxLength": 256
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.SocialAuthResponseModel": {
+            "type": "object",
+            "properties": {
+                "isNewUser": {
+                    "type": "boolean"
+                },
+                "token": {
+                    "type": "string"
                 }
             }
         },

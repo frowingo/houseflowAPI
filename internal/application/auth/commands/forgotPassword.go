@@ -37,7 +37,7 @@ func NewForgotPasswordHandler(
 }
 
 func (h *ForgotPasswordHandler) Handle(ctx context.Context, command ForgotPasswordCommand) (cqrs.NoResult, error) {
-	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
 	if err != nil {
 		if user == nil || helpers.IsApplicationError(err, "database.error.document_not_found") {
 			return cqrs.NoResult{}, helpers.NewLocalizedError("user.error.not_found")
@@ -46,7 +46,7 @@ func (h *ForgotPasswordHandler) Handle(ctx context.Context, command ForgotPasswo
 	}
 
 	window := helpers.ResetCodeWindow(h.validityMinutes)
-	code := helpers.GenerateResetCode(command.Email, h.resetSecret, window)
+	code := helpers.GenerateResetCode(helpers.NormalizeEmail(command.Email), h.resetSecret, window)
 	if err := h.emailSender.SendResetCodeEmail(command.Email, code, h.validityMinutes); err != nil {
 		return cqrs.NoResult{}, err
 	}

@@ -16,6 +16,7 @@ type DbRepository[T any] interface {
 	InsertMany(ctx context.Context, entities []T) error
 	FindByID(ctx context.Context, id primitive.ObjectID) (*T, error)
 	FindByColumn(ctx context.Context, columnName string, columnValue string) (*T, error)
+	FindOneByFilter(ctx context.Context, filter bson.M) (*T, error)
 	FindAll(ctx context.Context) ([]T, error)
 	FindManyByColumn(ctx context.Context, columnName string, columnValue string) ([]T, error)
 	UpdateFields(ctx context.Context, id primitive.ObjectID, fields bson.M) error

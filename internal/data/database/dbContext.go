@@ -123,6 +123,17 @@ func (c *DbContext[T]) FindByColumn(ctx context.Context, columnName string, colu
 	return &result, nil
 }
 
+func (c *DbContext[T]) FindOneByFilter(ctx context.Context, filter bson.M) (*T, error) {
+	var result T
+	if err := c.getCollection().FindOne(ctx, filter).Decode(&result); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, helpers.NewNotFoundError("database.error.document_not_found")
+		}
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (c *DbContext[T]) FindAll(ctx context.Context) ([]T, error) {
 	cursor, err := c.getCollection().Find(ctx, bson.M{})
 	if err != nil {

@@ -934,3 +934,77 @@ değerler ilk canlı test için seçilmişti ve aynı anda en fazla 2 evin oda a
 Yerel ölçümde bir makinenin 4 dolu odası tek M serisi çekirdeğin yaklaşık %19'unu kullanıyor.
 Fly'ın paylaşımlı CPU'su daha yavaş ve sürekli yükte kotayla sınırlı olduğundan bu limit
 staging'de Fly üzerinde yük testiyle doğrulanmalı. Canlıda da CPU throttling izlenmelidir.
+
+## ADR-023 — Sosyal giriş: sağlayıcı yalnız kimlik doğrular, oturum bizimdir
+
+**Durum:** Kabul edildi — 19 Ekim 2026 (uygulama başlamadı). Ayrıntılı plan ve fazlar:
+`socialLoginPlan.md`.
+
+Google, Apple, Facebook ve Snapchat ile kayıt ve giriş eklenir. Sağlayıcı yalnız kimliği
+doğrular; kullanıcı kendi `User` collection'ımızdan okunur ve kendi JWT'miz verilir.
+Sağlayıcı token'ları saklanmaz, profil sağlayıcıdan sürekli çekilmez. Tek istisna, hesap
+silmede Apple'ın zorunlu tuttuğu revoke için saklanan şifreli Apple refresh token'ıdır.
+
+Her girişte client sağlayıcıdan yeni bir token alır ve backend onu doğrular. Client'ın
+gönderdiği email veya sağlayıcı ID'si kimlik kanıtı sayılmaz. Google, Apple ve Facebook
+Limited Login token'ları JWKS ile offline doğrulanır. Facebook klasik ve Snapchat
+token'ları tek bir server çağrısıyla doğrulanır.
+
+Kararlar:
+- **Tek uç nokta.** `POST /auth/social/:provider` kimlik varsa giriş yapar, yoksa kayıt
+  açar; cevaptaki `isNewUser` ikisini ayırır.
+- **Ayrı `UserIdentity` collection'ı.** `{provider, providerUserId}` unique index'i, bir
+  sağlayıcı hesabının yalnız bir kullanıcıya bağlanmasını garanti eder. `User` üzerinde
+  yalnız `signUpProvider` enum'u tutulur (`0` = email/şifre, `1` Google, `2` Apple,
+  `3` Facebook, `4` Snapchat) ve sonradan değişmez.
+- **Otomatik hesap birleştirme yok.** Sağlayıcının emaili başka yolla kayıtlı bir
+  kullanıcıya aitse `409 auth.error.email_registered_with_other_method` döner. Bağlama,
+  oturum açmış kullanıcı tarafından profilden yapılır. Gerekçe: doğrulanmamış emaille önceden
+  açılmış hesap üzerinden ele geçirme.
+- **Email zorunlu kalır.** Email vermeyen sağlayıcıda (Snapchat, bazı Facebook hesapları)
+  kayıt, 10 dakikalık `pendingToken` ile kullanıcıdan email alınarak tamamlanır. Email
+  doğrulanmamış sayılır ve mevcut doğrulama kodu akışıyla doğrulanır. `pendingToken`,
+  access token'dan türetilmiş ayrı bir anahtarla imzalanır; böylece `AuthRequired`
+  middleware'inden geçemez.
+- **Şifresiz hesap.** Sosyal kullanıcının şifresi boştur. `/auth/login` bu hesaplarda
+  `failedLoginAttempts` artırmadan `auth.error.use_social_login` döner. Reset akışıyla
+  sonradan şifre belirlenebilir.
+- **Sağlayıcı config ile açılır.** Env değişkenleri eksik olan sağlayıcı kapalıdır ve
+  `auth.error.provider_not_supported` döner.
+
+**Rolling deploy.** Yeni alan varsayılanı `0`, yeni collection'ı önceki sürüm okumaz,
+sağlayıcılar kapalı çıkar. Sağlayıcı açıldıktan sonra bu değişiklikten önceki bir sürüme
+dönülmemelidir: önceki sürümde şifresiz kullanıcının hatalı login denemeleri hesabı
+kilitleyebilir.
+
+## ADR-024 — Kullanıcının kendi hesabını silmesi
+
+**Durum:** Kabul edildi — 20 Ekim 2026.
+
+App Store Guideline 5.1.1(v), hesap açılabilen uygulamalarda hesabın uygulama içinden
+silinebilmesini ister. Bu, Sign in with Apple'ın (ADR-023) yayın şartıdır. Oturumdaki
+kullanıcı `DELETE /user/me` ile kendi hesabını siler. Uç, SuperAdmin'in kullandığı
+`DeleteUserCommand`'ı çalıştırır; iki yol da aynı kuralı izler.
+
+Önceden, başka üyesi olmayan bir evin sahibi silinemiyordu
+(`user.error.cannot_delete_sole_house_owner`). Ev silme komutu olmadığından böyle bir
+kullanıcı hesabını hiç silemiyordu. Artık tek transaction'da şunlar yapılır:
+- **Başka üyesi olmayan evler** verisiyle birlikte silinir: `Chore`, `ChoreStatusHistory`,
+  `ChoreReviewVote`, `Announcement`, `Notification`, `HouseInfoHistory`,
+  `HouseInviteCode`, `GameSession`, `GameMatchResult`.
+- **Kullanıcının sahibi olduğu paylaşılan evler** eskisi gibi kalan ilk üyeye geçer.
+- **Kullanıcının diğer evlerdeki üyeliği** kaldırılır.
+- **Kullanıcının kendi kayıtları:** `UserIdentity` ve `UserInfoHistory` silinir.
+
+Commit'ten sonra Apple yetkisi revoke edilir. Revoke'un başarısız olması silmeyi geri
+almaz.
+
+Paylaşılan evlerde kullanıcının izleri kalır: atandığı chore'lar ve katıldığı maç
+sonuçlarındaki kullanıcı ID'si. Bunlar evin diğer üyelerine ait kayıtlardır.
+
+**Bilinen açık.** `AuthRequired` yalnız JWT imzasını ve süresini doğrular. Silinmiş
+kullanıcının token'ı, süresi dolana kadar (en çok 72 saat) kullanıcıyı okumayan uçlarda
+geçerli kalır. Bu durum admin silmesinde de vardı.
+
+**Rolling deploy.** Şema değişmez. Önceki sürüm aynı istekte tek üyeli ev sahibini silmeyi
+reddeder; yeni sürüm siler.

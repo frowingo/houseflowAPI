@@ -39,7 +39,7 @@ func NewSignUpHandler(
 }
 
 func (h *SignUpHandler) Handle(ctx context.Context, command SignUpCommand) (string, error) {
-	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
 	if user != nil {
 		return "", helpers.NewConflictError("auth.error.user_already_exists")
 	}
@@ -54,10 +54,11 @@ func (h *SignUpHandler) Handle(ctx context.Context, command SignUpCommand) (stri
 
 	now := time.Now()
 	newUser := entities.User{
-		Email: command.Email, HashPassword: hashedPassword,
+		Email: helpers.NormalizeEmail(command.Email), HashPassword: hashedPassword,
 		Firstname: command.Firstname, Lastname: command.Lastname,
 		Language: "en", CreatedOn: now, UpdatedOn: now, LastLogin: now,
 		IsActive: true, HouseIds: []string{}, Role: entities.Normal,
+		SignUpProvider: entities.ProviderHouseflow,
 	}
 
 	var createdUser *entities.User

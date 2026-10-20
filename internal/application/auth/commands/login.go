@@ -32,7 +32,7 @@ func NewLoginHandler(userRepository databaseAbstract.DbRepository[entities.User]
 }
 
 func (h *LoginHandler) Handle(ctx context.Context, command LoginCommand) (string, error) {
-	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
 	if helpers.IsApplicationError(err, "database.error.document_not_found") {
 		return "", helpers.NewLocalizedError("auth.error.email_not_found")
 	}
@@ -41,6 +41,11 @@ func (h *LoginHandler) Handle(ctx context.Context, command LoginCommand) (string
 	}
 	if !user.IsActive {
 		return "", helpers.NewLocalizedError("auth.error.account_locked")
+	}
+	// Accounts created through a social provider have no password. A password
+	// attempt must not count as a failure, or it could lock the account.
+	if user.HashPassword == "" {
+		return "", helpers.NewLocalizedError("auth.error.use_social_login")
 	}
 
 	if helpers.CheckPasswordHash(command.Password, user.HashPassword) {

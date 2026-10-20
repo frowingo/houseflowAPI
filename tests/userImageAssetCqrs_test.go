@@ -9,7 +9,6 @@ import (
 	userCommands "houseflowApi/internal/application/user/commands"
 	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/data/entities"
-	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
 
@@ -108,29 +107,6 @@ func TestDeleteHouseOwnerReassignsOwnershipToRemainingMember(t *testing.T) {
 	}
 	if len(storedHouse.MemberIds) != 1 || storedHouse.MemberIds[0] != member.Id.Hex() {
 		t.Fatalf("house members after owner delete = %v, want only new owner", storedHouse.MemberIds)
-	}
-}
-
-func TestDeleteSoleHouseOwnerIsRejected(t *testing.T) {
-	fixture := newConcurrencyFixture(t)
-	owner := fixture.seedUser(t, "correct-password")
-	house := fixture.createHouse(t, owner, 1)
-
-	_, err := cqrs.Send[cqrs.NoResult](fixture.ctx, fixture.sender, userCommands.DeleteUserCommand{UserID: owner.Id.Hex()})
-	if !helpers.IsApplicationError(err, "user.error.cannot_delete_sole_house_owner") {
-		t.Fatalf("delete error = %v, want sole-owner conflict", err)
-	}
-
-	var storedUser entities.User
-	if err := fixture.db.Collection("User").FindOne(fixture.ctx, bson.M{"_id": owner.Id}).Decode(&storedUser); err != nil {
-		t.Fatalf("owner should remain after rejected delete: %v", err)
-	}
-	var storedHouse entities.House
-	if err := fixture.db.Collection("House").FindOne(fixture.ctx, bson.M{"_id": house.Id}).Decode(&storedHouse); err != nil {
-		t.Fatal(err)
-	}
-	if storedHouse.OwnerId != owner.Id.Hex() || len(storedHouse.MemberIds) != 1 || storedHouse.MemberIds[0] != owner.Id.Hex() {
-		t.Fatalf("house changed after rejected delete: %+v", storedHouse)
 	}
 }
 

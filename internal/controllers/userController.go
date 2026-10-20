@@ -120,6 +120,29 @@ func (r *UserController) DeleteUser(c *fiber.Ctx) error {
 	return c.SendStatus(204)
 }
 
+// @Summary Delete own account
+// @Description Permanently deletes the signed-in user's account. Houses the user shares pass to their first remaining member when the user owns them; houses with no other member are deleted with their chores, announcements, notifications and history. A linked Apple authorization is revoked.
+// @Tags User
+// @Produce json
+// @Security BearerAuth
+// @Success 204
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 404 {object} map[string]interface{} "User not found"
+// @Router /user/me [delete]
+func (r *UserController) DeleteMe(c *fiber.Ctx) error {
+	userID, ok := c.Locals("userID").(string)
+	if !ok || userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(helpers.LocalizedErrorMap(c, r.localizer, "auth.error.unauthorized"))
+	}
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, userCommands.DeleteUserCommand{UserID: userID}); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // @Summary Get user by email
 // @Description Retrieve a user by their email address
 // @Tags User
