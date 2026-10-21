@@ -14,6 +14,32 @@ const (
 	SuperAdmin UserRole = 2
 )
 
+// AuthProvider names where an account was created or which provider identity
+// is linked to it. Values are stored in the database and must not be renumbered.
+type AuthProvider int
+
+const (
+	ProviderHouseflow AuthProvider = 0
+	ProviderGoogle    AuthProvider = 1
+	ProviderApple     AuthProvider = 2
+	ProviderFacebook  AuthProvider = 3
+	ProviderSnapchat  AuthProvider = 4
+)
+
+var authProviderNames = map[string]AuthProvider{
+	"google":   ProviderGoogle,
+	"apple":    ProviderApple,
+	"facebook": ProviderFacebook,
+	"snapchat": ProviderSnapchat,
+}
+
+// ParseSocialProvider maps a route name such as "google" to its provider.
+// The Houseflow (email/password) provider is not a social provider.
+func ParseSocialProvider(name string) (AuthProvider, bool) {
+	provider, ok := authProviderNames[name]
+	return provider, ok
+}
+
 type User struct {
 	Id                  primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Firstname           string             `bson:"firstName" json:"firstName"`
@@ -33,4 +59,5 @@ type User struct {
 	UpdatedOn           time.Time          `bson:"updatedOn" json:"updatedOn"`
 	LastLogin           time.Time          `bson:"lastLogin" json:"lastLogin"`
 	Role                UserRole           `bson:"role" json:"role"`
+	SignUpProvider      AuthProvider       `bson:"signUpProvider" json:"signUpProvider"`
 }

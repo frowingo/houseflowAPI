@@ -57,6 +57,8 @@ func RespondLocalizedError(c *fiber.Ctx, localizer MessageLocalizer, err error) 
 			status = fiber.StatusTooManyRequests
 		case ErrorKindUnavailable:
 			status = fiber.StatusServiceUnavailable
+		case ErrorKindUnauthorized:
+			status = fiber.StatusUnauthorized
 		}
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		status = fiber.StatusServiceUnavailable

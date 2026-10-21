@@ -21,20 +21,23 @@ type ValidateAuthQuery struct {
 }
 
 type ValidateAuthHandler struct {
-	userRepository  databaseAbstract.DbRepository[entities.User]
-	houseRepository databaseAbstract.DbRepository[entities.House]
-	jwtService      *helpers.JWTService
+	userRepository     databaseAbstract.DbRepository[entities.User]
+	houseRepository    databaseAbstract.DbRepository[entities.House]
+	identityRepository databaseAbstract.DbRepository[entities.UserIdentity]
+	jwtService         *helpers.JWTService
 }
 
 func NewValidateAuthHandler(
 	userRepository databaseAbstract.DbRepository[entities.User],
 	houseRepository databaseAbstract.DbRepository[entities.House],
+	identityRepository databaseAbstract.DbRepository[entities.UserIdentity],
 	jwtService *helpers.JWTService,
 ) *ValidateAuthHandler {
 	return &ValidateAuthHandler{
-		userRepository:  userRepository,
-		houseRepository: houseRepository,
-		jwtService:      jwtService,
+		userRepository:     userRepository,
+		houseRepository:    houseRepository,
+		identityRepository: identityRepository,
+		jwtService:         jwtService,
 	}
 }
 
@@ -67,7 +70,18 @@ func (h *ValidateAuthHandler) Handle(ctx context.Context, query ValidateAuthQuer
 		return nil, err
 	}
 
-	response := dtos.UserToAuthResultModel(*user, houses)
+	identities, err := h.identityRepository.FindManyByFilter(
+		ctx,
+		bson.M{"userId": user.Id.Hex()},
+		options.Find().
+			SetProjection(bson.M{"provider": 1}).
+			SetSort(bson.D{{Key: "provider", Value: 1}}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	response := dtos.UserToAuthResultModel(*user, houses, identities)
 	return &response, nil
 }
 

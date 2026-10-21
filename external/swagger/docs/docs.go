@@ -23,6 +23,136 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/apple/notifications": {
+            "post": {
+                "description": "Endpoint registered in the Apple Developer portal for Sign in with Apple notifications. The JSON field payload is a JWT signed by Apple. consent-revoked removes the Apple link; account-delete deletes the account; email events are acknowledged without changes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Apple Server-to-Server Notification",
+                "parameters": [
+                    {
+                        "description": "Apple notification",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.AppleNotificationRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Apple sign-in is not enabled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Payload not verified",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/facebook/data-deletion": {
+            "post": {
+                "description": "Called by Facebook when a user removes the app and asks for their data to be deleted. The form field signed_request is verified with the app secret; the linked account is deleted. Returns the status URL and confirmation code Facebook shows to the user.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Facebook Data Deletion Callback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Facebook signed request",
+                        "name": "signed_request",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.FacebookDataDeletionResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Facebook sign-in is not enabled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid signature",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/facebook/data-deletion/{code}": {
+            "get": {
+                "description": "Shows the status of a data deletion request by the confirmation code given to Facebook.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Data Deletion Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Confirmation code",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.DataDeletionStatusResponseModel"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown code",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/auth/forget": {
             "post": {
                 "description": "Generates a 6-character reset code for the given email and sends it to the user's email address.",
@@ -238,6 +368,335 @@ const docTemplate = `{
                         }
                     }
                 }
+            }
+        },
+        "/auth/social/complete": {
+            "post": {
+                "description": "Last step of an email-less social sign-up: checks the emailed code and creates the account with a verified email. Returns 201 with our token; 200 when the provider account finished signing up meanwhile.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Complete Social Sign-Up",
+                "parameters": [
+                    {
+                        "description": "Pending sign-up, email and code",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.CompleteSocialSignUpRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Signed in to an existing account",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthResponseModel"
+                        }
+                    },
+                    "201": {
+                        "description": "New account created",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request or invalid code",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Pending sign-up expired",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Email already registered",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/social/complete/code": {
+            "post": {
+                "description": "Second step of an email-less social sign-up: mails a 6-character code to the email the user typed. The code is bound to the pending sign-up and to that email.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Send Social Sign-Up Code",
+                "parameters": [
+                    {
+                        "description": "Pending sign-up and email",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialSignUpCodeRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Code sent",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Pending sign-up expired",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Email already registered",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/social/{provider}": {
+            "post": {
+                "description": "Signs in with a Google, Apple or Facebook credential, creating the account on first use. Google sends idToken (and nonce if one was used). Apple sends idToken, the raw nonce whose SHA-256 hex digest was given to Apple, and on the first authorization authorizationCode, firstName and lastName. Facebook sends accessToken (classic login) or idToken with the nonce given to the SDK (iOS Limited Login). Snapchat sends the Login Kit accessToken. Returns 201 when a new account was created. When the provider shares no email the reply is 200 with needsEmail and a pendingToken: request a code with /auth/social/complete/code, then finish with /auth/social/complete.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Social Sign-In",
+                "parameters": [
+                    {
+                        "enum": [
+                            "google",
+                            "apple",
+                            "facebook",
+                            "snapchat"
+                        ],
+                        "type": "string",
+                        "description": "Provider",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Provider credential",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Signed in to an existing account",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthResponseModel"
+                        }
+                    },
+                    "201": {
+                        "description": "New account created",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request, provider not supported or email missing",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Provider credential could not be verified",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Email registered with another sign-in method",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Provider temporarily unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/social/{provider}/link": {
+            "post": {
+                "description": "Connects a provider account to the signed-in user so they can also sign in with it. The body is the same provider credential as /auth/social/{provider}; Apple also needs authorizationCode. Returns the providers now linked.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Link Social Provider",
+                "parameters": [
+                    {
+                        "enum": [
+                            "google",
+                            "apple",
+                            "facebook",
+                            "snapchat"
+                        ],
+                        "type": "string",
+                        "description": "Provider",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Provider credential",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.SocialAuthRequestModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.LinkedProvidersResponseModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request or provider not supported",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized or credential not verified",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Provider account linked to another user, or another account of this provider already connected",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "description": "Disconnects a provider from the signed-in user. The last way to sign in cannot be removed: without a password at least one provider stays. A linked Apple authorization is revoked.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Unlink Social Provider",
+                "parameters": [
+                    {
+                        "enum": [
+                            "google",
+                            "apple",
+                            "facebook",
+                            "snapchat"
+                        ],
+                        "type": "string",
+                        "description": "Provider",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.LinkedProvidersResponseModel"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Provider not linked",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Last sign-in method",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/auth/validate-email": {
@@ -1998,6 +2457,42 @@ const docTemplate = `{
                 ]
             }
         },
+        "/user/me": {
+            "delete": {
+                "description": "Permanently deletes the signed-in user's account. Houses the user shares pass to their first remaining member when the user owns them; houses with no other member are deleted with their chores, announcements, notifications and history. A linked Apple authorization is revoked.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Delete own account",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
         "/user/profile/{id}": {
             "put": {
                 "description": "Update user profile fields. Only provided (non-null) fields will be updated.",
@@ -2151,6 +2646,23 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "houseflowApi_internal_data_entities.AuthProvider": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4
+            ],
+            "x-enum-varnames": [
+                "ProviderHouseflow",
+                "ProviderGoogle",
+                "ProviderApple",
+                "ProviderFacebook",
+                "ProviderSnapchat"
+            ]
+        },
         "houseflowApi_internal_data_entities.ChoreLevel": {
             "type": "integer",
             "enum": [
@@ -2380,6 +2892,14 @@ const docTemplate = `{
                 }
             }
         },
+        "houseflowApi_internal_models_dtos.AppleNotificationRequestModel": {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": "string"
+                }
+            }
+        },
         "houseflowApi_internal_models_dtos.AuthHouseModel": {
             "type": "object",
             "properties": {
@@ -2408,6 +2928,9 @@ const docTemplate = `{
                 },
                 "firstName": {
                     "type": "string"
+                },
+                "hasPassword": {
+                    "type": "boolean"
                 },
                 "houseList": {
                     "type": "array",
@@ -2439,8 +2962,22 @@ const docTemplate = `{
                 "lastName": {
                     "type": "string"
                 },
+                "linkedProviders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_data_entities.AuthProvider"
+                    }
+                },
                 "phoneNumber": {
                     "type": "string"
+                },
+                "signUpProvider": {
+                    "description": "SignUpProvider is where the account was created: 0 email/password,\n1 Google, 2 Apple, 3 Facebook, 4 Snapchat.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/houseflowApi_internal_data_entities.AuthProvider"
+                        }
+                    ]
                 },
                 "updatedOn": {
                     "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
@@ -2577,6 +3114,42 @@ const docTemplate = `{
                 }
             }
         },
+        "houseflowApi_internal_models_dtos.CompleteSocialSignUpRequestModel": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "pendingToken"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 254
+                },
+                "firstName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "en",
+                        "tr"
+                    ]
+                },
+                "lastName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "pendingToken": {
+                    "type": "string",
+                    "maxLength": 4096
+                }
+            }
+        },
         "houseflowApi_internal_models_dtos.CreateAnnouncementModel": {
             "type": "object",
             "required": [
@@ -2703,6 +3276,20 @@ const docTemplate = `{
                 }
             }
         },
+        "houseflowApi_internal_models_dtos.DataDeletionStatusResponseModel": {
+            "type": "object",
+            "properties": {
+                "confirmationCode": {
+                    "type": "string"
+                },
+                "requestedOn": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "houseflowApi_internal_models_dtos.EnsureGameSessionModel": {
             "type": "object",
             "required": [
@@ -2725,6 +3312,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.FacebookDataDeletionResponseModel": {
+            "type": "object",
+            "properties": {
+                "confirmation_code": {
+                    "type": "string"
+                },
+                "url": {
                     "type": "string"
                 }
             }
@@ -3095,6 +3693,17 @@ const docTemplate = `{
                 }
             }
         },
+        "houseflowApi_internal_models_dtos.LinkedProvidersResponseModel": {
+            "type": "object",
+            "properties": {
+                "linkedProviders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_data_entities.AuthProvider"
+                    }
+                }
+            }
+        },
         "houseflowApi_internal_models_dtos.LocalizationLanguageRequestModel": {
             "type": "object",
             "required": [
@@ -3298,6 +3907,76 @@ const docTemplate = `{
                 "password": {
                     "type": "string",
                     "minLength": 6
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.SocialAuthRequestModel": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string",
+                    "maxLength": 8192
+                },
+                "authorizationCode": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "firstName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "idToken": {
+                    "type": "string",
+                    "maxLength": 8192
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "en",
+                        "tr"
+                    ]
+                },
+                "lastName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "nonce": {
+                    "type": "string",
+                    "maxLength": 256
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.SocialAuthResponseModel": {
+            "type": "object",
+            "properties": {
+                "isNewUser": {
+                    "type": "boolean"
+                },
+                "needsEmail": {
+                    "type": "boolean"
+                },
+                "pendingToken": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.SocialSignUpCodeRequestModel": {
+            "type": "object",
+            "required": [
+                "email",
+                "pendingToken"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 254
+                },
+                "pendingToken": {
+                    "type": "string",
+                    "maxLength": 4096
                 }
             }
         },

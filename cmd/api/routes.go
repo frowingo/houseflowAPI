@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	authCommands "houseflowApi/internal/application/auth/commands"
+	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
@@ -21,6 +22,7 @@ import (
 	localizationCommands "houseflowApi/internal/application/localization/commands"
 	localizationQueries "houseflowApi/internal/application/localization/queries"
 	userCommands "houseflowApi/internal/application/user/commands"
+	userPolicies "houseflowApi/internal/application/user/policies"
 	userQueries "houseflowApi/internal/application/user/queries"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
@@ -47,6 +49,7 @@ func SetupRoutes(
 	client *mongo.Client,
 	dbName string,
 	cfg config.ConfigInternal,
+	socialAuthConfig config.ConfigSocialAuth,
 	coordinator coordinationAbstract.Coordinator,
 ) (*realtime.Service, *infrastructureAppEvents.Service, error) {
 	applicationMediator := cqrs.New()
@@ -115,15 +118,81 @@ func SetupRoutes(
 	validateEmailHandler := authCommands.NewValidateEmailHandler(
 		userRepository, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
-	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository, houseRepository, jwtService)
+	userIdentityRepository := database.NewDbContext[entities.UserIdentity](client, dbName)
+	socialAdapters, err := socialAuthAdapters(socialAuthConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	socialAccounts := authPolicies.NewSocialAccounts(userRepository, userIdentityRepository, userInfoHistoryRepository, jwtService)
+	socialPendingTokens := helpers.NewSocialPendingTokenService(cfg.JWT.ApiSecret)
+	socialAuthHandler := authCommands.NewSocialAuthHandler(
+		socialAccounts, socialPendingTokens, socialAdapters.verifiers, socialAdapters.keepers,
+	)
+	sendSocialSignUpCodeHandler := authCommands.NewSendSocialSignUpCodeHandler(
+		socialAccounts, socialPendingTokens, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+	)
+	completeSocialSignUpHandler := authCommands.NewCompleteSocialSignUpHandler(
+		socialAccounts, socialPendingTokens, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+	)
+	dataDeletionRepository := database.NewDbContext[entities.DataDeletionRequest](client, dbName)
+	providerDataDeletionHandler := authCommands.NewProviderDataDeletionHandler(
+		userIdentityRepository, dataDeletionRepository,
+		userPolicies.NewAccountRemoval(userRepository, houseRepository, userIdentityRepository, socialAdapters.keepers),
+		socialAdapters.deletionVerifiers,
+	)
+	getDataDeletionStatusHandler := authQueries.NewGetDataDeletionStatusHandler(dataDeletionRepository)
+	providerAccountEventHandler := authCommands.NewProviderAccountEventHandler(
+		userIdentityRepository,
+		userPolicies.NewAccountRemoval(userRepository, houseRepository, userIdentityRepository, socialAdapters.keepers),
+		socialAdapters.notifications,
+	)
+	linkSocialProviderHandler := authCommands.NewLinkSocialProviderHandler(
+		userRepository, userIdentityRepository, socialAdapters.verifiers, socialAdapters.keepers,
+	)
+	unlinkSocialProviderHandler := authCommands.NewUnlinkSocialProviderHandler(
+		userRepository, userIdentityRepository, socialAdapters.keepers,
+	)
+	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository, houseRepository, userIdentityRepository, jwtService)
 	cqrs.MustRegister[string, authCommands.LoginCommand](applicationMediator, loginHandler)
 	cqrs.MustRegister[string, authCommands.SignUpCommand](applicationMediator, signUpHandler)
+	cqrs.MustRegister[dtos.SocialAuthResponseModel, authCommands.SocialAuthCommand](applicationMediator, socialAuthHandler)
+	cqrs.MustRegister[cqrs.NoResult, authCommands.SendSocialSignUpCodeCommand](applicationMediator, sendSocialSignUpCodeHandler)
+	cqrs.MustRegister[dtos.SocialAuthResponseModel, authCommands.CompleteSocialSignUpCommand](applicationMediator, completeSocialSignUpHandler)
+	cqrs.MustRegister[dtos.ProviderDataDeletionResult, authCommands.ProviderDataDeletionCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(providerDataDeletionHandler, func(ctx context.Context, _ authCommands.ProviderDataDeletionCommand, result dtos.ProviderDataDeletionResult) {
+			if result.UserID == "" {
+				return
+			}
+			appEventService.UsersChanged(ctx, result.UserID)
+			for _, houseID := range result.HouseIDs {
+				appEventService.HouseChanged(ctx, houseID, false)
+			}
+		}))
+	cqrs.MustRegister[dtos.DataDeletionStatusResponseModel, authQueries.GetDataDeletionStatusQuery](applicationMediator, getDataDeletionStatusHandler)
+	cqrs.MustRegister[dtos.ProviderDataDeletionResult, authCommands.ProviderAccountEventCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(providerAccountEventHandler, func(ctx context.Context, _ authCommands.ProviderAccountEventCommand, result dtos.ProviderDataDeletionResult) {
+			if result.UserID == "" {
+				return
+			}
+			appEventService.UsersChanged(ctx, result.UserID)
+			for _, houseID := range result.HouseIDs {
+				appEventService.HouseChanged(ctx, houseID, false)
+			}
+		}))
+	cqrs.MustRegister[dtos.LinkedProvidersResponseModel, authCommands.LinkSocialProviderCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(linkSocialProviderHandler, func(ctx context.Context, command authCommands.LinkSocialProviderCommand, _ dtos.LinkedProvidersResponseModel) {
+			appEventService.UsersChanged(ctx, command.UserID)
+		}))
+	cqrs.MustRegister[dtos.LinkedProvidersResponseModel, authCommands.UnlinkSocialProviderCommand](applicationMediator,
+		infrastructureAppEvents.NotifyAfter(unlinkSocialProviderHandler, func(ctx context.Context, command authCommands.UnlinkSocialProviderCommand, _ dtos.LinkedProvidersResponseModel) {
+			appEventService.UsersChanged(ctx, command.UserID)
+		}))
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ForgotPasswordCommand](applicationMediator, forgotPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ResetPasswordCommand](applicationMediator, resetPasswordHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.SendEmailVerificationCodeCommand](applicationMediator, sendEmailVerificationCodeHandler)
 	cqrs.MustRegister[cqrs.NoResult, authCommands.ValidateEmailCommand](applicationMediator,
 		infrastructureAppEvents.NotifyAfter(validateEmailHandler, func(ctx context.Context, command authCommands.ValidateEmailCommand, _ cqrs.NoResult) {
-			if user, err := userRepository.FindByColumn(ctx, "email", command.Email); err == nil && user != nil {
+			if user, err := userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email)); err == nil && user != nil {
 				appEventService.UsersChanged(ctx, user.Id.Hex())
 			}
 		}))
@@ -134,6 +203,15 @@ func SetupRoutes(
 	authRoutes.Get("/isAuth", authController.IsAuth)
 	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
+	// Registered before "/social/:provider" so "complete" is not taken as a provider.
+	authRoutes.Post("/social/complete/code", authController.SendSocialSignUpCode)
+	authRoutes.Post("/social/complete", authController.CompleteSocialSignUp)
+	authRoutes.Post("/social/:provider", authController.SocialAuth)
+	authRoutes.Post("/social/:provider/link", middleware.AuthRequired(jwtService, localizationCache), authController.LinkSocialProvider)
+	authRoutes.Delete("/social/:provider/link", middleware.AuthRequired(jwtService, localizationCache), authController.UnlinkSocialProvider)
+	authRoutes.Post("/apple/notifications", authController.AppleNotification)
+	authRoutes.Post("/facebook/data-deletion", authController.FacebookDataDeletion)
+	authRoutes.Get("/facebook/data-deletion/:code", authController.DataDeletionStatus)
 	authRoutes.Post("/forget", authController.ForgotPassword)
 	authRoutes.Post("/reset", authController.ResetPassword)
 	authRoutes.Get("/validate-email", middleware.AuthRequired(jwtService, localizationCache), authController.SendEmailVerificationCode)
@@ -185,7 +263,7 @@ func SetupRoutes(
 	)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
-	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository, userIdentityRepository, socialAdapters.keepers)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(userRepository, userInfoHistoryRepository)
 	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(userRepository)
 	listUsersHandler := userQueries.NewListUsersHandler(userRepository)
@@ -233,6 +311,8 @@ func SetupRoutes(
 	userRoutes.Post("/images", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.CreateImageAsset)
 	userRoutes.Put("/images", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.UpdateImageAsset)
 	userRoutes.Put("/profile/:id", userController.UpdateProfile)
+	// Registered before "/:id" so "me" is not taken as a user id.
+	userRoutes.Delete("/me", userController.DeleteMe)
 	userRoutes.Delete("/:id", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), userController.DeleteUser)
 	// ----------
 

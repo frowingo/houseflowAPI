@@ -2,10 +2,12 @@ package config
 
 import (
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const defaultHouseJoinCodeValidityMinutes = 2
@@ -26,6 +28,7 @@ type ConfigExternal struct {
 	Mongo      ConfigMongo      `json:"mongo"`
 	Cloudinary ConfigCloudinary `json:"cloudinary"`
 	Redis      ConfigRedis      `json:"redis"`
+	SocialAuth ConfigSocialAuth `json:"socialAuth"`
 }
 
 type ConfigInternal struct {
@@ -68,6 +71,54 @@ type ConfigCloudinary struct {
 	APISecret string `json:"apiSecret"`
 	Folder    string `json:"folder"`
 }
+
+// ConfigSocialAuth holds the third-party sign-in providers. A provider whose
+// values are missing is disabled; a partially configured provider is a
+// startup error so it is never switched off by accident.
+type ConfigSocialAuth struct {
+	Google   ConfigGoogleAuth   `json:"google"`
+	Apple    ConfigAppleAuth    `json:"apple"`
+	Facebook ConfigFacebookAuth `json:"facebook"`
+	Snapchat ConfigSnapchatAuth `json:"snapchat"`
+	// TokenEncryptionKey is a base64 encoded 32 byte key used to encrypt the
+	// provider tokens that must be kept (the Apple refresh token).
+	TokenEncryptionKey string `json:"tokenEncryptionKey"`
+}
+
+type ConfigGoogleAuth struct {
+	ClientIDs []string `json:"clientIds"`
+}
+
+func (c ConfigGoogleAuth) Enabled() bool { return len(c.ClientIDs) > 0 }
+
+type ConfigAppleAuth struct {
+	ClientIDs  []string `json:"clientIds"`
+	TeamID     string   `json:"teamId"`
+	KeyID      string   `json:"keyId"`
+	PrivateKey string   `json:"privateKey"`
+}
+
+func (c ConfigAppleAuth) Enabled() bool { return len(c.ClientIDs) > 0 }
+
+func (c ConfigAppleAuth) configured() bool {
+	return len(c.ClientIDs) > 0 || c.TeamID != "" || c.KeyID != "" || c.PrivateKey != ""
+}
+
+type ConfigFacebookAuth struct {
+	AppID     string `json:"appId"`
+	AppSecret string `json:"appSecret"`
+	// GraphVersion pins the Graph API version, e.g. "v23.0"; empty uses the
+	// adapter's default.
+	GraphVersion string `json:"graphVersion"`
+}
+
+func (c ConfigFacebookAuth) Enabled() bool { return c.AppID != "" }
+
+type ConfigSnapchatAuth struct {
+	ClientID string `json:"clientId"`
+}
+
+func (c ConfigSnapchatAuth) Enabled() bool { return c.ClientID != "" }
 
 func isDebugMode() bool {
 	return os.Getenv("APP_ENV") != "production"
@@ -148,6 +199,52 @@ func applyEnvOverrides(config *ConfigModel) {
 	if smtpPassword := os.Getenv("SMTP_PASSWORD"); smtpPassword != "" {
 		config.Internal.SMTP.Password = smtpPassword
 	}
+
+	applySocialAuthEnvOverrides(&config.External.SocialAuth)
+}
+
+func applySocialAuthEnvOverrides(config *ConfigSocialAuth) {
+	if clientIDs := splitList(os.Getenv("GOOGLE_CLIENT_IDS")); len(clientIDs) > 0 {
+		config.Google.ClientIDs = clientIDs
+	}
+	if clientIDs := splitList(os.Getenv("APPLE_CLIENT_IDS")); len(clientIDs) > 0 {
+		config.Apple.ClientIDs = clientIDs
+	}
+	if teamID := os.Getenv("APPLE_TEAM_ID"); teamID != "" {
+		config.Apple.TeamID = teamID
+	}
+	if keyID := os.Getenv("APPLE_KEY_ID"); keyID != "" {
+		config.Apple.KeyID = keyID
+	}
+	if privateKey := os.Getenv("APPLE_PRIVATE_KEY"); privateKey != "" {
+		// Secrets stored on one line carry the PEM line breaks as "\n".
+		config.Apple.PrivateKey = strings.ReplaceAll(privateKey, `\n`, "\n")
+	}
+	if appID := os.Getenv("FACEBOOK_APP_ID"); appID != "" {
+		config.Facebook.AppID = appID
+	}
+	if appSecret := os.Getenv("FACEBOOK_APP_SECRET"); appSecret != "" {
+		config.Facebook.AppSecret = appSecret
+	}
+	if graphVersion := os.Getenv("FACEBOOK_GRAPH_VERSION"); graphVersion != "" {
+		config.Facebook.GraphVersion = graphVersion
+	}
+	if clientID := os.Getenv("SNAPCHAT_CLIENT_ID"); clientID != "" {
+		config.Snapchat.ClientID = clientID
+	}
+	if key := os.Getenv("SOCIAL_TOKEN_ENC_KEY"); key != "" {
+		config.TokenEncryptionKey = key
+	}
+}
+
+func splitList(value string) []string {
+	var items []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 func Validate(config *ConfigModel) error {
@@ -171,6 +268,23 @@ func Validate(config *ConfigModel) error {
 	}
 	if config.Internal.SMTP.Password == "" {
 		return errors.New("smtp password is required")
+	}
+	return ValidateSocialAuth(config.External.SocialAuth)
+}
+
+// ValidateSocialAuth rejects providers that are only partly configured.
+func ValidateSocialAuth(config ConfigSocialAuth) error {
+	if config.Apple.configured() {
+		if len(config.Apple.ClientIDs) == 0 || config.Apple.TeamID == "" || config.Apple.KeyID == "" || config.Apple.PrivateKey == "" {
+			return errors.New("apple sign-in needs APPLE_CLIENT_IDS, APPLE_TEAM_ID, APPLE_KEY_ID and APPLE_PRIVATE_KEY")
+		}
+		key, err := base64.StdEncoding.DecodeString(config.TokenEncryptionKey)
+		if err != nil || len(key) != 32 {
+			return errors.New("apple sign-in needs SOCIAL_TOKEN_ENC_KEY as a base64 encoded 32 byte key")
+		}
+	}
+	if (config.Facebook.AppID == "") != (config.Facebook.AppSecret == "") {
+		return errors.New("facebook sign-in needs both FACEBOOK_APP_ID and FACEBOOK_APP_SECRET")
 	}
 	return nil
 }

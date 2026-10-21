@@ -52,9 +52,10 @@ func (h *CreateUserHandler) Handle(ctx context.Context, command CreateUserComman
 	now := time.Now()
 	entity := entities.User{
 		Firstname: command.Firstname, Lastname: command.Lastname, PhoneNumber: command.PhoneNumber,
-		Email: command.Email, HashPassword: hashedPassword, BirthDay: command.BirthDay,
+		Email: helpers.NormalizeEmail(command.Email), HashPassword: hashedPassword, BirthDay: command.BirthDay,
 		Language: language, HouseIds: []string{}, IsActive: true,
 		CreatedOn: now, UpdatedOn: now, LastLogin: now, Role: entities.Normal,
+		SignUpProvider: entities.ProviderHouseflow,
 	}
 
 	var createdUser *entities.User
@@ -89,7 +90,7 @@ func (h *CreateUserHandler) Handle(ctx context.Context, command CreateUserComman
 
 	return &dtos.NewUserModel{
 		Firstname: command.Firstname, Lastname: command.Lastname, PhoneNumber: command.PhoneNumber,
-		Email: command.Email, Password: command.Password, BirthDay: dtos.NewUTCDateTime(command.BirthDay),
+		Email: createdUser.Email, Password: command.Password, BirthDay: dtos.NewUTCDateTime(command.BirthDay),
 		Language: command.Language,
 	}, nil
 }

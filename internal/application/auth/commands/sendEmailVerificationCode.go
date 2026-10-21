@@ -37,7 +37,7 @@ func NewSendEmailVerificationCodeHandler(
 }
 
 func (h *SendEmailVerificationCodeHandler) Handle(ctx context.Context, command SendEmailVerificationCodeCommand) (cqrs.NoResult, error) {
-	user, err := h.userRepository.FindByColumn(ctx, "email", command.Email)
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
 	if err != nil {
 		return cqrs.NoResult{}, err
 	}
@@ -49,7 +49,7 @@ func (h *SendEmailVerificationCodeHandler) Handle(ctx context.Context, command S
 	}
 
 	window := helpers.ResetCodeWindow(h.validityMinutes)
-	code := helpers.GenerateResetCode(command.Email, h.resetSecret, window)
+	code := helpers.GenerateResetCode(helpers.NormalizeEmail(command.Email), h.resetSecret, window)
 	err = h.emailSender.SendEmailVerificationCode(command.Email, code, h.validityMinutes)
 	return cqrs.NoResult{}, err
 }

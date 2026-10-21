@@ -5,6 +5,7 @@ import (
 
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
+	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
 )
@@ -23,7 +24,7 @@ func NewGetUserByEmailHandler(userRepository databaseAbstract.DbRepository[entit
 }
 
 func (h *GetUserByEmailHandler) Handle(ctx context.Context, query GetUserByEmailQuery) (*dtos.UserResultModel, error) {
-	user, err := h.userRepository.FindByColumn(ctx, "email", query.Email)
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(query.Email))
 	if err != nil {
 		return nil, err
 	}

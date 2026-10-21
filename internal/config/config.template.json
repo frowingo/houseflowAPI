@@ -12,6 +12,26 @@
             "apiKey": "CLOUDINARY_API_KEY",
             "apiSecret": "CLOUDINARY_API_SECRET",
             "folder": "houseflow/images"
+        },
+        "socialAuth": {
+            "google": {
+                "clientIds": []
+            },
+            "apple": {
+                "clientIds": [],
+                "teamId": "",
+                "keyId": "",
+                "privateKey": ""
+            },
+            "facebook": {
+                "appId": "",
+                "appSecret": "",
+                "graphVersion": ""
+            },
+            "snapchat": {
+                "clientId": ""
+            },
+            "tokenEncryptionKey": ""
         }
     },
     "internal": {

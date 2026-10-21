@@ -934,3 +934,194 @@ değerler ilk canlı test için seçilmişti ve aynı anda en fazla 2 evin oda a
 Yerel ölçümde bir makinenin 4 dolu odası tek M serisi çekirdeğin yaklaşık %19'unu kullanıyor.
 Fly'ın paylaşımlı CPU'su daha yavaş ve sürekli yükte kotayla sınırlı olduğundan bu limit
 staging'de Fly üzerinde yük testiyle doğrulanmalı. Canlıda da CPU throttling izlenmelidir.
+
+## ADR-023 — Sosyal giriş: sağlayıcı yalnız kimlik doğrular, oturum bizimdir
+
+**Durum:** Kabul edildi — 19 Ekim 2026 (uygulama başlamadı). Ayrıntılı plan ve fazlar:
+`socialLoginPlan.md`.
+
+Google, Apple, Facebook ve Snapchat ile kayıt ve giriş eklenir. Sağlayıcı yalnız kimliği
+doğrular; kullanıcı kendi `User` collection'ımızdan okunur ve kendi JWT'miz verilir.
+Sağlayıcı token'ları saklanmaz, profil sağlayıcıdan sürekli çekilmez. Tek istisna, hesap
+silmede Apple'ın zorunlu tuttuğu revoke için saklanan şifreli Apple refresh token'ıdır.
+
+Her girişte client sağlayıcıdan yeni bir token alır ve backend onu doğrular. Client'ın
+gönderdiği email veya sağlayıcı ID'si kimlik kanıtı sayılmaz. Google, Apple ve Facebook
+Limited Login token'ları JWKS ile offline doğrulanır. Facebook klasik ve Snapchat
+token'ları tek bir server çağrısıyla doğrulanır.
+
+Kararlar:
+- **Tek uç nokta.** `POST /auth/social/:provider` kimlik varsa giriş yapar, yoksa kayıt
+  açar; cevaptaki `isNewUser` ikisini ayırır.
+- **Ayrı `UserIdentity` collection'ı.** `{provider, providerUserId}` unique index'i, bir
+  sağlayıcı hesabının yalnız bir kullanıcıya bağlanmasını garanti eder. `User` üzerinde
+  yalnız `signUpProvider` enum'u tutulur (`0` = email/şifre, `1` Google, `2` Apple,
+  `3` Facebook, `4` Snapchat) ve sonradan değişmez.
+- **Otomatik hesap birleştirme yok.** Sağlayıcının emaili başka yolla kayıtlı bir
+  kullanıcıya aitse `409 auth.error.email_registered_with_other_method` döner. Bağlama,
+  oturum açmış kullanıcı tarafından profilden yapılır. Gerekçe: doğrulanmamış emaille önceden
+  açılmış hesap üzerinden ele geçirme.
+- **Email zorunlu kalır.** Email vermeyen sağlayıcıda (Snapchat, bazı Facebook hesapları)
+  kayıt, 10 dakikalık `pendingToken` ile kullanıcıdan email alınarak tamamlanır. Email
+  doğrulanmamış sayılır ve mevcut doğrulama kodu akışıyla doğrulanır. `pendingToken`,
+  access token'dan türetilmiş ayrı bir anahtarla imzalanır; böylece `AuthRequired`
+  middleware'inden geçemez.
+- **Şifresiz hesap.** Sosyal kullanıcının şifresi boştur. `/auth/login` bu hesaplarda
+  `failedLoginAttempts` artırmadan `auth.error.use_social_login` döner. Reset akışıyla
+  sonradan şifre belirlenebilir.
+- **Sağlayıcı config ile açılır.** Env değişkenleri eksik olan sağlayıcı kapalıdır ve
+  `auth.error.provider_not_supported` döner.
+
+**Rolling deploy.** Yeni alan varsayılanı `0`, yeni collection'ı önceki sürüm okumaz,
+sağlayıcılar kapalı çıkar. Sağlayıcı açıldıktan sonra bu değişiklikten önceki bir sürüme
+dönülmemelidir: önceki sürümde şifresiz kullanıcının hatalı login denemeleri hesabı
+kilitleyebilir.
+
+## ADR-024 — Kullanıcının kendi hesabını silmesi
+
+**Durum:** Kabul edildi — 20 Ekim 2026.
+
+App Store Guideline 5.1.1(v), hesap açılabilen uygulamalarda hesabın uygulama içinden
+silinebilmesini ister. Bu, Sign in with Apple'ın (ADR-023) yayın şartıdır. Oturumdaki
+kullanıcı `DELETE /user/me` ile kendi hesabını siler. Uç, SuperAdmin'in kullandığı
+`DeleteUserCommand`'ı çalıştırır; iki yol da aynı kuralı izler.
+
+Önceden, başka üyesi olmayan bir evin sahibi silinemiyordu
+(`user.error.cannot_delete_sole_house_owner`). Ev silme komutu olmadığından böyle bir
+kullanıcı hesabını hiç silemiyordu. Artık tek transaction'da şunlar yapılır:
+- **Başka üyesi olmayan evler** verisiyle birlikte silinir: `Chore`, `ChoreStatusHistory`,
+  `ChoreReviewVote`, `Announcement`, `Notification`, `HouseInfoHistory`,
+  `HouseInviteCode`, `GameSession`, `GameMatchResult`.
+- **Kullanıcının sahibi olduğu paylaşılan evler** eskisi gibi kalan ilk üyeye geçer.
+- **Kullanıcının diğer evlerdeki üyeliği** kaldırılır.
+- **Kullanıcının kendi kayıtları:** `UserIdentity` ve `UserInfoHistory` silinir.
+
+Commit'ten sonra Apple yetkisi revoke edilir. Revoke'un başarısız olması silmeyi geri
+almaz.
+
+Paylaşılan evlerde kullanıcının izleri kalır: atandığı chore'lar ve katıldığı maç
+sonuçlarındaki kullanıcı ID'si. Bunlar evin diğer üyelerine ait kayıtlardır.
+
+**Bilinen açık.** `AuthRequired` yalnız JWT imzasını ve süresini doğrular. Silinmiş
+kullanıcının token'ı, süresi dolana kadar (en çok 72 saat) kullanıcıyı okumayan uçlarda
+geçerli kalır. Bu durum admin silmesinde de vardı.
+
+**Rolling deploy.** Şema değişmez. Önceki sürüm aynı istekte tek üyeli ev sahibini silmeyi
+reddeder; yeni sürüm siler.
+
+## ADR-025 — Facebook data deletion isteği hesabı her zaman siler
+
+**Durum:** Kabul edildi — 20 Ekim 2026.
+
+Facebook Login kullanan uygulamalar App Review için bir data deletion callback sunmak
+zorunda. Kullanıcı Facebook ayarlarından uygulamamızı kaldırıp verisinin silinmesini
+isterse Facebook `POST /auth/facebook/data-deletion` ucuna imzalı bir `signed_request`
+gönderir.
+
+**Karar.** İmza app secret ile doğrulanır. İstekteki Facebook kullanıcısına bağlı hesap,
+şifresi ya da başka bir sağlayıcısı (Google, Apple) olsa bile **her zaman tamamen
+silinir**. Silme ADR-024'teki kuralla yapılır:
+- Tek üyeli evler verisiyle silinir.
+- Paylaşılan evlerin sahipliği kalan ilk üyeye geçer.
+- Apple yetkisi varsa revoke edilir.
+
+Kural kullanıcı açısından tektir: Facebook'tan silme isteyen kullanıcının bizde hesabı
+kalmaz. Değerlendirilen diğer iki seçenek reddedildi:
+- **Yalnız Facebook bağlantısını silmek:** Facebook'tan gelen email ve isim hesapta
+  kalırdı.
+- **Yalnız Facebook tek giriş yoluysa hesabı silmek:** Davranış hesaba göre
+  değişirdi.
+
+**Onay kodu.** Silme istek anında yapılır. Facebook'a dönen onay kodu `DataDeletionRequest`
+collection'ına yazılır ve `GET /auth/facebook/data-deletion/{code}` bu kaydı gösterir.
+- Kayıtta sağlayıcı kullanıcı ID'si ya da başka kişisel veri tutulmaz.
+- Kayıt 90 gün sonra TTL ile silinir.
+- Bağlı hesabı olmayan bir istek de onay kodu alır, ama hiçbir şey silinmez.
+
+**Paylaşılan silme kuralı.** Silme kuralı `user/policies.AccountRemoval`'a taşındı.
+`DeleteUserCommand` ve `ProviderDataDeletionCommand` bu policy'yi kullanır; handler'lar
+birbirini çağırmaz.
+
+**Rolling deploy.** Yeni collection ve yeni uçlar ekleniyor; önceki sürüm bunları
+kullanmaz. Facebook config'i verilmeden callback `provider_not_supported` döner.
+
+## ADR-026 — Emailsiz sosyal kayıtta hesap, email doğrulandıktan sonra açılır
+
+**Durum:** Kabul edildi — 21 Ekim 2026.
+
+Snapchat Login Kit email paylaşmaz. Bazı Facebook hesapları da email vermez: telefonla
+açılmış hesaplar ya da email iznini reddeden kullanıcılar. Her hesabın emaili zorunlu
+kaldığı için (ADR-023) bu kayıtlar kullanıcıdan email alınarak tamamlanır.
+
+**Karar.** Sağlayıcı email vermezse `POST /auth/social/{provider}` hesap açmaz;
+`needsEmail` ve 10 dakikalık bir `pendingToken` döner. Kayıt iki adımda tamamlanır:
+1. `POST /auth/social/complete/code` kullanıcının girdiği emaile bir kod gönderir.
+2. `POST /auth/social/complete` kodu kontrol eder ve hesabı doğrulanmış emaille açar.
+
+Kod, pending kimliğe ve emaile bağlı bir HMAC'tir. Şifre sıfırlama ve email doğrulama
+kodlarıyla karışmaz.
+
+İlk plan, hesabı doğrulanmamış emaille açıp sonradan doğrulamaktı. Bu yaklaşım şu
+senaryoya açıktı:
+1. Saldırgan kendi sağlayıcı hesabıyla başkasının emailini yazıp kayıt olur.
+2. Gerçek sahibi o emaille kayıt olamaz.
+3. Gerçek sahibi şifre sıfırlamayla hesaba girse bile saldırganın sağlayıcı girişi
+   hesapta kalır.
+
+Önce doğrulama bu senaryoyu kapatır.
+
+**`pendingToken`.** JWT secret'tan türetilmiş ayrı bir anahtarla (`HMAC(JWT_SECRET,
+"social-pending")`) imzalanır ve `typ` claim'i taşır. Bu yüzden access token yerine
+kabul edilmez; access token da pending token yerine kabul edilmez. Token sunucuda
+saklanmaz.
+
+**Apple bu akışa girmez.** Hesap silmede revoke için gereken `authorizationCode` tek
+kullanımlıktır ve email adımı sırasında süresi dolabilir. Apple email scope'u istendiğinde
+emaili her zaman verir; emailsiz Apple girişi `social_email_required` ile reddedilir.
+
+**Snapchat doğrulaması.** Login Kit'te token'ın hangi uygulamaya verildiğini soran
+dokümante bir uç yok; OIDC issuer ve JWKS adresi de dokümante edilmemiş. Kimlik Login Kit
+`me` ucundan okunan `externalId`'dir. Bu ID uygulamaya özel olduğu için başka bir
+uygulamanın token'ı bizdeki bir hesabın ID'sini döndürmez. Snap OIDC'yi dokümante ederse
+JWKS ile doğrulamaya geçilmelidir.
+
+**Rolling deploy.** Yeni uçlar ve yeni alanlar (`needsEmail`, `pendingToken`) ekleniyor.
+`token` alanı yalnız boşken JSON'dan çıkarılıyor; başarılı girişlerde her zaman var.
+Şema değişmiyor.
+
+## ADR-027 — Sağlayıcı bağlama ve Apple hesap bildirimleri
+
+**Durum:** Kabul edildi — 21 Ekim 2026.
+
+**Bağlama.** Hesaplar otomatik birleştirilmediği için (ADR-023), mevcut bir hesaba
+sağlayıcı yalnız oturum açmış kullanıcı tarafından eklenir:
+- `POST /auth/social/{provider}/link` sağlayıcı ekler.
+- `DELETE /auth/social/{provider}/link` sağlayıcı bağlantısını kaldırır.
+
+`UserIdentity` üzerindeki iki unique index kuralları veritabanı seviyesinde korur, eşzamanlı
+istekler dahil:
+- `{provider, providerUserId}`: bir sağlayıcı hesabı tek kullanıcıya bağlanır.
+- `{userId, provider}`: bir kullanıcıya her sağlayıcıdan tek hesap bağlanır.
+
+Şifresi olmayan kullanıcının son sağlayıcısı kaldırılamaz. Kaldırma, sayımı ve silmeyi aynı
+transaction'da yapar ve user dokümanına da yazar. Böylece aynı anda gelen iki kaldırma
+isteği write conflict ile sıraya girer ve kullanıcı girişsiz kalmaz.
+
+**Apple bildirimleri.** Sign in with Apple server-to-server bildirimleri
+`POST /auth/apple/notifications` ile alınır. Payload, Apple'ın identity anahtarlarıyla
+ve kimlik token'larıyla aynı `iss`/`aud` kurallarıyla doğrulanır.
+- `consent-revoked`: yalnız Apple bağlantısı silinir.
+- Hesap silme event'i (`account-delete`, gözlenen biçimiyle `account-deleted`): hesap
+  ADR-024 kuralıyla silinir. Bu, sağlayıcıdan gelen silme isteğinde hesabı her zaman
+  silme kararıyla (ADR-025) tutarlıdır.
+- Email yönlendirme event'leri yalnız onaylanır.
+
+Apple aynı event'i tekrar gönderebildiği için işlem idempotenttir.
+
+**Bilinen risk.** Bağlama yeniden kimlik doğrulama istemez; çalınmış bir oturum token'ı
+kalıcı bir giriş yolu eklemek için kullanılabilir. Bağlama bildirimi ya da şifre onayı
+sonraki iş olarak açık.
+
+**Rolling deploy.** Migration 0049 henüz hiçbir ortama çıkmadığı için `{userId}` index'i
+yerine doğrudan unique `{userId, provider}` index'iyle güncellendi. 0052 yeni mesajları
+ekler. Yeni uçları önceki sürüm bilmez.

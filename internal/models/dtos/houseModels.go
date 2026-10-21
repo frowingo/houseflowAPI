@@ -56,7 +56,7 @@ func UserToResultModel(u entities.User) UserResultModel {
 	}
 }
 
-func UserToAuthResultModel(user entities.User, houses []entities.House) AuthUserResultModel {
+func UserToAuthResultModel(user entities.User, houses []entities.House, identities []entities.UserIdentity) AuthUserResultModel {
 	houseList := make([]AuthHouseModel, 0, len(houses))
 	for _, house := range houses {
 		houseList = append(houseList, AuthHouseModel{
@@ -65,23 +65,30 @@ func UserToAuthResultModel(user entities.User, houses []entities.House) AuthUser
 			HouseProfile: house.ProfileImage,
 		})
 	}
+	linkedProviders := make([]entities.AuthProvider, 0, len(identities))
+	for _, identity := range identities {
+		linkedProviders = append(linkedProviders, identity.Provider)
+	}
 
 	return AuthUserResultModel{
-		Id:            user.Id.Hex(),
-		Firstname:     user.Firstname,
-		Lastname:      user.Lastname,
-		PhoneNumber:   user.PhoneNumber,
-		Email:         user.Email,
-		BirthDay:      NewUTCDateTime(user.BirthDay),
-		ImageURL:      user.ImageURL,
-		Language:      user.Language,
-		HouseList:     houseList,
-		IsActive:      user.IsActive,
-		IsVerifyPhone: user.IsVerifyPhone,
-		IsVerifyEmail: user.IsVerifyEmail,
-		CreatedOn:     NewUTCDateTime(user.CreatedOn),
-		UpdatedOn:     NewUTCDateTime(user.UpdatedOn),
-		LastLogin:     NewUTCDateTime(user.LastLogin),
+		Id:              user.Id.Hex(),
+		Firstname:       user.Firstname,
+		Lastname:        user.Lastname,
+		PhoneNumber:     user.PhoneNumber,
+		Email:           user.Email,
+		BirthDay:        NewUTCDateTime(user.BirthDay),
+		ImageURL:        user.ImageURL,
+		Language:        user.Language,
+		HouseList:       houseList,
+		IsActive:        user.IsActive,
+		IsVerifyPhone:   user.IsVerifyPhone,
+		IsVerifyEmail:   user.IsVerifyEmail,
+		CreatedOn:       NewUTCDateTime(user.CreatedOn),
+		UpdatedOn:       NewUTCDateTime(user.UpdatedOn),
+		LastLogin:       NewUTCDateTime(user.LastLogin),
+		SignUpProvider:  user.SignUpProvider,
+		LinkedProviders: linkedProviders,
+		HasPassword:     user.HashPassword != "",
 	}
 }
 

@@ -119,9 +119,9 @@ func runAPI() error {
 		controllers.ReadinessController(coordinationReadiness(coordinator)),
 	)
 
-	realtimeService, appEventService, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, coordinator)
+	realtimeService, appEventService, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, cfg.External.SocialAuth, coordinator)
 	if err != nil {
-		return fmt.Errorf("initialize realtime room runtime: %w", err)
+		return fmt.Errorf("set up routes: %w", err)
 	}
 	defer closeRealtimeService(realtimeService)
 	defer closeAppEventService(appEventService)
