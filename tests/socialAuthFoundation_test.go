@@ -37,7 +37,7 @@ func setRequiredConfigEnv(t *testing.T) {
 	t.Setenv("SMTP_PASSWORD", "smtp-password")
 	for _, name := range []string{
 		"GOOGLE_CLIENT_IDS", "APPLE_CLIENT_IDS", "APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY",
-		"FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET", "SNAPCHAT_CLIENT_ID", "SOCIAL_TOKEN_ENC_KEY",
+		"FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET", "FACEBOOK_GRAPH_VERSION", "SNAPCHAT_CLIENT_ID", "SOCIAL_TOKEN_ENC_KEY",
 	} {
 		t.Setenv(name, "")
 	}
@@ -65,6 +65,7 @@ func TestSocialAuthConfigReadsEnvironment(t *testing.T) {
 	t.Setenv("SOCIAL_TOKEN_ENC_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	t.Setenv("FACEBOOK_APP_ID", "fb-app")
 	t.Setenv("FACEBOOK_APP_SECRET", "fb-secret")
+	t.Setenv("FACEBOOK_GRAPH_VERSION", "v24.0")
 	t.Setenv("SNAPCHAT_CLIENT_ID", "snap-client")
 
 	loaded, err := config.MustLoadConfig()
@@ -77,6 +78,9 @@ func TestSocialAuthConfigReadsEnvironment(t *testing.T) {
 	}
 	if !social.Google.Enabled() || !social.Apple.Enabled() || !social.Facebook.Enabled() || !social.Snapchat.Enabled() {
 		t.Fatalf("configured providers not enabled: %+v", social)
+	}
+	if social.Facebook.GraphVersion != "v24.0" {
+		t.Fatalf("facebook graph version=%q", social.Facebook.GraphVersion)
 	}
 	if strings.Count(social.Apple.PrivateKey, "\n") != 2 {
 		t.Fatalf("apple private key line breaks not restored: %q", social.Apple.PrivateKey)

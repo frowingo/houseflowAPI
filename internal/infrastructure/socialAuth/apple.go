@@ -2,6 +2,7 @@ package socialAuth
 
 import (
 	"context"
+	"encoding/json"
 
 	authAbstract "houseflowApi/internal/application/auth/abstract"
 	"houseflowApi/internal/data/entities"
@@ -59,4 +60,40 @@ func (v *AppleVerifier) Verify(ctx context.Context, credential authAbstract.Soci
 		EmailVerified:  email != "" && (boolClaim(claims, "email_verified") || claims["email_verified"] == nil),
 		IsPrivateRelay: boolClaim(claims, "is_private_email"),
 	}, nil
+}
+
+var _ authAbstract.ProviderNotificationVerifier = (*AppleVerifier)(nil)
+
+// VerifyNotification checks the payload of a Sign in with Apple
+// server-to-server notification: a JWT signed with Apple's identity keys,
+// issued to one of our client ids, whose "events" claim is a JSON string.
+func (v *AppleVerifier) VerifyNotification(ctx context.Context, payload string) (authAbstract.ProviderAccountEvent, error) {
+	claims, err := v.tokens.verifySigned(ctx, payload)
+	if err != nil {
+		return authAbstract.ProviderAccountEvent{}, err
+	}
+	var event struct {
+		Type    string `json:"type"`
+		Subject string `json:"sub"`
+	}
+	rawEvent := []byte(stringClaim(claims, "events"))
+	if object, isObject := claims["events"].(map[string]any); isObject {
+		// Tolerate the event as a JSON object rather than a string.
+		rawEvent, _ = json.Marshal(object)
+	}
+	if err := json.Unmarshal(rawEvent, &event); err != nil || event.Subject == "" {
+		return authAbstract.ProviderAccountEvent{}, invalidSocialToken()
+	}
+
+	eventType := authAbstract.ProviderEventUnknown
+	switch event.Type {
+	case "consent-revoked":
+		eventType = authAbstract.ProviderConsentRevoked
+	// Apple's documentation says account-delete; deliveries have been seen as account-deleted.
+	case "account-delete", "account-deleted":
+		eventType = authAbstract.ProviderAccountDeleted
+	case "email-disabled", "email-enabled":
+		eventType = authAbstract.ProviderEmailChanged
+	}
+	return authAbstract.ProviderAccountEvent{Type: eventType, ProviderUserID: event.Subject}, nil
 }

@@ -12,8 +12,9 @@ const userIdentityCollection = "UserIdentity"
 
 // userIdentityCollectionMigration creates the collection of third-party
 // provider accounts linked to users. The unique provider/providerUserId index
-// guarantees one provider account is never attached to two users, including
-// under concurrent sign-ups.
+// guarantees one provider account is never attached to two users, and the
+// unique userId/provider index that a user links at most one account per
+// provider, including under concurrent requests.
 type userIdentityCollectionMigration struct{}
 
 func (m *userIdentityCollectionMigration) Version() string { return "0049" }
@@ -47,8 +48,9 @@ func (m *userIdentityCollectionMigration) Up(ctx context.Context, db *mongo.Data
 			Options: options.Index().SetUnique(true).SetName("idxUserIdentityProviderUnique"),
 		},
 		{
-			Keys:    bson.D{{Key: "userId", Value: 1}},
-			Options: options.Index().SetName("idxUserIdentityUser"),
+			// One account per provider and user; also serves lookups by user.
+			Keys:    bson.D{{Key: "userId", Value: 1}, {Key: "provider", Value: 1}},
+			Options: options.Index().SetUnique(true).SetName("idxUserIdentityUserProviderUnique"),
 		},
 	})
 	return err

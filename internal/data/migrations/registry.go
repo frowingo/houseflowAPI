@@ -82,5 +82,7 @@ func AllMigrations() []Migration {
 		&userAddSignUpProvider{},
 		&userIdentityCollectionMigration{},
 		&socialAuthLocalizations{},
+		&dataDeletionRequests{},
+		&socialLinkLocalizations{},
 	}
 }

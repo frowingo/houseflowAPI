@@ -46,3 +46,37 @@ type SocialAuthorizationKeeper interface {
 	Keep(ctx context.Context, identity VerifiedIdentity, credential SocialCredential) (string, error)
 	Revoke(ctx context.Context, keptToken string, clientID string) error
 }
+
+// DataDeletionRequestVerifier checks a data deletion request a provider sends
+// when a user removes our app (Facebook's signed_request) and returns the
+// provider user id it is about.
+type DataDeletionRequestVerifier interface {
+	Provider() entities.AuthProvider
+	VerifyDataDeletionRequest(signedRequest string) (string, error)
+}
+
+// ProviderAccountEventType is what a provider reports about one of its users.
+type ProviderAccountEventType string
+
+const (
+	// ProviderConsentRevoked: the user stopped using the provider to sign in to our app.
+	ProviderConsentRevoked ProviderAccountEventType = "consentRevoked"
+	// ProviderAccountDeleted: the user deleted their account at the provider.
+	ProviderAccountDeleted ProviderAccountEventType = "accountDeleted"
+	// ProviderEmailChanged: the provider started or stopped forwarding to the relay email.
+	ProviderEmailChanged ProviderAccountEventType = "emailChanged"
+	// ProviderEventUnknown: an event type this server does not handle.
+	ProviderEventUnknown ProviderAccountEventType = "unknown"
+)
+
+type ProviderAccountEvent struct {
+	Type           ProviderAccountEventType
+	ProviderUserID string
+}
+
+// ProviderNotificationVerifier checks a notification a provider pushes to us
+// (Apple's server-to-server notifications) and returns the event it carries.
+type ProviderNotificationVerifier interface {
+	Provider() entities.AuthProvider
+	VerifyNotification(ctx context.Context, payload string) (ProviderAccountEvent, error)
+}

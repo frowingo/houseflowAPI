@@ -8,6 +8,7 @@ import (
 
 	authAbstract "houseflowApi/internal/application/auth/abstract"
 	authCommands "houseflowApi/internal/application/auth/commands"
+	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	userCommands "houseflowApi/internal/application/user/commands"
 	"houseflowApi/internal/data/database"
@@ -59,11 +60,16 @@ func (k *fakeAuthorizationKeeper) Revoke(_ context.Context, keptToken string, cl
 
 type socialAuthFixture struct {
 	*concurrencyFixture
-	apple      *fakeSocialVerifier
-	keeper     *fakeAuthorizationKeeper
-	handler    *authCommands.SocialAuthHandler
-	deleteUser *userCommands.DeleteUserHandler
-	validate   *authQueries.ValidateAuthHandler
+	apple         *fakeSocialVerifier
+	snapchat      *fakeSocialVerifier
+	keeper        *fakeAuthorizationKeeper
+	mail          *recordingEmailSender
+	pendingTokens *helpers.SocialPendingTokenService
+	handler       *authCommands.SocialAuthHandler
+	sendCode      *authCommands.SendSocialSignUpCodeHandler
+	complete      *authCommands.CompleteSocialSignUpHandler
+	deleteUser    *userCommands.DeleteUserHandler
+	validate      *authQueries.ValidateAuthHandler
 }
 
 func newSocialAuthFixture(t *testing.T) *socialAuthFixture {
@@ -80,13 +86,24 @@ func newSocialAuthFixture(t *testing.T) *socialAuthFixture {
 		Provider: entities.ProviderApple, ProviderUserID: "apple-sub-1", ClientID: "com.houseflow.app",
 		Email: "Relay@PrivateRelay.AppleId.com", EmailVerified: true, IsPrivateRelay: true,
 	}}
+	snapchat := &fakeSocialVerifier{provider: entities.ProviderSnapchat, identity: authAbstract.VerifiedIdentity{
+		Provider: entities.ProviderSnapchat, ProviderUserID: "snap-external-1", ClientID: "snap-client", FirstName: "Snappy",
+	}}
 	keeper := &fakeAuthorizationKeeper{}
+	mail := &recordingEmailSender{}
+	accounts := authPolicies.NewSocialAccounts(users, identities, histories, jwtService)
+	pendingTokens := helpers.NewSocialPendingTokenService("social-auth-jwt-secret")
 	return &socialAuthFixture{
 		concurrencyFixture: base,
 		apple:              apple,
+		snapchat:           snapchat,
 		keeper:             keeper,
-		handler: authCommands.NewSocialAuthHandler(users, identities, histories, jwtService,
-			[]authAbstract.SocialIdentityVerifier{apple}, []authAbstract.SocialAuthorizationKeeper{keeper}),
+		mail:               mail,
+		pendingTokens:      pendingTokens,
+		handler: authCommands.NewSocialAuthHandler(accounts, pendingTokens,
+			[]authAbstract.SocialIdentityVerifier{apple, snapchat}, []authAbstract.SocialAuthorizationKeeper{keeper}),
+		sendCode:   authCommands.NewSendSocialSignUpCodeHandler(accounts, pendingTokens, mail, "social-code-secret", 5),
+		complete:   authCommands.NewCompleteSocialSignUpHandler(accounts, pendingTokens, "social-code-secret", 5),
 		deleteUser: userCommands.NewDeleteUserHandler(users, houses, identities, []authAbstract.SocialAuthorizationKeeper{keeper}),
 		validate:   authQueries.NewValidateAuthHandler(users, houses, identities, jwtService),
 	}

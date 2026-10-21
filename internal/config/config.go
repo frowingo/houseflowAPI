@@ -107,6 +107,9 @@ func (c ConfigAppleAuth) configured() bool {
 type ConfigFacebookAuth struct {
 	AppID     string `json:"appId"`
 	AppSecret string `json:"appSecret"`
+	// GraphVersion pins the Graph API version, e.g. "v23.0"; empty uses the
+	// adapter's default.
+	GraphVersion string `json:"graphVersion"`
 }
 
 func (c ConfigFacebookAuth) Enabled() bool { return c.AppID != "" }
@@ -222,6 +225,9 @@ func applySocialAuthEnvOverrides(config *ConfigSocialAuth) {
 	}
 	if appSecret := os.Getenv("FACEBOOK_APP_SECRET"); appSecret != "" {
 		config.Facebook.AppSecret = appSecret
+	}
+	if graphVersion := os.Getenv("FACEBOOK_GRAPH_VERSION"); graphVersion != "" {
+		config.Facebook.GraphVersion = graphVersion
 	}
 	if clientID := os.Getenv("SNAPCHAT_CLIENT_ID"); clientID != "" {
 		config.Snapchat.ClientID = clientID

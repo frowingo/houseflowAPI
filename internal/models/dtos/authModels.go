@@ -83,7 +83,54 @@ type SocialAuthRequestModel struct {
 	Language          string `json:"language" validate:"omitempty,oneof=en tr"`
 }
 
+// SocialAuthResponseModel carries our token, or, when the provider shared no
+// email, needsEmail and the pendingToken that finishes the sign-up.
 type SocialAuthResponseModel struct {
-	Token     string `json:"token"`
-	IsNewUser bool   `json:"isNewUser"`
+	Token        string `json:"token,omitempty"`
+	IsNewUser    bool   `json:"isNewUser"`
+	NeedsEmail   bool   `json:"needsEmail,omitempty"`
+	PendingToken string `json:"pendingToken,omitempty"`
+}
+
+type SocialSignUpCodeRequestModel struct {
+	PendingToken string `json:"pendingToken" validate:"required,max=4096"`
+	Email        string `json:"email" validate:"required,email,max=254"`
+}
+
+type CompleteSocialSignUpRequestModel struct {
+	PendingToken string `json:"pendingToken" validate:"required,max=4096"`
+	Email        string `json:"email" validate:"required,email,max=254"`
+	Code         string `json:"code" validate:"required,len=6"`
+	Firstname    string `json:"firstName" validate:"omitempty,max=50"`
+	Lastname     string `json:"lastName" validate:"omitempty,max=50"`
+	Language     string `json:"language" validate:"omitempty,oneof=en tr"`
+}
+
+// ProviderDataDeletionResult is the outcome of a provider's data deletion
+// request. UserID and HouseIDs are only for change notifications.
+type ProviderDataDeletionResult struct {
+	ConfirmationCode string   `json:"confirmationCode"`
+	UserID           string   `json:"-"`
+	HouseIDs         []string `json:"-"`
+}
+
+// FacebookDataDeletionResponseModel is the reply Facebook expects from the
+// data deletion callback.
+type FacebookDataDeletionResponseModel struct {
+	URL              string `json:"url"`
+	ConfirmationCode string `json:"confirmation_code"`
+}
+
+type DataDeletionStatusResponseModel struct {
+	ConfirmationCode string      `json:"confirmationCode"`
+	Status           string      `json:"status"`
+	RequestedOn      UTCDateTime `json:"requestedOn"`
+}
+
+type LinkedProvidersResponseModel struct {
+	LinkedProviders []entities.AuthProvider `json:"linkedProviders"`
+}
+
+type AppleNotificationRequestModel struct {
+	Payload string `json:"payload"`
 }

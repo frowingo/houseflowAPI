@@ -51,6 +51,20 @@ func NewIDTokenVerifier(keys *JWKSCache, issuers, audiences, methods []string, o
 // application error; an unreachable key set yields an unavailable one so the
 // client can retry.
 func (v *IDTokenVerifier) Verify(ctx context.Context, rawToken string) (jwt.MapClaims, error) {
+	claims, err := v.verifySigned(ctx, rawToken)
+	if err != nil {
+		return nil, err
+	}
+	subject, err := claims.GetSubject()
+	if err != nil || subject == "" {
+		return nil, invalidSocialToken()
+	}
+	return claims, nil
+}
+
+// verifySigned checks everything but the subject, for provider tokens that
+// carry no top-level sub (Apple's server-to-server notifications).
+func (v *IDTokenVerifier) verifySigned(ctx context.Context, rawToken string) (jwt.MapClaims, error) {
 	if rawToken == "" {
 		return nil, invalidSocialToken()
 	}
@@ -84,10 +98,6 @@ func (v *IDTokenVerifier) Verify(ctx context.Context, rawToken string) (jwt.MapC
 	if err != nil || !slices.ContainsFunc(audiences, func(audience string) bool {
 		return slices.Contains(v.audiences, audience)
 	}) {
-		return nil, invalidSocialToken()
-	}
-	subject, err := claims.GetSubject()
-	if err != nil || subject == "" {
 		return nil, invalidSocialToken()
 	}
 	return claims, nil

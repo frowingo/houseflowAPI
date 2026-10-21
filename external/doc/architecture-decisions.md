@@ -1008,3 +1008,120 @@ geçerli kalır. Bu durum admin silmesinde de vardı.
 
 **Rolling deploy.** Şema değişmez. Önceki sürüm aynı istekte tek üyeli ev sahibini silmeyi
 reddeder; yeni sürüm siler.
+
+## ADR-025 — Facebook data deletion isteği hesabı her zaman siler
+
+**Durum:** Kabul edildi — 20 Ekim 2026.
+
+Facebook Login kullanan uygulamalar App Review için bir data deletion callback sunmak
+zorunda. Kullanıcı Facebook ayarlarından uygulamamızı kaldırıp verisinin silinmesini
+isterse Facebook `POST /auth/facebook/data-deletion` ucuna imzalı bir `signed_request`
+gönderir.
+
+**Karar.** İmza app secret ile doğrulanır. İstekteki Facebook kullanıcısına bağlı hesap,
+şifresi ya da başka bir sağlayıcısı (Google, Apple) olsa bile **her zaman tamamen
+silinir**. Silme ADR-024'teki kuralla yapılır:
+- Tek üyeli evler verisiyle silinir.
+- Paylaşılan evlerin sahipliği kalan ilk üyeye geçer.
+- Apple yetkisi varsa revoke edilir.
+
+Kural kullanıcı açısından tektir: Facebook'tan silme isteyen kullanıcının bizde hesabı
+kalmaz. Değerlendirilen diğer iki seçenek reddedildi:
+- **Yalnız Facebook bağlantısını silmek:** Facebook'tan gelen email ve isim hesapta
+  kalırdı.
+- **Yalnız Facebook tek giriş yoluysa hesabı silmek:** Davranış hesaba göre
+  değişirdi.
+
+**Onay kodu.** Silme istek anında yapılır. Facebook'a dönen onay kodu `DataDeletionRequest`
+collection'ına yazılır ve `GET /auth/facebook/data-deletion/{code}` bu kaydı gösterir.
+- Kayıtta sağlayıcı kullanıcı ID'si ya da başka kişisel veri tutulmaz.
+- Kayıt 90 gün sonra TTL ile silinir.
+- Bağlı hesabı olmayan bir istek de onay kodu alır, ama hiçbir şey silinmez.
+
+**Paylaşılan silme kuralı.** Silme kuralı `user/policies.AccountRemoval`'a taşındı.
+`DeleteUserCommand` ve `ProviderDataDeletionCommand` bu policy'yi kullanır; handler'lar
+birbirini çağırmaz.
+
+**Rolling deploy.** Yeni collection ve yeni uçlar ekleniyor; önceki sürüm bunları
+kullanmaz. Facebook config'i verilmeden callback `provider_not_supported` döner.
+
+## ADR-026 — Emailsiz sosyal kayıtta hesap, email doğrulandıktan sonra açılır
+
+**Durum:** Kabul edildi — 21 Ekim 2026.
+
+Snapchat Login Kit email paylaşmaz. Bazı Facebook hesapları da email vermez: telefonla
+açılmış hesaplar ya da email iznini reddeden kullanıcılar. Her hesabın emaili zorunlu
+kaldığı için (ADR-023) bu kayıtlar kullanıcıdan email alınarak tamamlanır.
+
+**Karar.** Sağlayıcı email vermezse `POST /auth/social/{provider}` hesap açmaz;
+`needsEmail` ve 10 dakikalık bir `pendingToken` döner. Kayıt iki adımda tamamlanır:
+1. `POST /auth/social/complete/code` kullanıcının girdiği emaile bir kod gönderir.
+2. `POST /auth/social/complete` kodu kontrol eder ve hesabı doğrulanmış emaille açar.
+
+Kod, pending kimliğe ve emaile bağlı bir HMAC'tir. Şifre sıfırlama ve email doğrulama
+kodlarıyla karışmaz.
+
+İlk plan, hesabı doğrulanmamış emaille açıp sonradan doğrulamaktı. Bu yaklaşım şu
+senaryoya açıktı:
+1. Saldırgan kendi sağlayıcı hesabıyla başkasının emailini yazıp kayıt olur.
+2. Gerçek sahibi o emaille kayıt olamaz.
+3. Gerçek sahibi şifre sıfırlamayla hesaba girse bile saldırganın sağlayıcı girişi
+   hesapta kalır.
+
+Önce doğrulama bu senaryoyu kapatır.
+
+**`pendingToken`.** JWT secret'tan türetilmiş ayrı bir anahtarla (`HMAC(JWT_SECRET,
+"social-pending")`) imzalanır ve `typ` claim'i taşır. Bu yüzden access token yerine
+kabul edilmez; access token da pending token yerine kabul edilmez. Token sunucuda
+saklanmaz.
+
+**Apple bu akışa girmez.** Hesap silmede revoke için gereken `authorizationCode` tek
+kullanımlıktır ve email adımı sırasında süresi dolabilir. Apple email scope'u istendiğinde
+emaili her zaman verir; emailsiz Apple girişi `social_email_required` ile reddedilir.
+
+**Snapchat doğrulaması.** Login Kit'te token'ın hangi uygulamaya verildiğini soran
+dokümante bir uç yok; OIDC issuer ve JWKS adresi de dokümante edilmemiş. Kimlik Login Kit
+`me` ucundan okunan `externalId`'dir. Bu ID uygulamaya özel olduğu için başka bir
+uygulamanın token'ı bizdeki bir hesabın ID'sini döndürmez. Snap OIDC'yi dokümante ederse
+JWKS ile doğrulamaya geçilmelidir.
+
+**Rolling deploy.** Yeni uçlar ve yeni alanlar (`needsEmail`, `pendingToken`) ekleniyor.
+`token` alanı yalnız boşken JSON'dan çıkarılıyor; başarılı girişlerde her zaman var.
+Şema değişmiyor.
+
+## ADR-027 — Sağlayıcı bağlama ve Apple hesap bildirimleri
+
+**Durum:** Kabul edildi — 21 Ekim 2026.
+
+**Bağlama.** Hesaplar otomatik birleştirilmediği için (ADR-023), mevcut bir hesaba
+sağlayıcı yalnız oturum açmış kullanıcı tarafından eklenir:
+- `POST /auth/social/{provider}/link` sağlayıcı ekler.
+- `DELETE /auth/social/{provider}/link` sağlayıcı bağlantısını kaldırır.
+
+`UserIdentity` üzerindeki iki unique index kuralları veritabanı seviyesinde korur, eşzamanlı
+istekler dahil:
+- `{provider, providerUserId}`: bir sağlayıcı hesabı tek kullanıcıya bağlanır.
+- `{userId, provider}`: bir kullanıcıya her sağlayıcıdan tek hesap bağlanır.
+
+Şifresi olmayan kullanıcının son sağlayıcısı kaldırılamaz. Kaldırma, sayımı ve silmeyi aynı
+transaction'da yapar ve user dokümanına da yazar. Böylece aynı anda gelen iki kaldırma
+isteği write conflict ile sıraya girer ve kullanıcı girişsiz kalmaz.
+
+**Apple bildirimleri.** Sign in with Apple server-to-server bildirimleri
+`POST /auth/apple/notifications` ile alınır. Payload, Apple'ın identity anahtarlarıyla
+ve kimlik token'larıyla aynı `iss`/`aud` kurallarıyla doğrulanır.
+- `consent-revoked`: yalnız Apple bağlantısı silinir.
+- Hesap silme event'i (`account-delete`, gözlenen biçimiyle `account-deleted`): hesap
+  ADR-024 kuralıyla silinir. Bu, sağlayıcıdan gelen silme isteğinde hesabı her zaman
+  silme kararıyla (ADR-025) tutarlıdır.
+- Email yönlendirme event'leri yalnız onaylanır.
+
+Apple aynı event'i tekrar gönderebildiği için işlem idempotenttir.
+
+**Bilinen risk.** Bağlama yeniden kimlik doğrulama istemez; çalınmış bir oturum token'ı
+kalıcı bir giriş yolu eklemek için kullanılabilir. Bağlama bildirimi ya da şifre onayı
+sonraki iş olarak açık.
+
+**Rolling deploy.** Migration 0049 henüz hiçbir ortama çıkmadığı için `{userId}` index'i
+yerine doğrudan unique `{userId, provider}` index'iyle güncellendi. 0052 yeni mesajları
+ekler. Yeni uçları önceki sürüm bilmez.

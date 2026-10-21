@@ -25,7 +25,8 @@
             },
             "facebook": {
                 "appId": "",
-                "appSecret": ""
+                "appSecret": "",
+                "graphVersion": ""
             },
             "snapchat": {
                 "clientId": ""
