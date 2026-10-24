@@ -1,0 +1,1497 @@
+{
+  "schemaVersion": 1,
+  "contractRevision": "houseTanks.v1",
+  "protocolVersion": 2,
+  "mapCatalogVersion": 1,
+  "liveGatewayAvailable": false,
+  "rules": {
+    "minimumPlayers": 2,
+    "maximumPlayers": 8,
+    "maximumPlayersPolicy": "min(houseCapacity, 8); never fill with bots",
+    "readyWindowMilliseconds": 30000,
+    "countdownMilliseconds": 3000,
+    "physicsRateHz": 120,
+    "schedulingRateHz": 60,
+    "snapshotRateHz": 20,
+    "maximumInputRateHz": 20,
+    "maximumPressMessagesPerSecond": 30,
+    "controlHeartbeatMilliseconds": 2000,
+    "controlTimeoutMilliseconds": 6000,
+    "reconnectGraceMilliseconds": 10000,
+    "lagCompensationMilliseconds": 150,
+    "headingToleranceMilliradians": 35,
+    "arenaWidth": 1180,
+    "arenaHeight": 640,
+    "roundWinsNeeded": 3,
+    "armorPerRound": 5,
+    "roundCountdownMilliseconds": 3000,
+    "roundReadyWindowMilliseconds": 30000,
+    "roundReadyIdleMilliseconds": 120000,
+    "maximumMatchMilliseconds": 300000,
+    "eventWindowMilliseconds": 1000,
+    "expiryEndReason": "sessionExpired",
+    "expiryHasChampion": false
+  },
+  "playerColors": [
+    "plum",
+    "orange",
+    "blue",
+    "olive",
+    "mustard",
+    "crimson",
+    "sky",
+    "ivory"
+  ],
+  "powerUps": [
+    "rocket",
+    "rapidFire",
+    "spreadShot",
+    "shield",
+    "aim"
+  ],
+  "mapIds": [
+    "livingRoom",
+    "corridors",
+    "warehouse",
+    "courtyard",
+    "basement"
+  ],
+  "clientMessages": [
+    {
+      "name": "join",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "join1",
+        "type": "gameSession.join",
+        "payload": {}
+      }
+    },
+    {
+      "name": "ready",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "ready1",
+        "type": "gameSession.setReady",
+        "payload": {
+          "ready": true
+        }
+      }
+    },
+    {
+      "name": "notReady",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "notReady1",
+        "type": "gameSession.setReady",
+        "payload": {
+          "ready": false
+        }
+      }
+    },
+    {
+      "name": "leave",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "leave1",
+        "type": "gameSession.leave",
+        "payload": {}
+      }
+    },
+    {
+      "name": "cancel",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "cancel1",
+        "type": "gameSession.cancel",
+        "payload": {}
+      }
+    },
+    {
+      "name": "press",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "press1",
+        "type": "houseTanks.press",
+        "payload": {
+          "controlGeneration": "controlA",
+          "inputSequence": 42,
+          "pressed": true,
+          "clientTick": 1180,
+          "heading": 0
+        }
+      }
+    },
+    {
+      "name": "release",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "release1",
+        "type": "houseTanks.press",
+        "payload": {
+          "controlGeneration": "controlA",
+          "inputSequence": 43,
+          "pressed": false,
+          "clientTick": 1192,
+          "heading": 0.42
+        }
+      }
+    },
+    {
+      "name": "roundReady",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "roundReady1",
+        "type": "houseTanks.roundReady",
+        "payload": {
+          "controlGeneration": "controlA",
+          "ready": true
+        }
+      }
+    },
+    {
+      "name": "roundNotReady",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "roundNotReady1",
+        "type": "houseTanks.roundReady",
+        "payload": {
+          "controlGeneration": "controlA",
+          "ready": false
+        }
+      }
+    },
+    {
+      "name": "resync",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "resync1",
+        "type": "houseTanks.resync",
+        "payload": {}
+      }
+    },
+    {
+      "name": "ping",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "ping1",
+        "type": "realtime.ping",
+        "payload": {
+          "pingId": "clock1"
+        }
+      }
+    }
+  ],
+  "serverMessages": [
+    {
+      "name": "welcome",
+      "message": {
+        "protocolVersion": 2,
+        "type": "realtime.welcome",
+        "sentAt": "2026-10-24T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "connectionId": "connectionA",
+          "protocolVersion": 2,
+          "contractRevision": "houseTanks.v1",
+          "mapCatalogVersion": 1,
+          "settings": {
+            "physicsRateHz": 120,
+            "schedulingRateHz": 60,
+            "snapshotRateHz": 20,
+            "maximumInputRateHz": 20,
+            "maximumPressMessagesPerSecond": 30,
+            "controlHeartbeatMilliseconds": 2000,
+            "controlTimeoutMilliseconds": 6000,
+            "reconnectGraceMilliseconds": 10000,
+            "lagCompensationMilliseconds": 150,
+            "headingToleranceMilliradians": 35,
+            "arenaWidth": 1180,
+            "arenaHeight": 640,
+            "roundWinsNeeded": 3,
+            "armorPerRound": 5,
+            "roundCountdownMilliseconds": 3000,
+            "roundReadyWindowMilliseconds": 30000,
+            "roundReadyIdleMilliseconds": 120000,
+            "maximumMatchMilliseconds": 300000,
+            "eventWindowMilliseconds": 1000
+          }
+        }
+      }
+    },
+    {
+      "name": "pong",
+      "message": {
+        "protocolVersion": 2,
+        "type": "realtime.pong",
+        "sentAt": "2026-10-24T12:00:33.125Z",
+        "payload": {
+          "pingId": "clock1",
+          "serverTime": "2026-10-24T12:00:33.125Z"
+        },
+        "messageId": "ping1"
+      }
+    },
+    {
+      "name": "accepted",
+      "message": {
+        "protocolVersion": 2,
+        "type": "gameSession.commandAccepted",
+        "sentAt": "2026-10-24T12:00:30.125Z",
+        "payload": {},
+        "messageId": "ready1"
+      }
+    },
+    {
+      "name": "controlGranted",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.controlGranted",
+        "sentAt": "2026-10-24T12:00:33.25Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "playerId": "507f1f77bcf86cd799439021",
+          "runtimeEpoch": 7,
+          "controlGeneration": "controlA"
+        }
+      }
+    },
+    {
+      "name": "countdown",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.snapshot",
+        "sentAt": "2026-10-24T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "runtimeEpoch": 7,
+          "stateSequence": 4,
+          "tick": 0,
+          "phase": "countdown",
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "seed": "9e3779b97f4a7c15",
+          "roundPhase": null,
+          "roundNumber": 0,
+          "countdownEndsAt": "2026-10-24T12:00:33Z",
+          "roundCountdownEndsAt": null,
+          "roundReadyWindowEndsAt": null,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "seat": 0,
+              "color": "plum",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "seat": 1,
+              "color": "orange",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "seat": 2,
+              "color": "blue",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            }
+          ],
+          "tanks": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "x": 118,
+              "y": 230.4,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 0.18759835536206237,
+              "rotationDirection": 1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "x": 1038.4,
+              "y": 140.8,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 2.7613939214454186,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "x": 1038.4,
+              "y": 409.6,
+              "vx": 0,
+              "vy": 0,
+              "rotation": -2.9443686497512678,
+              "rotationDirection": 1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            }
+          ],
+          "crates": [
+            {
+              "index": 4,
+              "x": 826,
+              "y": 179.2,
+              "destroyed": false
+            },
+            {
+              "index": 7,
+              "x": 472,
+              "y": 358.4,
+              "destroyed": false
+            },
+            {
+              "index": 8,
+              "x": 708,
+              "y": 256,
+              "destroyed": false
+            },
+            {
+              "index": 9,
+              "x": 495.6,
+              "y": 531.2,
+              "destroyed": false
+            }
+          ],
+          "token": null,
+          "projectiles": [],
+          "events": [],
+          "roundWinnerId": null,
+          "championId": null
+        },
+        "sequence": 4
+      }
+    },
+    {
+      "name": "roundCountdown",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.snapshot",
+        "sentAt": "2026-10-24T12:00:33.25Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "runtimeEpoch": 7,
+          "stateSequence": 6,
+          "tick": 30,
+          "phase": "playing",
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "seed": "9e3779b97f4a7c15",
+          "roundPhase": "roundCountdown",
+          "roundNumber": 1,
+          "countdownEndsAt": null,
+          "roundCountdownEndsAt": "2026-10-24T12:00:36Z",
+          "roundReadyWindowEndsAt": null,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "seat": 0,
+              "color": "plum",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "seat": 1,
+              "color": "orange",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "seat": 2,
+              "color": "blue",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            }
+          ],
+          "tanks": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "x": 118,
+              "y": 230.4,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 0.18759835536206237,
+              "rotationDirection": 1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "x": 1038.4,
+              "y": 140.8,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 2.7613939214454186,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "x": 1038.4,
+              "y": 409.6,
+              "vx": 0,
+              "vy": 0,
+              "rotation": -2.9443686497512678,
+              "rotationDirection": 1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            }
+          ],
+          "crates": [
+            {
+              "index": 4,
+              "x": 826,
+              "y": 179.2,
+              "destroyed": false
+            },
+            {
+              "index": 7,
+              "x": 472,
+              "y": 358.4,
+              "destroyed": false
+            },
+            {
+              "index": 8,
+              "x": 708,
+              "y": 256,
+              "destroyed": false
+            },
+            {
+              "index": 9,
+              "x": 495.6,
+              "y": 531.2,
+              "destroyed": false
+            }
+          ],
+          "token": null,
+          "projectiles": [],
+          "events": [],
+          "roundWinnerId": null,
+          "championId": null
+        },
+        "sequence": 6
+      }
+    },
+    {
+      "name": "roundPlaying",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.snapshot",
+        "sentAt": "2026-10-24T12:00:43Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "runtimeEpoch": 7,
+          "stateSequence": 210,
+          "tick": 1200,
+          "phase": "playing",
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "seed": "9e3779b97f4a7c15",
+          "roundPhase": "roundPlaying",
+          "roundNumber": 1,
+          "countdownEndsAt": null,
+          "roundCountdownEndsAt": null,
+          "roundReadyWindowEndsAt": null,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "seat": 0,
+              "color": "plum",
+              "armor": 4,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": "spreadShot",
+              "powerUpExpiresAtTick": 2110,
+              "lastProcessedInputSequence": 17,
+              "controlGeneration": "controlA"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "seat": 1,
+              "color": "orange",
+              "armor": 5,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 9,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "seat": 2,
+              "color": "blue",
+              "armor": 2,
+              "roundsWon": 0,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 12,
+              "controlGeneration": null
+            }
+          ],
+          "tanks": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "x": 301.25,
+              "y": 288.5,
+              "vx": 180.5,
+              "vy": 82.25,
+              "rotation": 0.42,
+              "rotationDirection": 1,
+              "isDriving": true,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "x": 1012.75,
+              "y": 151.5,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 2.95,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "x": 640.5,
+              "y": 402.25,
+              "vx": 0,
+              "vy": 0,
+              "rotation": -2.4,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            }
+          ],
+          "crates": [
+            {
+              "index": 4,
+              "x": 826,
+              "y": 179.2,
+              "destroyed": false
+            },
+            {
+              "index": 7,
+              "x": 472,
+              "y": 358.4,
+              "destroyed": false
+            },
+            {
+              "index": 8,
+              "x": 708,
+              "y": 256,
+              "destroyed": false
+            },
+            {
+              "index": 9,
+              "x": 495.6,
+              "y": 531.2,
+              "destroyed": false
+            }
+          ],
+          "token": {
+            "kind": "shield",
+            "x": 590,
+            "y": 470.5,
+            "expiresAtTick": 2420
+          },
+          "projectiles": [
+            {
+              "id": 31,
+              "ownerId": "507f1f77bcf86cd799439021",
+              "x": 340.5,
+              "y": 305.25,
+              "vx": 463.75,
+              "vy": 212.25,
+              "rocket": false,
+              "spawnTick": 1191
+            },
+            {
+              "id": 32,
+              "ownerId": "507f1f77bcf86cd799439023",
+              "x": 610,
+              "y": 380,
+              "vx": -295,
+              "vy": -270,
+              "rocket": true,
+              "spawnTick": 1188
+            }
+          ],
+          "events": [
+            {
+              "sequence": 40,
+              "tick": 1150,
+              "kind": "jokerCollected",
+              "playerId": "507f1f77bcf86cd799439021",
+              "powerUp": "spreadShot"
+            },
+            {
+              "sequence": 41,
+              "tick": 1188,
+              "kind": "fired",
+              "playerId": "507f1f77bcf86cd799439023",
+              "angle": -2.4
+            },
+            {
+              "sequence": 42,
+              "tick": 1191,
+              "kind": "fired",
+              "playerId": "507f1f77bcf86cd799439021",
+              "angle": 0.42
+            },
+            {
+              "sequence": 43,
+              "tick": 1196,
+              "kind": "hit",
+              "playerId": "507f1f77bcf86cd799439023",
+              "sourceId": "507f1f77bcf86cd799439021",
+              "armor": 2
+            },
+            {
+              "sequence": 44,
+              "tick": 1198,
+              "kind": "shielded",
+              "playerId": "507f1f77bcf86cd799439022",
+              "sourceId": "507f1f77bcf86cd799439023"
+            }
+          ],
+          "roundWinnerId": null,
+          "championId": null
+        },
+        "sequence": 210
+      }
+    },
+    {
+      "name": "roundReady",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.snapshot",
+        "sentAt": "2026-10-24T12:00:55Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "runtimeEpoch": 7,
+          "stateSequence": 451,
+          "tick": 2640,
+          "phase": "playing",
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "seed": "9e3779b97f4a7c15",
+          "roundPhase": "roundReady",
+          "roundNumber": 1,
+          "countdownEndsAt": null,
+          "roundCountdownEndsAt": null,
+          "roundReadyWindowEndsAt": "2026-10-24T12:01:25Z",
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "seat": 0,
+              "color": "plum",
+              "armor": 3,
+              "roundsWon": 1,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": true,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 23,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "seat": 1,
+              "color": "orange",
+              "armor": 0,
+              "roundsWon": 0,
+              "isAlive": false,
+              "connected": false,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 9,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "seat": 2,
+              "color": "blue",
+              "armor": 0,
+              "roundsWon": 0,
+              "isAlive": false,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": true,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 15,
+              "controlGeneration": null
+            }
+          ],
+          "tanks": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "x": 590.5,
+              "y": 380.25,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 1.1,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "x": 980,
+              "y": 210.5,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 2.95,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": false
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "x": 655,
+              "y": 395.5,
+              "vx": 0,
+              "vy": 0,
+              "rotation": -2.4,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            }
+          ],
+          "crates": [
+            {
+              "index": 4,
+              "x": 826,
+              "y": 179.2,
+              "destroyed": false
+            },
+            {
+              "index": 7,
+              "x": 488.25,
+              "y": 352,
+              "destroyed": true
+            },
+            {
+              "index": 8,
+              "x": 708,
+              "y": 256,
+              "destroyed": false
+            },
+            {
+              "index": 9,
+              "x": 495.6,
+              "y": 531.2,
+              "destroyed": false
+            }
+          ],
+          "token": null,
+          "projectiles": [],
+          "events": [
+            {
+              "sequence": 87,
+              "tick": 2550,
+              "kind": "crateBroken",
+              "crateIndex": 7,
+              "x": 488.25,
+              "y": 352
+            },
+            {
+              "sequence": 88,
+              "tick": 2581,
+              "kind": "hit",
+              "playerId": "507f1f77bcf86cd799439023",
+              "sourceId": "507f1f77bcf86cd799439021",
+              "armor": 0,
+              "lethal": true
+            },
+            {
+              "sequence": 89,
+              "tick": 2581,
+              "kind": "explosion",
+              "x": 655,
+              "y": 395.5
+            },
+            {
+              "sequence": 90,
+              "tick": 2581,
+              "kind": "eliminated",
+              "playerId": "507f1f77bcf86cd799439023",
+              "sourceId": "507f1f77bcf86cd799439021",
+              "x": 655,
+              "y": 395.5
+            },
+            {
+              "sequence": 91,
+              "tick": 2581,
+              "kind": "roundEnded",
+              "roundNumber": 1,
+              "winnerId": "507f1f77bcf86cd799439021"
+            }
+          ],
+          "roundWinnerId": "507f1f77bcf86cd799439021",
+          "championId": null
+        },
+        "sequence": 451
+      }
+    },
+    {
+      "name": "recovering",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.snapshot",
+        "sentAt": "2026-10-24T12:00:56.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "runtimeEpoch": 8,
+          "stateSequence": 1,
+          "tick": 2640,
+          "phase": "recovering",
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "seed": "9e3779b97f4a7c15",
+          "roundPhase": "roundReady",
+          "roundNumber": 1,
+          "countdownEndsAt": null,
+          "roundCountdownEndsAt": null,
+          "roundReadyWindowEndsAt": "2026-10-24T12:01:25Z",
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "seat": 0,
+              "color": "plum",
+              "armor": 3,
+              "roundsWon": 1,
+              "isAlive": true,
+              "connected": false,
+              "hasLeft": false,
+              "roundReady": true,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 23,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "seat": 1,
+              "color": "orange",
+              "armor": 0,
+              "roundsWon": 0,
+              "isAlive": false,
+              "connected": false,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 9,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "seat": 2,
+              "color": "blue",
+              "armor": 0,
+              "roundsWon": 0,
+              "isAlive": false,
+              "connected": false,
+              "hasLeft": false,
+              "roundReady": true,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 15,
+              "controlGeneration": null
+            }
+          ],
+          "tanks": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "x": 590.5,
+              "y": 380.25,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 1.1,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": false
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "x": 980,
+              "y": 210.5,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 2.95,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": false
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "x": 655,
+              "y": 395.5,
+              "vx": 0,
+              "vy": 0,
+              "rotation": -2.4,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": false
+            }
+          ],
+          "crates": [
+            {
+              "index": 4,
+              "x": 826,
+              "y": 179.2,
+              "destroyed": false
+            },
+            {
+              "index": 7,
+              "x": 488.25,
+              "y": 352,
+              "destroyed": true
+            },
+            {
+              "index": 8,
+              "x": 708,
+              "y": 256,
+              "destroyed": false
+            },
+            {
+              "index": 9,
+              "x": 495.6,
+              "y": 531.2,
+              "destroyed": false
+            }
+          ],
+          "token": null,
+          "projectiles": [],
+          "events": [],
+          "roundWinnerId": "507f1f77bcf86cd799439021",
+          "championId": null
+        },
+        "sequence": 1
+      }
+    },
+    {
+      "name": "ended",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.snapshot",
+        "sentAt": "2026-10-24T12:03:33.625Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseTanks",
+          "runtimeEpoch": 8,
+          "stateSequence": 3305,
+          "tick": 21660,
+          "phase": "ended",
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "seed": "9e3779b97f4a7c15",
+          "roundPhase": "matchEnded",
+          "roundNumber": 6,
+          "countdownEndsAt": null,
+          "roundCountdownEndsAt": null,
+          "roundReadyWindowEndsAt": null,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "seat": 0,
+              "color": "plum",
+              "armor": 1,
+              "roundsWon": 3,
+              "isAlive": true,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 88,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "seat": 1,
+              "color": "orange",
+              "armor": 0,
+              "roundsWon": 1,
+              "isAlive": false,
+              "connected": true,
+              "hasLeft": false,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 61,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "seat": 2,
+              "color": "blue",
+              "armor": 0,
+              "roundsWon": 1,
+              "isAlive": false,
+              "connected": false,
+              "hasLeft": true,
+              "roundReady": false,
+              "powerUp": null,
+              "powerUpExpiresAtTick": null,
+              "lastProcessedInputSequence": 40,
+              "controlGeneration": null
+            }
+          ],
+          "tanks": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "x": 700.25,
+              "y": 300,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 0.75,
+              "rotationDirection": 1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "x": 802,
+              "y": 280.75,
+              "vx": 0,
+              "vy": 0,
+              "rotation": 2.2,
+              "rotationDirection": 1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": true
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "x": 120.5,
+              "y": 600,
+              "vx": 0,
+              "vy": 0,
+              "rotation": -0.3,
+              "rotationDirection": -1,
+              "isDriving": false,
+              "aimLocks": 0,
+              "controllable": false
+            }
+          ],
+          "crates": [
+            {
+              "index": 4,
+              "x": 826,
+              "y": 179.2,
+              "destroyed": false
+            },
+            {
+              "index": 7,
+              "x": 472,
+              "y": 358.4,
+              "destroyed": false
+            },
+            {
+              "index": 8,
+              "x": 708,
+              "y": 256,
+              "destroyed": false
+            },
+            {
+              "index": 9,
+              "x": 495.6,
+              "y": 531.2,
+              "destroyed": false
+            }
+          ],
+          "token": null,
+          "projectiles": [],
+          "events": [
+            {
+              "sequence": 702,
+              "tick": 21655,
+              "kind": "roundEnded",
+              "roundNumber": 6,
+              "winnerId": "507f1f77bcf86cd799439021"
+            }
+          ],
+          "roundWinnerId": "507f1f77bcf86cd799439021",
+          "championId": "507f1f77bcf86cd799439021"
+        },
+        "sequence": 3305
+      }
+    },
+    {
+      "name": "result",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.result",
+        "sentAt": "2026-10-24T12:03:33.625Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "houseTanks",
+          "protocolVersion": 2,
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "status": "completed",
+          "endReason": "championDecided",
+          "championId": "507f1f77bcf86cd799439021",
+          "roundsPlayed": 6,
+          "startedAt": "2026-10-24T12:00:33Z",
+          "endedAt": "2026-10-24T12:03:33.5Z",
+          "durationSeconds": 180.5,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "roundsWon": 3,
+              "finalRank": 1
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "roundsWon": 1,
+              "finalRank": 2
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "roundsWon": 1,
+              "finalRank": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "insufficientPlayersResult",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.result",
+        "sentAt": "2026-10-24T12:02:10.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "houseTanks",
+          "protocolVersion": 2,
+          "mapId": "livingRoom",
+          "mapVersion": 3,
+          "status": "cancelled",
+          "endReason": "insufficientPlayers",
+          "championId": null,
+          "roundsPlayed": 3,
+          "startedAt": "2026-10-24T12:00:33Z",
+          "endedAt": "2026-10-24T12:02:10Z",
+          "durationSeconds": 97,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "roundsWon": 2,
+              "finalRank": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "roundsWon": 0,
+              "finalRank": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "roundsWon": 1,
+              "finalRank": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "cancelledBeforeStartResult",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseTanks.result",
+        "sentAt": "2026-10-24T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "houseTanks",
+          "protocolVersion": 2,
+          "mapId": null,
+          "mapVersion": null,
+          "status": "cancelled",
+          "endReason": "cancelledByUser",
+          "championId": null,
+          "roundsPlayed": 0,
+          "startedAt": null,
+          "endedAt": "2026-10-24T12:00:30Z",
+          "durationSeconds": 0,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "roundsWon": 0,
+              "finalRank": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "roundsWon": 0,
+              "finalRank": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "roundsWon": 0,
+              "finalRank": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "rejected",
+      "message": {
+        "protocolVersion": 2,
+        "type": "gameSession.commandRejected",
+        "sentAt": "2026-10-24T12:00:50.125Z",
+        "messageId": "press1",
+        "error": {
+          "code": "houseTanks.error.player_eliminated",
+          "args": [],
+          "retryable": false
+        }
+      }
+    }
+  ],
+  "invalidClientMessages": [
+    {
+      "name": "clientPlayerIdentity",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0,\"playerId\":\"507f1f77bcf86cd799439021\"}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "clientPosition",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0,\"x\":999}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "zeroInputSequence",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":0,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "fractionalInputSequence",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":1.5,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "negativeClientTick",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":-1,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "fractionalClientTick",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180.5,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "missingPressed",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "nullPressed",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":null,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "stringPressed",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":\"true\",\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "missingClientTick",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "missingHeading",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "nullHeading",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":null}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "headingOverflow",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":1e999}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "emptyControl",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "readyMissingControl",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"roundReady1\",\"type\":\"houseTanks.roundReady\",\"payload\":{\"ready\":true}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "readyMissingReady",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"roundReady1\",\"type\":\"houseTanks.roundReady\",\"payload\":{\"controlGeneration\":\"controlA\"}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "readyNullReady",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"roundReady1\",\"type\":\"houseTanks.roundReady\",\"payload\":{\"controlGeneration\":\"controlA\",\"ready\":null}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "readyUnknownField",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"roundReady1\",\"type\":\"houseTanks.roundReady\",\"payload\":{\"controlGeneration\":\"controlA\",\"ready\":true,\"roundNumber\":2}}",
+      "errorCode": "houseTanks.error.invalid_input"
+    },
+    {
+      "name": "lobbyReadyForRound",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"a\",\"type\":\"gameSession.setReady\",\"payload\":{}}",
+      "errorCode": "realtime.error.invalid_command"
+    },
+    {
+      "name": "unknownEnvelopeField",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0},\"actorId\":\"507f1f77bcf86cd799439021\"}",
+      "errorCode": "realtime.error.invalid_command"
+    },
+    {
+      "name": "unsupportedVersion",
+      "json": "{\"protocolVersion\":1,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "realtime.error.unsupported_protocol"
+    },
+    {
+      "name": "unknownMessageType",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.teleport\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "realtime.error.invalid_command"
+    },
+    {
+      "name": "houseRocketsIntent",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseRockets.steer\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "realtime.error.invalid_command"
+    },
+    {
+      "name": "twoJSONValues",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"press1\",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0}} {}",
+      "errorCode": "realtime.error.invalid_command"
+    },
+    {
+      "name": "blankMessageId",
+      "json": "{\"protocolVersion\":2,\"messageId\":\" \",\"type\":\"houseTanks.press\",\"payload\":{\"controlGeneration\":\"controlA\",\"inputSequence\":42,\"pressed\":true,\"clientTick\":1180,\"heading\":0}}",
+      "errorCode": "realtime.error.invalid_command"
+    }
+  ]
+}

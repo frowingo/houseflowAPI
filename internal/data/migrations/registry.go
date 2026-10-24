@@ -84,5 +84,8 @@ func AllMigrations() []Migration {
 		&socialAuthLocalizations{},
 		&dataDeletionRequests{},
 		&socialLinkLocalizations{},
+		// --- House Tanks ---
+		&houseTanksLocalizations{},
+		&houseTanksConfig{},
 	}
 }

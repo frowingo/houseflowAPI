@@ -18,6 +18,9 @@ go test -run XXX -bench HouseRocketsFrame -benchtime 2s ./internal/infrastructur
 
 # İki instance'lı uçtan uca yük matrisi (worker başına GOMAXPROCS=1)
 HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseRocketsLoadMatrix ./tests/
+
+# House Tanks: 8 oyunculu oda, ağır atış altında frame bütçesi (20 ve 30 Hz)
+HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseTanksFrameBudgetUnderFire ./tests/
 ```
 
 ## 1. Kalıcı veri — 4 oyunculu normal maç
@@ -189,3 +192,38 @@ sağlar. Yerleşim colocated, 5 saniyelik koşu, iki turun ortalaması, worker b
 Yük testi client'ının raporladığı `receivedBytesPerSecond` açılmış mesaj boyutudur. Ağdaki
 kazancı `TestRealtimeCompressionIsNegotiatedPerConnection` ölçer: 2 oyuncuda snapshot başına
 %56.
+
+## 10. House Tanks frame bütçesi — 24 Ekim 2026
+
+`TestHouseTanksFrameBudgetUnderFire`: 8 oyuncu, hepsi bağlı ve kontrol ediyor. Yarısında
+rapidFire, yarısında spreadShot var; her tank 10 tick'te bir basıp 5 tick sonra bırakıyor.
+Zırh ve güç kartları bir kez ayarlanıp bitmiyor, böylece tur 30 sn boyunca en ağır hâlinde
+kalıyor (büyük sayılar her frame'e birkaç byte ekler). Saat sanal; adım süresi gerçek
+ölçülüyor. Fanout, room event'in bir kez decode edilip 8 izleyici için render edilmesidir
+(`PrepareFrame` + `Render`). Sıkıştırılmış boyut mesaj başına permessage-deflate'tir
+(BestSpeed, context takeover yok).
+
+| | 20 Hz | 30 Hz |
+|---|---|---|
+| Fizik adımı (60 Hz scheduler, 2 tick) ortalama / p99 / max | 135 µs / 321 µs / 418 µs | 142 µs / 241 µs / 331 µs |
+| Room event ortalama / max | 14.483 / 18.267 B | 14.462 / 18.170 B |
+| Bağlantı başına wire ortalama / max | 14.263 / 18.047 B | 14.242 / 17.950 B |
+| Bağlantı başına bant, sıkıştırmasız | 279 KB/s | 417 KB/s |
+| Sıkıştırılmış frame ortalaması | 3.767 B (~74 KB/s) | 3.761 B (~110 KB/s) |
+| Fanout, 8 izleyici | 216 µs/frame | 213 µs/frame |
+| En fazla mermi / olay penceresi | 67 / 34 | 66 / 34 |
+
+En büyük frame'in dağılımı: `projectiles` 10,4 KB (%57), `events` 2,9 KB, `players` 2,3 KB,
+`tanks` 1,6 KB, `crates` 0,4 KB. Mermi başına ~155 B tutuyor; bunun çoğu tam hassasiyetli
+float'lar (`x`, `y`, `vx`, `vy`). Gerçek oturumda oyuncu kimlikleri 24 karakterlik ObjectID
+olduğundan (`ownerId`, `playerId`) boyut biraz daha büyür.
+
+- **Adım süresi bütçenin çok altında.** 60 Hz'de adım bütçesi 16,7 ms; en kötü adım
+  0,42 ms. Snapshot hızı adım süresini etkilemiyor.
+- **Asıl maliyet bant.** House Rockets'ta bağlantı başına frame 3,8 KB (§8). Tanklarda ağır
+  atışta 14 KB, yani 8 oyunculu bir oda 20 Hz'de sıkıştırmasız ~2,2 MB/s gönderir. Sıkıştırma
+  frame'i %74 küçültüyor; sıkıştırma teklif eden istemcide 20 Hz'de bağlantı başına ~74 KB/s.
+- **20 Hz yeterli ve varsayılan.** 30 Hz bandı ve fanout CPU'sunu %50 artırıyor; kazancı
+  yalnız interpolasyon gecikmesinde (50 → 33 ms). Frame'ler mermi ve tank hızlarını taşıdığı
+  için istemci 20 Hz'de ara değer üretebilir. Gerekirse Game dokümanındaki `snapshotRateHz`
+  ile 30 Hz'e çıkarılabilir; değer yeni oturumlara dondurulur.
