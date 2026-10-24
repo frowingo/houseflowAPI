@@ -1125,3 +1125,64 @@ sonraki iş olarak açık.
 **Rolling deploy.** Migration 0049 henüz hiçbir ortama çıkmadığı için `{userId}` index'i
 yerine doğrudan unique `{userId, provider}` index'iyle güncellendi. 0052 yeni mesajları
 ekler. Yeni uçları önceki sürüm bilmez.
+
+## ADR-028 — Tanklarda tur aşamaları modül alanı, çekirdek fazı değil
+
+**Durum:** Kabul edildi — 24 Ekim 2026.
+
+House Tanks (`houseTanks`) bir maçta en fazla 3 galibiyete kadar birden çok tur oynar. Her
+turun bir geri sayımı, oyun süresi ve sonraki tur için hazır oyu vardır. Bu aşamalar
+`module.Phase`'e eklenmedi. Oturum `running` iken çerçeve fazı tüm maç boyunca `playing`'dir
+(sonra `finalizing`, `ended` ya da `cancelled`). Tur aşaması modülün kendi alanıdır:
+`roundPhase` (`roundCountdown`, `roundPlaying`, `roundReady`, `matchEnded`) ve `roundNumber`.
+Lobi geri sayımındaki önizleme kare `roundPhase: null`, `roundNumber: 0` taşır.
+
+**Gerekçe.** Gateway heartbeat'i, yeniden bind etmeyi ve `ControlledBy` kontrolünü
+`PhasePlaying`'e bağlar. Yeni bir çekirdek fazı bu üç yolun hepsini değiştirirdi. Daha
+önemlisi rolling deploy sırasında çerçeveyi sahip instance üretir, tüm instance'ların
+gateway'i okur. Bilinmeyen bir fazı gören eski bir gateway heartbeat'i keser ve kontroller
+zaman aşımına düşer. Modül alanı bu riski hiç doğurmaz; çekirdekte satır değişmedi.
+
+**Sonuçları.**
+- Aşama kuralları runtime'dadır. `houseTanks.press` yalnız `roundPlaying`'de ve tank
+  canlıyken uygulanır; geri sayımda ve oy sırasında gelen bas/bırak kabul edilip yok sayılır
+  (sıra numarası onaylanır). `houseTanks.roundReady` yalnız `roundReady`'de geçerlidir,
+  başka aşamada `invalid_input` ile reddedilir.
+- Tur sonu ve oylar `CriticalKey`'e girer, bu yüzden checkpoint'le korunur. Turun ortasındaki
+  hareket ve atışlar kritik değildir.
+- Kurtarma tur aşamasını olduğu yerden sürdürür. Entegrasyon testleri iki durumu kapsar:
+  tur ortasında süreç öldürülür ve oy penceresinde sahip kaybedilir.
+
+## ADR-029 — Tanklarda bağlantı kopması elenme değil
+
+**Durum:** Kabul edildi — 24 Ekim 2026.
+
+House Rockets'ta bağlantısı süresi içinde dönmeyen oyuncu elenir. House Tanks'te elenme yok:
+bağlantısı kopan ya da kontrolü zaman aşımına düşen oyuncunun tankı **hareketsiz hedef**
+olarak arenada kalır, oyuncu döndüğünde bir sonraki tick'te kontrolü geri alır. Kontrolden
+kalıcı olarak yalnız oturumdan açıkça ayrılan veya üyeliği kaldırılan oyuncu düşer.
+
+Çerçeve başlığındaki `isAlive` bu yüzden tanklarda "maçta kontrol hakkı var" anlamına gelir,
+"tankı bu turda canlı" değil. Tankın kendi durumu snapshot'ta ayrı alandır. Turda tankı ölen
+oyuncu kontrolü korur, heartbeat'i akar ve sonraki tur için oy verebilir. Ayrılan oyuncunun
+`isAlive`'ı false olur; gateway onu yeniden bind etmez.
+
+**Maçın devamı.** Ayrılmamış oyuncu sayısı 2'nin altına düşerse maç hemen
+`insufficientPlayers` ile iptal edilir. Bağlı oyuncu sayısı 10 saniye boyunca 2'nin altında
+kalırsa da aynı sonuç olur. Maç başında ve kurtarmadan sonra 16 saniyelik bir varlık süresi
+tanınır: kontrol zaman aşımı ile yeniden bağlanma süresinin toplamı. Bu süre içinde herkes
+bağlı sayılır. İptal edilen maç tur skorlarını korur, sıra ve şampiyon vermez.
+
+**Kurtarma.** Restore edilen runtime eski hiçbir kontrol neslini yaşatmaz. Tüm tanklar
+oyuncuları yeniden bind edene kadar hareketsiz bekler, kesinti için tick harcanmaz,
+kuyruktaki basışlar tekrar oynatılmaz. Oy penceresindeki oylar düşer, çünkü kontrolü kaybeden
+oyuncunun oyu sayılmaz; dönen oyuncu yeniden oy verir.
+
+**Rolling deploy.** Migration 0054 `houseTanks` Game dokümanını tüm evlere açık (boş
+`rollout.houseIds`) ve kod varsayılanlarıyla ekler; mevcut dokümanın üzerine yazmaz. İlk yayın
+istemciler henüz yayınlanmamışken çıktığı için, yayın sırasında eski bir instance'a düşen oda
+riski kabul edildi: o oda başlatılamaz ve sonraki oturum yeni instance'ta açılır. Eski sürüm
+tanımadığı oyunun dokümanını yok sayar, bu yüzden geri alma da güvenli; çalışan tank maçları
+eski sürümde kurtarılamaz ve `recoveryFailed` ile biter. Ev kısıtı (`houseIds`) ileride kademeli
+açılış için config API'sinde kalır. Çekirdek ve diğer oyunların wire formatları değişmedi.
+Migration 0053 yalnız yerelleştirme mesajı ekler.

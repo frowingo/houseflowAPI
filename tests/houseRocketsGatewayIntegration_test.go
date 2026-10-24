@@ -41,6 +41,7 @@ type rocketsGatewayFixture struct {
 	jwt      *helpers.JWTService
 	urls     []string
 	services []*realtime.Service
+	gameKey  string
 }
 
 func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabledOptions ...bool) *rocketsGatewayFixture {
@@ -49,7 +50,16 @@ func newRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, enabl
 
 func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRules, maxRooms, maxConnections int, enabledOptions ...bool) *rocketsGatewayFixture {
 	t.Helper()
-	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret")}
+	definition := houseRockets.Definition()
+	definition.Rules = rules
+	return newGameGatewayFixture(t, definition, maxRooms, maxConnections, enabledOptions...)
+}
+
+// newGameGatewayFixture runs two gateway instances whose catalog serves the
+// definition; every built-in tick game has a realtime module.
+func newGameGatewayFixture(t *testing.T, definition gameDomain.GameDefinition, maxRooms, maxConnections int, enabledOptions ...bool) *rocketsGatewayFixture {
+	t.Helper()
+	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret"), gameKey: definition.GameKey}
 	enabled := len(enabledOptions) == 0 || enabledOptions[0]
 	// A disabled game keeps its catalog entry but has no realtime module.
 	fixtureGames, err := games.NewRegistry(games.Options{Realtime: enabled})
@@ -64,8 +74,6 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 		}
 	}
 	redisURL := prepareRedis(t)
-	definition := houseRockets.Definition()
-	definition.Rules = rules
 	catalog, err := newDefinitionCatalog(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +121,7 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 
 func (fixture *rocketsGatewayFixture) ensureHTTP(t *testing.T) dtos.GameSessionResponseModel {
 	t.Helper()
-	request, _ := http.NewRequest(http.MethodPut, fixture.urls[0]+"/api/v1/game/houseRockets/session", bytes.NewBufferString(fmt.Sprintf(`{"houseId":%q}`, fixture.houseID)))
+	request, _ := http.NewRequest(http.MethodPut, fixture.urls[0]+"/api/v1/game/"+fixture.gameKey+"/session", bytes.NewBufferString(fmt.Sprintf(`{"houseId":%q}`, fixture.houseID)))
 	request.Header.Set("Authorization", "Bearer "+generateGatewayToken(t, fixture.jwt, fixture.ownerID))
 	request.Header.Set("Content-Type", "application/json")
 	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
@@ -128,7 +136,7 @@ func (fixture *rocketsGatewayFixture) ensureHTTP(t *testing.T) dtos.GameSessionR
 	if response.StatusCode != 200 || !body.Success || body.Data.ProtocolVersion != 2 {
 		t.Fatalf("create HTTP: %d %+v", response.StatusCode, body)
 	}
-	request, _ = http.NewRequest(http.MethodGet, fixture.urls[1]+"/api/v1/game/houseRockets/session?houseId="+fixture.houseID, nil)
+	request, _ = http.NewRequest(http.MethodGet, fixture.urls[1]+"/api/v1/game/"+fixture.gameKey+"/session?houseId="+fixture.houseID, nil)
 	request.Header.Set("Authorization", "Bearer "+generateGatewayToken(t, fixture.jwt, fixture.memberID))
 	response2, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 	if err != nil {

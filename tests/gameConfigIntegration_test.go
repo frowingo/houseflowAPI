@@ -10,10 +10,13 @@ import (
 	gameAbstract "houseflowApi/internal/application/game/abstract"
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
+	"houseflowApi/internal/application/game/games"
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
+	"houseflowApi/internal/application/game/games/houseTanks"
 	"houseflowApi/internal/application/game/module"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/data/database"
+	"houseflowApi/internal/data/migrations"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
 
@@ -85,6 +88,46 @@ func TestGameConfigSeedMatchesCodeDefaults(t *testing.T) {
 	}
 }
 
+// House Tanks is seeded for every house with the code defaults, and running
+// the migration again keeps what an operator changed since.
+func TestHouseTanksConfigSeedEnablesEveryHouse(t *testing.T) {
+	fixture := newGameSessionApplicationFixture(t)
+	registry, err := games.NewRegistry(games.Options{Realtime: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configs := database.NewGameConfigRepository(fixture.db.Client(), fixture.db.Name())
+	catalog := gameApplication.NewCatalog(registry, configs, nil)
+	if err := catalog.Refresh(fixture.ctx); err != nil {
+		t.Fatal(err)
+	}
+	config, err := catalog.Config(houseTanks.GameKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seeded houseTanks.Settings
+	_ = json.Unmarshal(config.Settings, &seeded)
+	if config.Version != 1 || !config.AvailableTo(fixture.houseID) || len(config.HouseIDs) != 0 || config.Rules != houseTanks.Definition().Rules || seeded != houseTanks.DefaultSettings() {
+		t.Fatalf("seeded config = %+v %s", config, config.Settings)
+	}
+	if _, err := configs.Save(fixture.ctx, gameAbstract.GameConfigRecord{GameKey: houseTanks.GameKey, Enabled: false, HouseIDs: []string{fixture.houseID}}, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range migrations.AllMigrations() {
+		if migration.Version() == "0054" {
+			if err := migration.Up(fixture.ctx, fixture.db); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := catalog.Refresh(fixture.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if config, _ := catalog.Config(houseTanks.GameKey); config.Version != 2 || config.Enabled || len(config.HouseIDs) != 1 {
+		t.Fatalf("the rerun overwrote the operator's config: %+v", config)
+	}
+}
+
 // Switching a game off or narrowing its rollout stops new sessions only; a
 // rules or settings change reaches the next session and never an existing one.
 func TestGameConfigControlsNewSessionsOnly(t *testing.T) {
@@ -124,8 +167,14 @@ func TestGameConfigControlsNewSessionsOnly(t *testing.T) {
 		t.Fatalf("new session outside the rollout: %v", err)
 	}
 	catalogQuery := gameQueries.NewGetGameCatalogHandler(fixture.catalog, fixture.membershipPolicy())
-	if entries, err := catalogQuery.Handle(fixture.ctx, gameQueries.GetGameCatalogQuery{HouseID: fixture.houseID, UserID: fixture.memberID}); err != nil || len(entries) != 0 {
-		t.Fatalf("catalog outside the rollout: %+v %v", entries, err)
+	outside, err := catalogQuery.Handle(fixture.ctx, gameQueries.GetGameCatalogQuery{HouseID: fixture.houseID, UserID: fixture.memberID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range outside {
+		if entry.Definition.GameKey == houseRockets.GameKey {
+			t.Fatalf("catalog outside the rollout: %+v", outside)
+		}
 	}
 
 	config := fixture.configure(t, gameCommands.UpdateGameConfigCommand{ExpectedVersion: 3, Enabled: true, HouseIDs: []string{fixture.houseID, otherHouse},
@@ -147,7 +196,8 @@ func TestGameConfigControlsNewSessionsOnly(t *testing.T) {
 	}
 
 	entries, err := catalogQuery.Handle(fixture.ctx, gameQueries.GetGameCatalogQuery{HouseID: fixture.houseID, UserID: fixture.memberID})
-	if err != nil || len(entries) != 1 {
+	// Entries are ordered by key; House Tanks is seeded for every house.
+	if err != nil || len(entries) != 2 || entries[0].Definition.GameKey != houseRockets.GameKey {
 		t.Fatalf("catalog = %+v %v", entries, err)
 	}
 	model, _ := json.Marshal(dtos.GameCatalogEntryToModel(entries[0].Definition, entries[0].Config, entries[0].ClientSettings))
