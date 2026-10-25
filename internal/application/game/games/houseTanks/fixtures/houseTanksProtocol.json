@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "contractRevision": "houseTanks.v1",
+  "contractRevision": "houseTanks.v2",
   "protocolVersion": 2,
-  "mapCatalogVersion": 1,
+  "mapCatalogVersion": 2,
   "liveGatewayAvailable": false,
   "rules": {
     "minimumPlayers": 2,
@@ -20,8 +20,8 @@
     "reconnectGraceMilliseconds": 10000,
     "lagCompensationMilliseconds": 150,
     "headingToleranceMilliradians": 35,
-    "arenaWidth": 1180,
-    "arenaHeight": 640,
+    "arenaWidth": 872,
+    "arenaHeight": 400,
     "roundWinsNeeded": 3,
     "armorPerRound": 5,
     "roundCountdownMilliseconds": 3000,
@@ -193,8 +193,8 @@
           "gameKey": "houseTanks",
           "connectionId": "connectionA",
           "protocolVersion": 2,
-          "contractRevision": "houseTanks.v1",
-          "mapCatalogVersion": 1,
+          "contractRevision": "houseTanks.v2",
+          "mapCatalogVersion": 2,
           "settings": {
             "physicsRateHz": 120,
             "schedulingRateHz": 60,
@@ -206,8 +206,8 @@
             "reconnectGraceMilliseconds": 10000,
             "lagCompensationMilliseconds": 150,
             "headingToleranceMilliradians": 35,
-            "arenaWidth": 1180,
-            "arenaHeight": 640,
+            "arenaWidth": 872,
+            "arenaHeight": 400,
             "roundWinsNeeded": 3,
             "armorPerRound": 5,
             "roundCountdownMilliseconds": 3000,
@@ -330,8 +330,8 @@
           "tanks": [
             {
               "playerId": "507f1f77bcf86cd799439021",
-              "x": 118,
-              "y": 230.4,
+              "x": 87.2,
+              "y": 144,
               "vx": 0,
               "vy": 0,
               "rotation": 0.18759835536206237,
@@ -342,8 +342,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439022",
-              "x": 1038.4,
-              "y": 140.8,
+              "x": 767.36,
+              "y": 88,
               "vx": 0,
               "vy": 0,
               "rotation": 2.7613939214454186,
@@ -354,8 +354,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439023",
-              "x": 1038.4,
-              "y": 409.6,
+              "x": 767.36,
+              "y": 256,
               "vx": 0,
               "vy": 0,
               "rotation": -2.9443686497512678,
@@ -368,26 +368,26 @@
           "crates": [
             {
               "index": 4,
-              "x": 826,
-              "y": 179.2,
+              "x": 610.4,
+              "y": 112,
               "destroyed": false
             },
             {
               "index": 7,
-              "x": 472,
-              "y": 358.4,
+              "x": 348.8,
+              "y": 224,
               "destroyed": false
             },
             {
               "index": 8,
-              "x": 708,
-              "y": 256,
+              "x": 523.2,
+              "y": 160,
               "destroyed": false
             },
             {
               "index": 9,
-              "x": 495.6,
-              "y": 531.2,
+              "x": 366.24,
+              "y": 332,
               "destroyed": false
             }
           ],
@@ -474,8 +474,8 @@
           "tanks": [
             {
               "playerId": "507f1f77bcf86cd799439021",
-              "x": 118,
-              "y": 230.4,
+              "x": 87.2,
+              "y": 144,
               "vx": 0,
               "vy": 0,
               "rotation": 0.18759835536206237,
@@ -486,8 +486,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439022",
-              "x": 1038.4,
-              "y": 140.8,
+              "x": 767.36,
+              "y": 88,
               "vx": 0,
               "vy": 0,
               "rotation": 2.7613939214454186,
@@ -498,8 +498,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439023",
-              "x": 1038.4,
-              "y": 409.6,
+              "x": 767.36,
+              "y": 256,
               "vx": 0,
               "vy": 0,
               "rotation": -2.9443686497512678,
@@ -512,26 +512,26 @@
           "crates": [
             {
               "index": 4,
-              "x": 826,
-              "y": 179.2,
+              "x": 610.4,
+              "y": 112,
               "destroyed": false
             },
             {
               "index": 7,
-              "x": 472,
-              "y": 358.4,
+              "x": 348.8,
+              "y": 224,
               "destroyed": false
             },
             {
               "index": 8,
-              "x": 708,
-              "y": 256,
+              "x": 523.2,
+              "y": 160,
               "destroyed": false
             },
             {
               "index": 9,
-              "x": 495.6,
-              "y": 531.2,
+              "x": 366.24,
+              "y": 332,
               "destroyed": false
             }
           ],
@@ -618,8 +618,8 @@
           "tanks": [
             {
               "playerId": "507f1f77bcf86cd799439021",
-              "x": 301.25,
-              "y": 288.5,
+              "x": 222.62,
+              "y": 180.31,
               "vx": 180.5,
               "vy": 82.25,
               "rotation": 0.42,
@@ -630,8 +630,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439022",
-              "x": 1012.75,
-              "y": 151.5,
+              "x": 748.41,
+              "y": 94.69,
               "vx": 0,
               "vy": 0,
               "rotation": 2.95,
@@ -642,8 +642,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439023",
-              "x": 640.5,
-              "y": 402.25,
+              "x": 473.32,
+              "y": 251.41,
               "vx": 0,
               "vy": 0,
               "rotation": -2.4,
@@ -656,41 +656,41 @@
           "crates": [
             {
               "index": 4,
-              "x": 826,
-              "y": 179.2,
+              "x": 610.4,
+              "y": 112,
               "destroyed": false
             },
             {
               "index": 7,
-              "x": 472,
-              "y": 358.4,
+              "x": 348.8,
+              "y": 224,
               "destroyed": false
             },
             {
               "index": 8,
-              "x": 708,
-              "y": 256,
+              "x": 523.2,
+              "y": 160,
               "destroyed": false
             },
             {
               "index": 9,
-              "x": 495.6,
-              "y": 531.2,
+              "x": 366.24,
+              "y": 332,
               "destroyed": false
             }
           ],
           "token": {
             "kind": "shield",
-            "x": 590,
-            "y": 470.5,
+            "x": 436,
+            "y": 294.06,
             "expiresAtTick": 2420
           },
           "projectiles": [
             {
               "id": 31,
               "ownerId": "507f1f77bcf86cd799439021",
-              "x": 340.5,
-              "y": 305.25,
+              "x": 251.62,
+              "y": 190.78,
               "vx": 463.75,
               "vy": 212.25,
               "rocket": false,
@@ -699,8 +699,8 @@
             {
               "id": 32,
               "ownerId": "507f1f77bcf86cd799439023",
-              "x": 610,
-              "y": 380,
+              "x": 450.78,
+              "y": 237.5,
               "vx": -295,
               "vy": -270,
               "rocket": true,
@@ -825,8 +825,8 @@
           "tanks": [
             {
               "playerId": "507f1f77bcf86cd799439021",
-              "x": 590.5,
-              "y": 380.25,
+              "x": 436.37,
+              "y": 237.66,
               "vx": 0,
               "vy": 0,
               "rotation": 1.1,
@@ -837,8 +837,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439022",
-              "x": 980,
-              "y": 210.5,
+              "x": 724.2,
+              "y": 131.56,
               "vx": 0,
               "vy": 0,
               "rotation": 2.95,
@@ -849,8 +849,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439023",
-              "x": 655,
-              "y": 395.5,
+              "x": 484.03,
+              "y": 247.19,
               "vx": 0,
               "vy": 0,
               "rotation": -2.4,
@@ -863,26 +863,26 @@
           "crates": [
             {
               "index": 4,
-              "x": 826,
-              "y": 179.2,
+              "x": 610.4,
+              "y": 112,
               "destroyed": false
             },
             {
               "index": 7,
-              "x": 488.25,
-              "y": 352,
+              "x": 360.81,
+              "y": 220,
               "destroyed": true
             },
             {
               "index": 8,
-              "x": 708,
-              "y": 256,
+              "x": 523.2,
+              "y": 160,
               "destroyed": false
             },
             {
               "index": 9,
-              "x": 495.6,
-              "y": 531.2,
+              "x": 366.24,
+              "y": 332,
               "destroyed": false
             }
           ],
@@ -894,8 +894,8 @@
               "tick": 2550,
               "kind": "crateBroken",
               "crateIndex": 7,
-              "x": 488.25,
-              "y": 352
+              "x": 360.81,
+              "y": 220
             },
             {
               "sequence": 88,
@@ -910,8 +910,8 @@
               "sequence": 89,
               "tick": 2581,
               "kind": "explosion",
-              "x": 655,
-              "y": 395.5
+              "x": 484.03,
+              "y": 247.19
             },
             {
               "sequence": 90,
@@ -919,8 +919,8 @@
               "kind": "eliminated",
               "playerId": "507f1f77bcf86cd799439023",
               "sourceId": "507f1f77bcf86cd799439021",
-              "x": 655,
-              "y": 395.5
+              "x": 484.03,
+              "y": 247.19
             },
             {
               "sequence": 91,
@@ -1010,8 +1010,8 @@
           "tanks": [
             {
               "playerId": "507f1f77bcf86cd799439021",
-              "x": 590.5,
-              "y": 380.25,
+              "x": 436.37,
+              "y": 237.66,
               "vx": 0,
               "vy": 0,
               "rotation": 1.1,
@@ -1022,8 +1022,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439022",
-              "x": 980,
-              "y": 210.5,
+              "x": 724.2,
+              "y": 131.56,
               "vx": 0,
               "vy": 0,
               "rotation": 2.95,
@@ -1034,8 +1034,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439023",
-              "x": 655,
-              "y": 395.5,
+              "x": 484.03,
+              "y": 247.19,
               "vx": 0,
               "vy": 0,
               "rotation": -2.4,
@@ -1048,26 +1048,26 @@
           "crates": [
             {
               "index": 4,
-              "x": 826,
-              "y": 179.2,
+              "x": 610.4,
+              "y": 112,
               "destroyed": false
             },
             {
               "index": 7,
-              "x": 488.25,
-              "y": 352,
+              "x": 360.81,
+              "y": 220,
               "destroyed": true
             },
             {
               "index": 8,
-              "x": 708,
-              "y": 256,
+              "x": 523.2,
+              "y": 160,
               "destroyed": false
             },
             {
               "index": 9,
-              "x": 495.6,
-              "y": 531.2,
+              "x": 366.24,
+              "y": 332,
               "destroyed": false
             }
           ],
@@ -1154,8 +1154,8 @@
           "tanks": [
             {
               "playerId": "507f1f77bcf86cd799439021",
-              "x": 700.25,
-              "y": 300,
+              "x": 517.47,
+              "y": 187.5,
               "vx": 0,
               "vy": 0,
               "rotation": 0.75,
@@ -1166,8 +1166,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439022",
-              "x": 802,
-              "y": 280.75,
+              "x": 592.66,
+              "y": 175.47,
               "vx": 0,
               "vy": 0,
               "rotation": 2.2,
@@ -1178,8 +1178,8 @@
             },
             {
               "playerId": "507f1f77bcf86cd799439023",
-              "x": 120.5,
-              "y": 600,
+              "x": 89.05,
+              "y": 375,
               "vx": 0,
               "vy": 0,
               "rotation": -0.3,
@@ -1192,26 +1192,26 @@
           "crates": [
             {
               "index": 4,
-              "x": 826,
-              "y": 179.2,
+              "x": 610.4,
+              "y": 112,
               "destroyed": false
             },
             {
               "index": 7,
-              "x": 472,
-              "y": 358.4,
+              "x": 348.8,
+              "y": 224,
               "destroyed": false
             },
             {
               "index": 8,
-              "x": 708,
-              "y": 256,
+              "x": 523.2,
+              "y": 160,
               "destroyed": false
             },
             {
               "index": 9,
-              "x": 495.6,
-              "y": 531.2,
+              "x": 366.24,
+              "y": 332,
               "destroyed": false
             }
           ],

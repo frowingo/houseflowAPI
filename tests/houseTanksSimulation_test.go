@@ -202,47 +202,47 @@ func houseTanksScenarios() []tanksScenario {
 			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 300, Y: 60, RotationDirection: 1}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(90, 0)}, Checkpoints: at(1, 30, 90, 91, 180, 240)},
 		{Name: "wallBounce", Description: "A tank drives into the right wall and is held by it; its shell stops at the wall.",
-			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 1000, Y: 60, RotationDirection: 1}},
+			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 700, Y: 60, RotationDirection: 1}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(240, 0)}, Checkpoints: at(30, 60, 120, 170, 180, 240)},
 		{Name: "headOn", Description: "Two tanks fire at each other, are hit on the same tick, then meet and push against each other.",
 			MapID: houseTanks.MapLivingRoom, Players: 2,
-			Tanks:  []tanksScenarioTank{{Seat: 0, X: 650, Y: 580, RotationDirection: 1}, {Seat: 1, X: 800, Y: 580, Rotation: math.Pi, RotationDirection: -1}},
+			Tanks:  []tanksScenarioTank{{Seat: 0, X: 400, Y: 362, RotationDirection: 1}, {Seat: 1, X: 550, Y: 362, Rotation: math.Pi, RotationDirection: -1}},
 			Inputs: []tanksScenarioInput{press(0, 0), press(0, 1), release(160, 0), release(160, 1)}, Checkpoints: at(20, 40, 80, 120, 160, 200)},
 		{Name: "cratePush", Description: "A cooling tank drives into a crate and shoves it.",
-			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 640, Y: 256, RotationDirection: 1, FiredAtTick: cooling}},
+			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 455.2, Y: 160, RotationDirection: 1, FiredAtTick: cooling}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(120, 0)}, Checkpoints: at(30, 80, 120, 180)},
 		{Name: "shellBreaksCrate", Description: "A shell breaks the crate in front of the tank.",
-			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 640, Y: 256, RotationDirection: 1}},
+			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 455.2, Y: 160, RotationDirection: 1}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(2, 0)}, Checkpoints: at(5, 30)},
 		{Name: "muzzleBlocked", Description: "A muzzle inside a crate breaks it at once instead of spawning a shell behind it.",
-			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 680, Y: 256, RotationDirection: 1}},
+			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 503.2, Y: 160, RotationDirection: 1}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(1, 0)}, Checkpoints: at(1, 10)},
 		{Name: "rocketKill", Description: "A rocket destroys a full-armor tank, which stays as a wreck.",
 			MapID: houseTanks.MapLivingRoom, Players: 2,
-			Tanks:  []tanksScenarioTank{{Seat: 0, X: 650, Y: 580, RotationDirection: 1, PowerUp: "rocket"}, {Seat: 1, X: 900, Y: 580, Rotation: math.Pi, RotationDirection: -1}},
+			Tanks:  []tanksScenarioTank{{Seat: 0, X: 400, Y: 362, RotationDirection: 1, PowerUp: "rocket"}, {Seat: 1, X: 650, Y: 362, Rotation: math.Pi, RotationDirection: -1}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(3, 0)}, Checkpoints: at(30, 60, 90)},
 		{Name: "shieldBlocks", Description: "A shield absorbs a rocket without damage.",
 			MapID: houseTanks.MapLivingRoom, Players: 2,
-			Tanks:  []tanksScenarioTank{{Seat: 0, X: 650, Y: 580, RotationDirection: 1, PowerUp: "rocket"}, {Seat: 1, X: 900, Y: 580, Rotation: math.Pi, RotationDirection: -1, PowerUp: "shield"}},
+			Tanks:  []tanksScenarioTank{{Seat: 0, X: 400, Y: 362, RotationDirection: 1, PowerUp: "rocket"}, {Seat: 1, X: 650, Y: 362, Rotation: math.Pi, RotationDirection: -1, PowerUp: "shield"}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(3, 0)}, Checkpoints: at(30, 60, 90)},
 		{Name: "spreadProtection", Description: "Three spread pellets reach the target on one tick; hit protection lets only the first count.",
 			MapID: houseTanks.MapLivingRoom, Players: 2,
-			Tanks:  []tanksScenarioTank{{Seat: 0, X: 650, Y: 580, RotationDirection: 1, PowerUp: "spreadShot"}, {Seat: 1, X: 712, Y: 580, Rotation: math.Pi, RotationDirection: -1, FiredAtTick: cooling}},
+			Tanks:  []tanksScenarioTank{{Seat: 0, X: 400, Y: 362, RotationDirection: 1, PowerUp: "spreadShot"}, {Seat: 1, X: 462, Y: 362, Rotation: math.Pi, RotationDirection: -1, FiredAtTick: cooling}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(1, 0)}, Checkpoints: at(3, 10, 60)},
 		{Name: "aimLock", Description: "An aimed shot holds the heading until it lands on the far wall.",
 			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 300, Y: 60, RotationDirection: 1, PowerUp: "aim"}},
-			Inputs: []tanksScenarioInput{press(0, 0), release(2, 0)}, Checkpoints: at(100, 190, 200, 240)},
+			Inputs: []tanksScenarioInput{press(0, 0), release(2, 0)}, Checkpoints: at(100, 120, 129, 240)},
 		{Name: "rapidFire", Description: "Rapid fire shoots every 20 ticks while held.",
 			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 300, Y: 60, RotationDirection: 1, PowerUp: "rapidFire"}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(61, 0)}, Checkpoints: at(20, 40, 61, 90)},
 		{Name: "stationaryTarget", Description: "A tank that loses control stops turning, is shoved by another tank and turns again once control returns.",
 			MapID: houseTanks.MapLivingRoom, Players: 2,
-			Tanks:       []tanksScenarioTank{{Seat: 0, X: 650, Y: 580, RotationDirection: 1, FiredAtTick: cooling}, {Seat: 1, X: 700, Y: 580, Rotation: math.Pi, RotationDirection: -1}},
+			Tanks:       []tanksScenarioTank{{Seat: 0, X: 400, Y: 362, RotationDirection: 1, FiredAtTick: cooling}, {Seat: 1, X: 450, Y: 362, Rotation: math.Pi, RotationDirection: -1}},
 			Inputs:      []tanksScenarioInput{{0, 1, "loseControl"}, press(0, 0), release(80, 0), {100, 1, "regainControl"}},
 			Checkpoints: at(20, 40, 80, 100, 140)},
 		{Name: "wreckBlocks", Description: "A wreck stops a shell without a hit and deflects a driving tank.",
 			MapID: houseTanks.MapLivingRoom, Players: 2,
-			Tanks:  []tanksScenarioTank{{Seat: 0, X: 650, Y: 580, RotationDirection: 1}, {Seat: 1, X: 760, Y: 583, Rotation: math.Pi, RotationDirection: -1, Wreck: true}},
+			Tanks:  []tanksScenarioTank{{Seat: 0, X: 400, Y: 362, RotationDirection: 1}, {Seat: 1, X: 510, Y: 365, Rotation: math.Pi, RotationDirection: -1, Wreck: true}},
 			Inputs: []tanksScenarioInput{press(0, 0), release(150, 0)}, Checkpoints: at(20, 60, 120, 150)},
 		{Name: "jokerPickup", Description: "A driving tank collects the joker on the floor.",
 			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 300, Y: 60, RotationDirection: 1, FiredAtTick: cooling}},
@@ -250,7 +250,7 @@ func houseTanksScenarios() []tanksScenario {
 			Checkpoints: at(10, 60, 90)},
 		{Name: "jokerExpiry", Description: "A joker effect and an untouched token both run out on their expiry tick.",
 			MapID: houseTanks.MapLivingRoom, Players: 2, Tanks: []tanksScenarioTank{{Seat: 0, X: 300, Y: 60, RotationDirection: 1, PowerUp: "shield"}},
-			Token: &tanksScenarioToken{Kind: houseTanks.PowerUpAim, X: 900, Y: 580}, Checkpoints: at(959, 960, 1439, 1440)},
+			Token: &tanksScenarioToken{Kind: houseTanks.PowerUpAim, X: 650, Y: 362}, Checkpoints: at(959, 960, 1439, 1440)},
 		{Name: "crowdedBasement", Description: "Eight seats on the scaled crowded map; every seat fires toward the center.",
 			MapID: houseTanks.MapBasement, Players: 8,
 			Inputs: []tanksScenarioInput{press(0, 0), press(0, 1), press(0, 2), press(0, 3), press(0, 4), press(0, 5), press(0, 6), press(0, 7),
@@ -528,7 +528,7 @@ func TestHouseTanksSimulationMatchesBriefing(t *testing.T) {
 	definition, _ := houseTanks.MapByID(houseTanks.MapLivingRoom)
 	for _, seat := range []int{0, 1} {
 		spawn := definition.SpawnPoints[seat]
-		start := math.Atan2(320-spawn.Y*640, 590-spawn.X*1180)
+		start := math.Atan2(houseTanks.ArenaHeight/2-spawn.Y*houseTanks.ArenaHeight, houseTanks.ArenaWidth/2-spawn.X*houseTanks.ArenaWidth)
 		direction := 1.0 - 2*float64(seat)
 		near("idle rotation", checkpoint("idleSweep", 240).Tanks[seat].Rotation, start+direction*1.5*240*dt)
 	}
@@ -574,13 +574,15 @@ func TestHouseTanksSimulationMatchesBriefing(t *testing.T) {
 	if gap := checkpoint("headOn", 160).Tanks[1].X - checkpoint("headOn", 160).Tanks[0].X; gap > 30 {
 		t.Fatalf("head-on tanks never met: gap %v", gap)
 	}
-	// The wall holds a tank pushing into it: frame inset 22.4 plus the radius.
+	// The wall holds a tank pushing into it: frame inset max(16, 400 × 0.035)
+	// = 16 plus the radius.
+	wall := houseTanks.ArenaWidth - 16 - 9
 	for _, recorded := range scenarios["wallBounce"].Checkpoints {
-		if recorded.Tanks[0].X > 1180-22.4-9+1e-6 {
+		if recorded.Tanks[0].X > wall+1e-6 {
 			t.Fatalf("tank passed the wall at %d", recorded.Tick)
 		}
 	}
-	if checkpoint("wallBounce", 240).Tanks[0].X < 1140 || len(checkpoint("wallBounce", 60).Projectiles) != 0 {
+	if checkpoint("wallBounce", 240).Tanks[0].X < wall-9 || len(checkpoint("wallBounce", 60).Projectiles) != 0 {
 		t.Fatal("tank must reach the wall and its shell stop there")
 	}
 	// A rocket kills a full-armor tank, which becomes a wreck.
@@ -622,15 +624,15 @@ func TestHouseTanksSimulationMatchesBriefing(t *testing.T) {
 	}
 	// Stationary target: no turning, shoved, turns again after control returns.
 	stationary := checkpoint("stationaryTarget", 80).Tanks[1]
-	if stationary.Controllable || stationary.Rotation != math.Pi || stationary.X <= 700 {
+	if stationary.Controllable || stationary.Rotation != math.Pi || stationary.X <= 450 {
 		t.Fatal("stationary target must hold its heading and be shoved")
 	}
 	if checkpoint("stationaryTarget", 140).Tanks[1].Rotation == math.Pi || !checkpoint("stationaryTarget", 140).Tanks[1].Controllable {
 		t.Fatal("control must return")
 	}
 	// Wreck: no hit event, the shell stops at it and the driving tank slides off it.
-	if len(checkpoint("wreckBlocks", 20).Projectiles) != 0 || checkpoint("wreckBlocks", 150).Tanks[0].Y == 580 ||
-		checkpoint("wreckBlocks", 150).Tanks[1].X != 760 {
+	if len(checkpoint("wreckBlocks", 20).Projectiles) != 0 || checkpoint("wreckBlocks", 150).Tanks[0].Y == 362 ||
+		checkpoint("wreckBlocks", 150).Tanks[1].X != 510 {
 		t.Fatal("wreck must stop the shell and deflect the tank without moving")
 	}
 	for _, recorded := range scenarios["wreckBlocks"].Checkpoints {
@@ -662,7 +664,9 @@ func TestHouseTanksSimulationMatchesBriefing(t *testing.T) {
 		near("shell speed", math.Hypot(projectile.VX, projectile.VY), 510)
 	}
 	// Crates: pushed by a cooling tank, broken by a shell or a blocked muzzle.
-	if pushed := checkpoint("cratePush", 120).Crates; pushed[2].Destroyed || pushed[2].X <= 708 || checkpoint("cratePush", 30).Crates[2].X != 708 {
+	// The pushed crate is the third one, obstacle 8 of the living room.
+	crateX := definition.Obstacles[8].X * houseTanks.ArenaWidth
+	if pushed := checkpoint("cratePush", 120).Crates; pushed[2].Destroyed || pushed[2].X <= crateX || checkpoint("cratePush", 30).Crates[2].X != crateX {
 		t.Fatal("crate push")
 	}
 	if !checkpoint("shellBreaksCrate", 30).Crates[2].Destroyed || !checkpoint("muzzleBlocked", 1).Crates[2].Destroyed || len(checkpoint("muzzleBlocked", 1).Projectiles) != 0 {
@@ -684,7 +688,12 @@ func TestHouseTanksMapCatalog(t *testing.T) {
 			}
 			continue
 		}
-		if definition.Scale != 1 || definition.MinPlayers != 2 || definition.MaxPlayers != 5 || len(definition.SpawnPoints) != 5 || definition.Version != 3 {
+		// Catalog 2 moved courtyard's fifth spawn off the planter at 872 × 400.
+		version := 3
+		if definition.ID == houseTanks.MapCourtyard {
+			version = 4
+		}
+		if definition.Scale != 1 || definition.MinPlayers != 2 || definition.MaxPlayers != 5 || len(definition.SpawnPoints) != 5 || definition.Version != version {
 			t.Fatalf("standard map %s = scale %v players %d-%d spawns %d version %d", definition.ID, definition.Scale, definition.MinPlayers, definition.MaxPlayers, len(definition.SpawnPoints), definition.Version)
 		}
 		for _, spawn := range definition.SpawnPoints {

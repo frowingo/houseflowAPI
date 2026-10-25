@@ -480,6 +480,27 @@ House Rockets test ailelerinin muadilleri:
   yapılır. 25 Ekim kararı: istemciler henüz yayınlanmadığı için test evi kısıtı konmadı;
   oyun 0054 ile deploy'la birlikte tüm evlerde açılır (§6).
 
+### Arena 872 × 400 (25 Ekim 2026)
+
+`houseTanksArenaResizeBriefing.md` onaylandı ve uygulandı:
+
+- **Sabitler:** `ArenaWidth`/`ArenaHeight` 872 × 400. Bunlardan türeyen değerler: duvar 16,
+  joker alanı 776 × 276, joker başlangıç mesafesi 80.
+- **Sürümler:** `ContractRevision` `houseTanks.v2`, `MapCatalogVersion` 2. Protocol 2 kaldı.
+- **Katalog:** courtyard başlangıç 4 (0,40; 0,08) oldu, courtyard sürümü 4. Katalog
+  doğrulaması beş haritada sıfır sorun veriyor.
+- **Simülasyon fixture'ı:** yeniden üretildi; senaryo seti ve adları aynı. Elle verilen
+  konumlar yeniden yerleştirildi:
+  - Üst sıra senaryoları y = 362'de.
+  - Kasa senaryoları obstacle 8'e (523,2; 160) göre.
+  - `wallBounce` x = 700'den başlıyor.
+  - `jokerExpiry` jetonu (650, 362).
+  - `aimLock` checkpoint'leri 120/129.
+- **Protokol fixture'ı:** arena, sürüm ve snapshot örneklerinin konumları güncellendi.
+- **Testler:** briefing ve joker testlerindeki konuma bağlı beklentiler yeni değerlere göre
+  güncellendi.
+- **Teslim:** yeni sha256 değerleri `houseTanksClientIntegration.md` §2'de, ayrıntılar §2.1'de.
+
 ## 6. Yayın ve geri alma
 
 - Yeni modül yalnız ekleme: Mongo/Redis formatlarında mevcut belgelere değişiklik yok.

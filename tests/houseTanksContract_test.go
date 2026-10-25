@@ -95,7 +95,7 @@ func TestHouseTanksDefinitionContract(t *testing.T) {
 		t.Fatal("runtime settings or expiry policy changed")
 	}
 	settings := houseTanks.HouseTanksRuntimeSettings()
-	if settings.ArenaWidth != 1180 || settings.ArenaHeight != 640 || settings.RoundWinsNeeded != 3 || settings.ArmorPerRound != 5 ||
+	if settings.ArenaWidth != 872 || settings.ArenaHeight != 400 || settings.RoundWinsNeeded != 3 || settings.ArmorPerRound != 5 ||
 		settings.PhysicsRateHz != 120 || settings.MaximumMatchMilliseconds != 5*60*1000 {
 		t.Fatal("approved arena or match rules changed")
 	}

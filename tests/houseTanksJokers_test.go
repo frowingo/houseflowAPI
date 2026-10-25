@@ -79,31 +79,31 @@ func TestHouseTanksJokerBag(t *testing.T) {
 
 func TestHouseTanksJokerSpotRules(t *testing.T) {
 	area := houseTanks.JokerArea()
-	if area != (houseTanks.Rect{X: 48, Y: 44, Width: 1084, Height: 516}) {
+	if area != (houseTanks.Rect{X: 48, Y: 44, Width: 776, Height: 276}) {
 		t.Fatalf("joker area = %+v", area)
 	}
-	center := houseTanks.Vector{X: 590, Y: 300}
+	center := houseTanks.Vector{X: 436, Y: 182}
 	if !houseTanks.ValidJokerSpot(center, nil, nil, nil) {
 		t.Fatal("open floor")
 	}
-	for _, outside := range []houseTanks.Vector{{X: 47.9, Y: 300}, {X: 1132.1, Y: 300}, {X: 590, Y: 43.9}, {X: 590, Y: 560.1}} {
+	for _, outside := range []houseTanks.Vector{{X: 47.9, Y: 182}, {X: 824.1, Y: 182}, {X: 436, Y: 43.9}, {X: 436, Y: 320.1}} {
 		if houseTanks.ValidJokerSpot(outside, nil, nil, nil) {
 			t.Fatalf("%v is outside the joker area", outside)
 		}
 	}
-	// Spawn points: max(80, 516 × 0.22) = 113.52, unscaled.
-	startClearance := 516 * 0.22
-	if houseTanks.ValidJokerSpot(center, []houseTanks.Vector{{X: 590 + startClearance - 0.01, Y: 300}}, nil, nil) ||
-		!houseTanks.ValidJokerSpot(center, []houseTanks.Vector{{X: 590 + startClearance + 1e-9, Y: 300}}, nil, nil) {
+	// Spawn points: max(80, 276 × 0.22) = 80, unscaled.
+	startClearance := 80.0
+	if houseTanks.ValidJokerSpot(center, []houseTanks.Vector{{X: 436 + startClearance - 0.01, Y: 182}}, nil, nil) ||
+		!houseTanks.ValidJokerSpot(center, []houseTanks.Vector{{X: 436 + startClearance + 1e-9, Y: 182}}, nil, nil) {
 		t.Fatal("start clearance")
 	}
-	if houseTanks.ValidJokerSpot(center, nil, []houseTanks.Vector{{X: 590, Y: 349.99}}, nil) ||
-		!houseTanks.ValidJokerSpot(center, nil, []houseTanks.Vector{{X: 590, Y: 350}}, nil) {
+	if houseTanks.ValidJokerSpot(center, nil, []houseTanks.Vector{{X: 436, Y: 231.99}}, nil) ||
+		!houseTanks.ValidJokerSpot(center, nil, []houseTanks.Vector{{X: 436, Y: 232}}, nil) {
 		t.Fatal("tank clearance")
 	}
-	cover := houseTanks.Rect{X: 600, Y: 290, Width: 20, Height: 20}
-	if houseTanks.ValidJokerSpot(houseTanks.Vector{X: 574, Y: 300}, nil, nil, []houseTanks.Rect{cover}) ||
-		!houseTanks.ValidJokerSpot(houseTanks.Vector{X: 573.9, Y: 300}, nil, nil, []houseTanks.Rect{cover}) {
+	cover := houseTanks.Rect{X: 446, Y: 172, Width: 20, Height: 20}
+	if houseTanks.ValidJokerSpot(houseTanks.Vector{X: 420, Y: 182}, nil, nil, []houseTanks.Rect{cover}) ||
+		!houseTanks.ValidJokerSpot(houseTanks.Vector{X: 419.9, Y: 182}, nil, nil, []houseTanks.Rect{cover}) {
 		t.Fatal("cover clearance")
 	}
 }
