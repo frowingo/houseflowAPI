@@ -65,7 +65,9 @@ tersine. Zaman: 120 Hz sabit fizik adımı (`1/120 s`); tick tam sayı sayaçtı
 
 ### 4.1. Arena
 
-- Mantıksal arena: **1180 × 640** (onaylandı). Her istemci bunu ekranına sığdırarak çizer.
+- Mantıksal arena: **1180 × 640** (onaylandı). **25 Ekim 2026'da 872 × 400 oldu**
+  (`houseTanksArenaResizeBriefing.md`); bu bölümdeki 1180/640/22.4 değerleri tarihsel, formüller aynı.
+  Her istemci bunu ekranına sığdırarak çizer.
 - Oynanabilir çerçeve (duvar): her kenardan `max(16, 640 × 0.035) = 22.4` içeride.
 - Haritalar normalize (0…1) tanımlı: `HouseTanksMapCatalog.swift`. Konum:
   `(x × 1180, y × 640)`. Engel boyutu (`k = 0.36 × scale`):

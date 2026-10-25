@@ -1,7 +1,7 @@
 # FauseTanks online — istemci entegrasyon belgesi
 
 Tarih: 24 Ekim 2026 · Hazırlayan: backend · Hedef: istemci (mobil) agent'ı · Sözleşme:
-`houseTanks.v1`, protocol `2`, harita kataloğu `1`
+`houseTanks.v2`, protocol `2`, harita kataloğu `2` (25 Ekim: arena 872 × 400, §2.1)
 
 Bu belge istemci agent'ına doğrudan verilir. Backend tamamlandı (T0–T6, ayrıntılar
 `houseTanksBackendPlan.md`). Bu belgede, Go motorunun ve fixture'ların referans olduğu
@@ -51,20 +51,52 @@ sonra hash doğrulanır, dosyalar elle düzenlenmez:
 
 | Dosya | Boyut | sha256 | İçerik |
 |---|---|---|---|
-| `houseTanksMaps.json` | 21.278 B | `90c9c3fde6aa85b5d6b1074401e56d9adafd7eea144672704a4bd673ed19537c` | Harita kataloğu (5 harita) |
-| `houseTanksSimulation.json` | 200.040 B | `e6bae77ba640f4d709f0b5f09c58e5778b0a9b950e057eb9e97d3bd9a1a79d6b` | Sabitler + 17 adım adım fizik senaryosu |
-| `houseTanksProtocol.json` | 46.280 B | `3ff49b39246a560bc373c81f1e465385b07eed517ae08f71bdd5c6082d137286` | Kurallar, tüm mesaj örnekleri, geçersiz mesajlar |
+| `houseTanksMaps.json` | 21.385 B | `fa8d64f37fb35c2e0c737325ac4e5c49acaf038438557a0bffe0a26a131681b9` | Harita kataloğu (5 harita) |
+| `houseTanksSimulation.json` | 197.896 B | `4f7b5ce53fd81cf3ef6cf46c127d17ade68d73450699a3e0baf8c3400e19f712` | Sabitler + 17 adım adım fizik senaryosu |
+| `houseTanksProtocol.json` | 46.309 B | `f0efda9feca82f4cecdce4ebad058a734d77e56e9ad05cfe87ffa4201dab4289` | Kurallar, tüm mesaj örnekleri, geçersiz mesajlar |
 
 ```bash
 shasum -a 256 houseTanksMaps.json houseTanksSimulation.json houseTanksProtocol.json
 ```
 
+### 2.1. Arena boyutu değişikliği (25 Ekim 2026)
+
+İstemcinin `houseTanksArenaResizeBriefing.md` önerisi ürün sahibince onaylandı ve backend'de
+uygulandı. Yeni fixture'larla Faz 0 eşitlik testi yeniden çalıştırılır.
+
+| | Önce | Şimdi |
+|---|---|---|
+| Arena | 1180 × 640 | **872 × 400** |
+| Duvar çerçevesi `max(16, H × 0,035)` | 22,4 | 16 |
+| Joker alanı `{48, 44, W − 96, H − 124}` | 1084 × 516 | 776 × 276 |
+| Joker başlangıç mesafesi `max(80, alan.H × 0,22)` | 113,52 | 80 |
+| `contractRevision` / `mapCatalogVersion` | `houseTanks.v1` / 1 | `houseTanks.v2` / 2 |
+| courtyard başlangıç 4 / sürüm | (0,50; 0,08) / 3 | **(0,40; 0,08) / 4** |
+
+- Tank, mermi ve joker boyutları, hızlar, kütleler ve tick süreleri değişmedi. Formüller de
+  aynı; normalize tanımlı engeller arenayla birlikte orantılı küçülür.
+- Katalog doğrulaması 872 × 400'te beş haritada da sıfır sorun veriyor.
+- Simülasyon senaryolarının seti ve adları aynı. Elle verilen konumlar yeni arenaya göre
+  yeniden yerleştirildi:
+  - Üst sıra senaryoları (`headOn`, `rocketKill`, `shieldBlocks`, `spreadProtection`,
+    `stationaryTarget`, `wreckBlocks`) y = 362 şeridinde, x = 400'den başlıyor. Tanklar
+    arasındaki mesafeler önceki gibi.
+  - Kasa senaryoları (`cratePush`, `shellBreaksCrate`, `muzzleBlocked`) obstacle 8'in yeni
+    konumuna (523,2; 160) göre yerleşti. `muzzleBlocked`'ta tank kasadan 20 nokta uzakta;
+    küçülen kasada namlunun kasanın içinde kalması için gereken mesafe bu.
+  - `wallBounce` x = 700'den başlıyor; sağ duvara mesafe eskisi gibi. `jokerExpiry`
+    jetonu (650, 362).
+  - `aimLock`'un ara checkpoint'leri 190/200'den 120/129'a alındı: mermi duvara artık 127.
+    tickte çarpıyor, iki checkpoint yine çarpmanın hemen öncesi ve sonrası.
+- `houseTanksProtocol.json`'daki snapshot örneklerinin konumları yeni arenaya oranlandı
+  (iki ondalık). Wire şekli değişmedi.
+
 Sürümler birbirinden bağımsızdır:
 
 - `protocolVersion: 2` zarfın sürümüdür (çekirdek v2 zarfı, House Rockets'le aynı).
-- `contractRevision: "houseTanks.v1"` oyun sözleşmesinin revizyonudur; welcome'da gelir.
-- `mapCatalogVersion: 1` katalog dosyasının sürümüdür; welcome'da gelir. Her haritanın
-  ayrıca kendi `version`'ı vardır (standart haritalar 3, Bodrum 1); snapshot `mapId` +
+- `contractRevision: "houseTanks.v2"` oyun sözleşmesinin revizyonudur; welcome'da gelir.
+- `mapCatalogVersion: 2` katalog dosyasının sürümüdür; welcome'da gelir. Her haritanın
+  ayrıca kendi `version`'ı vardır (livingRoom, corridors, warehouse 3; courtyard 4; Bodrum 1); snapshot `mapId` +
   `mapVersion` taşır.
 - Fixture'ların `schemaVersion: 1` alanı dosya biçimidir, socket payload'ı değildir.
 - `houseTanksProtocol.json`'daki `liveGatewayAvailable: false` T0'ın tarihsel işaretidir.
@@ -116,7 +148,7 @@ aynıdır. Tanklara özgü olanlar:
   | `reconnectGraceMilliseconds` | 10000 | Yetersiz oyuncu bekleme süresi |
   | `lagCompensationMilliseconds` | 150 | Gecikme telafisi penceresi |
   | `headingToleranceMilliradians` | 35 | Gecikme telafisi toleransı |
-  | `arenaWidth` × `arenaHeight` | 1180 × 640 | Arena, nokta cinsinden |
+  | `arenaWidth` × `arenaHeight` | 872 × 400 | Arena, nokta cinsinden |
   | `roundWinsNeeded` / `armorPerRound` | 3 / 5 | |
   | `roundCountdownMilliseconds` | 3000 | Tur geri sayımı |
   | `roundReadyWindowMilliseconds` | 30000 | Oy penceresi |
@@ -254,7 +286,7 @@ HTTP tarafı (yerelleştirilmiş, 0053 migration'ı): `houseTanks.error.result_n
 
 ### 3.8. Koordinat, açı ve zaman
 
-- Arena 1180 × 640 nokta, **orijin sol alt, y yukarı**. İstemci arenayı ekrana sığdırarak
+- Arena 872 × 400 nokta, **orijin sol alt, y yukarı**. İstemci arenayı ekrana sığdırarak
   çizer; arena boyutu cihaza göre değişmez.
 - Açılar radyan, +x'ten **saat yönünün tersine**. `rotation` normalize edilmez (çok
   turdan sonra 2π'nin katlarını aşabilir); çizimde normalize edilir, karşılaştırmada fark
@@ -340,8 +372,8 @@ HTTP tarafı (yerelleştirilmiş, 0053 migration'ı): `houseTanks.error.result_n
 
 ### 4.5. Bant genişliği — sıkıştırmayı aç
 
-8 oyunculu ağır atışta bağlantı başına kare ~14 KB, 20 Hz'de ~280 KB/s'dir. Karenin %57'si
-mermilerdir. permessage-deflate ile kare ~3,8 KB'a (~74 KB/s) iner. İstemci WebSocket
+8 oyunculu ağır atışta bağlantı başına kare ~12 KB, 20 Hz'de ~230 KB/s'dir (872 × 400 arena).
+Karenin yaklaşık yarısı mermilerdir. permessage-deflate ile kare ~3,1 KB'a (~60 KB/s) iner. İstemci WebSocket
 bağlantısında **permessage-deflate teklif etmelidir**. Gateway bunu bağlantı başına
 kabul eder; teklif etmeyen istemci de çalışır, ama mobil veride pahalıdır.
 
@@ -374,13 +406,13 @@ geçecek şekilde değiştirilir. Bunun nedeni yerel bot modunun ve online tahmi
 sunucuyla aynı fiziği kullanmasıdır. Backend okumasına göre (24 Ekim) motorda şu işler
 henüz yok:
 
-1. **Sabit arena.** `resize(to:)` kalkar; dünya her zaman 1180 × 640 noktadır.
+1. **Sabit arena.** `resize(to:)` kalkar; dünya her zaman 872 × 400 noktadır.
 2. **Tam sayı tick.** Değişken `step(by:)` yerine sabit 1/120 sn adım. Tüm süreler tam tick
    sayısıdır, saniye değil: ateş 70, hızlı ateş 20, vuruş koruması 44, mermi ömrü 336, roket
    ömrü 384, joker etkisi 960, yerdeki joker 1440, joker aralığı 840–1320, yeniden deneme
    120. (Swift'in `elapsed >= duration` kontrolünün geçtiği ilk tick, yukarı yuvarlanmış.)
 3. **Harita kataloğu `houseTanksMaps.json`'dan.** Standart haritalar (livingRoom, corridors,
-   warehouse, courtyard) 5. başlangıç noktasıyla 2–5 oyuncuyu destekler, sürüm 3. Bodrum
+   warehouse, courtyard) 5. başlangıç noktasıyla 2–5 oyuncuyu destekler, sürüm 3 (courtyard 4). Bodrum
    (`basement`, ölçek 0,72) 6–8 oyuncu, sürüm 1, değişmedi. Swift kataloğu elle
    güncellenmez; fixture'dan okunur ya da fixture'dan üretilir.
 4. **Kaydet/yükle** (bot modu ve test için): dünya durumu serileştirilebilir olmalıdır.

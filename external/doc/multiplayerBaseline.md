@@ -227,3 +227,19 @@ olduğundan (`ownerId`, `playerId`) boyut biraz daha büyür.
   yalnız interpolasyon gecikmesinde (50 → 33 ms). Frame'ler mermi ve tank hızlarını taşıdığı
   için istemci 20 Hz'de ara değer üretebilir. Gerekirse Game dokümanındaki `snapshotRateHz`
   ile 30 Hz'e çıkarılabilir; değer yeni oturumlara dondurulur.
+
+**25 Ekim 2026, arena 872 × 400.** Aynı ölçüm yeni arenada tekrarlandı. Duvarlar daha yakın
+olduğu için mermiler daha erken düşüyor; aynı anda en fazla mermi 67'den 51'e indi.
+
+| | 20 Hz | 30 Hz |
+|---|---|---|
+| Fizik adımı ortalama / p99 / max | 109 µs / 216 µs / 503 µs | 115 µs / 195 µs / 400 µs |
+| Room event ortalama / max | 12.037 / 15.776 B | 12.017 / 15.661 B |
+| Bağlantı başına wire ortalama / max | 11.817 / 15.556 B | 11.797 / 15.441 B |
+| Bağlantı başına bant, sıkıştırmasız | 231 KB/s | 346 KB/s |
+| Sıkıştırılmış frame ortalaması | 3.093 B (~60 KB/s) | 3.082 B (~90 KB/s) |
+| Fanout, 8 izleyici | 180 µs/frame | 170 µs/frame |
+| En fazla mermi / olay penceresi | 51 / 34 | 50 / 34 |
+
+En büyük frame'de `projectiles` 7,9 KB (%51). Sonuç değişmedi: adım süresi bütçenin çok altında,
+20 Hz varsayılan kalıyor.

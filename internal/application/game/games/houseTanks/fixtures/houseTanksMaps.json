@@ -1,11 +1,11 @@
 {
-  "catalogVersion": 1,
-  "contractRevision": "houseTanks.v1",
+  "catalogVersion": 2,
+  "contractRevision": "houseTanks.v2",
   "reference": "houseflowApp/FausCrew/shared/Sources/FausCrewCore/Games/HouseTanks/HouseTanksMapCatalog.swift",
   "referenceSourceSha256": "68564136657a7868acf1abfa79bb30d49816e2272ee3573f564dd938b1d9ffcf",
-  "onlineChanges": "Standard maps add a fifth spawn point and allow 2-5 players (version 3); basement is unchanged.",
-  "arenaWidth": 1180,
-  "arenaHeight": 640,
+  "onlineChanges": "Standard maps add a fifth spawn point and allow 2-5 players (version 3); basement is unchanged. Catalog 2: the arena is 872 x 400 (was 1180 x 640) and courtyard spawn 4 moves to (0.40, 0.08) (version 4).",
+  "arenaWidth": 872,
+  "arenaHeight": 400,
   "maps": [
     {
       "id": "livingRoom",
@@ -577,7 +577,7 @@
     },
     {
       "id": "courtyard",
-      "version": 3,
+      "version": 4,
       "scale": 1.0,
       "minPlayers": 2,
       "maxPlayers": 5,
@@ -599,7 +599,7 @@
           "y": 0.7
         },
         {
-          "x": 0.5,
+          "x": 0.4,
           "y": 0.08
         }
       ],

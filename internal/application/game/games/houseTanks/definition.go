@@ -14,8 +14,8 @@ import (
 const (
 	GameKey           = "houseTanks"
 	ProtocolVersion   = 2
-	ContractRevision  = "houseTanks.v1"
-	MapCatalogVersion = 1
+	ContractRevision  = "houseTanks.v2"
+	MapCatalogVersion = 2
 	MinimumPlayers    = 2
 	MaximumPlayers    = 8
 	// Lobby rules shared with the core.
@@ -48,8 +48,8 @@ const (
 // Arena and physics contract, in arena points (origin bottom-left, y up),
 // radians counter-clockwise from +x, and seconds of 1/120 s ticks.
 const (
-	ArenaWidth        = 1180.0
-	ArenaHeight       = 640.0
+	ArenaWidth        = 872.0
+	ArenaHeight       = 400.0
 	MinimumWallInset  = 16.0
 	WallInsetRatio    = 0.035
 	GameplayScale     = 0.5
