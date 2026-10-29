@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,4 +77,36 @@ func TestChoreResponseIncludesReviewVotesFromAllRounds(t *testing.T) {
 	if response.ReviewVotes[0].ReviewRound != 1 || response.ReviewVotes[1].ReviewRound != 3 {
 		t.Fatalf("expected review votes from every round, got %+v", response.ReviewVotes)
 	}
+}
+
+func TestChoreResponseIncludesSortedPhotoRoundsWithoutExposingObjectKeys(t *testing.T) {
+	chore := entities.Chore{
+		Id: primitive.NewObjectID(),
+		ReviewPhotoKeys: map[string]string{
+			"3":       "houses/private/round-3.jpg",
+			"1":       "houses/private/round-1.jpg",
+			"invalid": "houses/private/invalid.jpg",
+		},
+	}
+
+	response := dtos.ChoreToResponseModel(chore, nil)
+	if len(response.ReviewPhotoRounds) != 2 || response.ReviewPhotoRounds[0] != 1 || response.ReviewPhotoRounds[1] != 3 {
+		t.Fatalf("review photo rounds = %v, want [1 3]", response.ReviewPhotoRounds)
+	}
+	payload, err := json.Marshal(chore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) == "" || containsAny(string(payload), "reviewPhotoKeys", "houses/private") {
+		t.Fatalf("chore JSON exposes private review photo keys: %s", payload)
+	}
+}
+
+func containsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
 }

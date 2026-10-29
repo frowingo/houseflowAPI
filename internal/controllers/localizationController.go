@@ -93,7 +93,7 @@ func (r *LocalizationController) GetLanguage(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param language body dtos.LocalizationLanguageRequestModel true "Localization language"
-// @Success 201 {object} core.ApiResponse[any]
+// @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} core.ErrorResponse
 // @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Failure 403 {object} core.ErrorResponse "Forbidden"
@@ -126,7 +126,7 @@ func (r *LocalizationController) InsertLocalizationLanguage(c *fiber.Ctx) error 
 // @Produce json
 // @Security BearerAuth
 // @Param localization body []dtos.LocalizationRequestModel true "Localization values"
-// @Success 201 {object} core.ApiResponse[any]
+// @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} core.ErrorResponse
 // @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Failure 403 {object} core.ErrorResponse "Forbidden"

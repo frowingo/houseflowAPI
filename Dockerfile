@@ -12,8 +12,8 @@ COPY go.mod go.sum ./
 # Modüleri indir
 RUN go mod download
 
-# swag CLI kur
-RUN go install github.com/swaggo/swag/cmd/swag@latest
+# go.mod ile aynı sürümü kullanarak tekrarlanabilir Swagger çıktısı üret
+RUN go install github.com/swaggo/swag/cmd/swag@v1.16.6
 
 # Kaynak kodları kopyala
 COPY . .

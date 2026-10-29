@@ -924,9 +924,10 @@ const docTemplate = `{
         },
         "/chore/status": {
             "put": {
-                "description": "Update the status of multiple chores",
+                "description": "Update statuses with JSON. Multipart requests use houseId, a JSON-encoded chores field, and an optional file; they must contain one InTest transition.",
                 "consumes": [
-                    "application/json"
+                    "application/json",
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -1052,6 +1053,75 @@ const docTemplate = `{
                 ]
             }
         },
+        "/chore/{id}/review-photo/{round}": {
+            "get": {
+                "description": "Returns a five-minute presigned URL after verifying house membership.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chore"
+                ],
+                "summary": "Get a temporary chore review photo URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Chore ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Review round",
+                        "name": "round",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_dtos.ChoreReviewPhotoURLModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Not a house member",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Photo not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
         "/game/catalog": {
             "get": {
                 "description": "Returns enabled games available to the house with the rules (capped by house capacity) and client settings a new session would get. Running sessions keep the config they were created with.",
@@ -1164,7 +1234,8 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "401": {
@@ -1795,7 +1866,7 @@ const docTemplate = `{
         },
         "/house/profile": {
             "put": {
-                "description": "Only the house owner can update fields. Each field can be changed once every 48 hours.",
+                "description": "Only the house owner can update fields. Profile fields can be changed once every 48 hours; the chore review photo requirement can be changed twice every 24 hours.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1905,7 +1976,8 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -1961,7 +2033,8 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -2373,7 +2446,8 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -2428,7 +2502,8 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-any"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -2690,15 +2765,6 @@ const docTemplate = `{
                 "InTest",
                 "Completed"
             ]
-        },
-        "houseflowApi_internal_models_core.ApiResponse-any": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "success": {
-                    "type": "boolean"
-                }
-            }
         },
         "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel": {
             "type": "object",
@@ -3045,6 +3111,12 @@ const docTemplate = `{
                 "recurringInterval": {
                     "type": "integer"
                 },
+                "reviewPhotoRounds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "reviewRound": {
                     "type": "integer"
                 },
@@ -3064,6 +3136,17 @@ const docTemplate = `{
                     }
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.ChoreReviewPhotoURLModel": {
+            "type": "object",
+            "properties": {
+                "expiresAt": {
+                    "$ref": "#/definitions/houseflowApi_internal_models_dtos.UTCDateTime"
+                },
+                "url": {
                     "type": "string"
                 }
             }
@@ -3521,6 +3604,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "isChoreReviewPhotoRequired": {
+                    "type": "boolean"
+                },
                 "maxMemberCount": {
                     "type": "integer"
                 },
@@ -3580,6 +3666,9 @@ const docTemplate = `{
                         2,
                         3
                     ]
+                },
+                "isChoreReviewPhotoRequired": {
+                    "type": "boolean"
                 }
             }
         },
@@ -3619,6 +3708,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "isChoreReviewPhotoRequired": {
+                    "type": "boolean"
                 },
                 "maxMemberCount": {
                     "type": "integer"
@@ -4072,6 +4164,9 @@ const docTemplate = `{
                         2,
                         3
                     ]
+                },
+                "isChoreReviewPhotoRequired": {
+                    "type": "boolean"
                 }
             }
         },

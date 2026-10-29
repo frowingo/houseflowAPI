@@ -11,6 +11,7 @@ const (
 	HouseInfoColumnProfileImage     = "HouseProfileImage"
 	HouseInfoColumnMemberCountLimit = "HouseMemberCountLimit"
 	HouseInfoColumnType             = "HouseType"
+	HouseInfoColumnReviewPhoto      = "IsChoreReviewPhotoRequired"
 )
 
 type HouseInfoHistory struct {

@@ -1,11 +1,18 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
 	"time"
 
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	housePolicies "houseflowApi/internal/application/house/policies"
+	storageAbstract "houseflowApi/internal/application/storage/abstract"
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -13,13 +20,30 @@ import (
 	"houseflowApi/internal/models/dtos"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	maxChoreReviewPhotoSize = 3 * 1024 * 1024
+	reviewPhotoCleanupLimit = 5 * time.Second
+)
+
+var supportedChoreReviewPhotoTypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+}
+
 type ChoreStatusUpdate struct {
 	ChoreID string
 	Status  entities.ChoreStatus
+}
+
+type ChoreReviewPhoto struct {
+	Reader io.Reader
+	Size   int64
 }
 
 type UpdateChoreStatusCommand struct {
@@ -27,6 +51,7 @@ type UpdateChoreStatusCommand struct {
 	HouseID string
 	Chores  []ChoreStatusUpdate
 	UserID  string
+	Photo   *ChoreReviewPhoto
 }
 
 type UpdateChoreStatusHandler struct {
@@ -35,6 +60,7 @@ type UpdateChoreStatusHandler struct {
 	reviewVoteRepository    databaseAbstract.DbRepository[entities.ChoreReviewVote]
 	membershipPolicy        *housePolicies.MembershipPolicy
 	workflowPolicy          *chorePolicies.WorkflowPolicy
+	objectStorage           storageAbstract.ObjectStorage
 }
 
 func NewUpdateChoreStatusHandler(
@@ -43,6 +69,7 @@ func NewUpdateChoreStatusHandler(
 	reviewVoteRepository databaseAbstract.DbRepository[entities.ChoreReviewVote],
 	membershipPolicy *housePolicies.MembershipPolicy,
 	workflowPolicy *chorePolicies.WorkflowPolicy,
+	objectStorage storageAbstract.ObjectStorage,
 ) *UpdateChoreStatusHandler {
 	return &UpdateChoreStatusHandler{
 		choreRepository:         choreRepository,
@@ -50,6 +77,7 @@ func NewUpdateChoreStatusHandler(
 		reviewVoteRepository:    reviewVoteRepository,
 		membershipPolicy:        membershipPolicy,
 		workflowPolicy:          workflowPolicy,
+		objectStorage:           objectStorage,
 	}
 }
 
@@ -65,9 +93,17 @@ func (h *UpdateChoreStatusHandler) Handle(ctx context.Context, command UpdateCho
 		}
 		choreIDs[update.ChoreID] = struct{}{}
 	}
+	if command.Photo != nil && (len(command.Chores) != 1 || command.Chores[0].Status != entities.InTest) {
+		return nil, helpers.NewLocalizedError("chore.error.review_photo_single_transition_required")
+	}
+
+	uploadedObjectKey, err := h.uploadReviewPhoto(ctx, command)
+	if err != nil {
+		return nil, err
+	}
 
 	updatedChores := make([]entities.Chore, 0, len(command.Chores))
-	err := h.choreRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+	err = h.choreRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
 		updatedChores = updatedChores[:0]
 		house, err := h.membershipPolicy.RequireMember(txCtx, command.HouseID, command.UserID)
 		if err != nil {
@@ -86,6 +122,9 @@ func (h *UpdateChoreStatusHandler) Handle(ctx context.Context, command UpdateCho
 			if currentChore.HouseId != command.HouseID {
 				return helpers.NewLocalizedError("chore.error.not_in_house", updateRequest.ChoreID)
 			}
+			if updateRequest.Status == entities.InTest && house.IsChoreReviewPhotoRequired && command.Photo == nil {
+				return helpers.NewLocalizedError("chore.error.review_photo_required")
+			}
 
 			previousStatus := currentChore.Status
 			previousVersion := currentChore.Version
@@ -98,6 +137,9 @@ func (h *UpdateChoreStatusHandler) Handle(ctx context.Context, command UpdateCho
 				"status": currentChore.Status, "isCompleted": currentChore.IsCompleted,
 				"completedBy": currentChore.CompletedBy, "completedAt": currentChore.CompletedAt,
 				"reviewRound": currentChore.ReviewRound,
+			}
+			if updateRequest.Status == entities.InTest && uploadedObjectKey != "" {
+				updateFields["reviewPhotoKeys."+strconv.Itoa(currentChore.ReviewRound)] = uploadedObjectKey
 			}
 			var updatedChore entities.Chore
 			err = h.choreRepository.Collection().FindOneAndUpdate(txCtx, bson.M{
@@ -123,6 +165,11 @@ func (h *UpdateChoreStatusHandler) Handle(ctx context.Context, command UpdateCho
 		return nil
 	})
 	if err != nil {
+		if uploadedObjectKey != "" {
+			if cleanupErr := h.deleteUploadedPhoto(uploadedObjectKey); cleanupErr != nil {
+				return nil, errors.Join(err, cleanupErr)
+			}
+		}
 		return nil, err
 	}
 
@@ -139,6 +186,94 @@ func (h *UpdateChoreStatusHandler) Handle(ctx context.Context, command UpdateCho
 		responses = append(responses, dtos.ChoreToResponseModelWithReview(updatedChore, histories, votes))
 	}
 	return responses, nil
+}
+
+func (h *UpdateChoreStatusHandler) uploadReviewPhoto(ctx context.Context, command UpdateChoreStatusCommand) (string, error) {
+	if command.Photo == nil {
+		return "", nil
+	}
+	if h.objectStorage == nil {
+		return "", helpers.NewUnavailableError("chore.error.review_photo_storage_unavailable", nil)
+	}
+
+	reader, contentType, extension, err := prepareChoreReviewPhoto(command.Photo)
+	if err != nil {
+		return "", err
+	}
+
+	house, err := h.membershipPolicy.RequireMember(ctx, command.HouseID, command.UserID)
+	if err != nil {
+		return "", err
+	}
+	update := command.Chores[0]
+	choreObjectID, err := helpers.ToMongoId(update.ChoreID)
+	if err != nil {
+		return "", helpers.NewLocalizedError("chore.error.invalid_chore_id", update.ChoreID)
+	}
+	currentChore, err := h.choreRepository.FindByID(ctx, choreObjectID)
+	if err != nil {
+		return "", helpers.NewLocalizedError("chore.error.not_found", update.ChoreID)
+	}
+	if currentChore.HouseId != command.HouseID {
+		return "", helpers.NewLocalizedError("chore.error.not_in_house", update.ChoreID)
+	}
+	if err := h.workflowPolicy.Advance(currentChore, update.Status, len(house.MemberIds), command.UserID, time.Now()); err != nil {
+		return "", err
+	}
+
+	objectKey := fmt.Sprintf(
+		"houses/%s/chores/%s/review-rounds/%d/%s%s",
+		command.HouseID,
+		update.ChoreID,
+		currentChore.ReviewRound,
+		primitive.NewObjectID().Hex(),
+		extension,
+	)
+	if err := h.objectStorage.PutImage(ctx, objectKey, reader, command.Photo.Size, contentType); err != nil {
+		return "", helpers.NewUnavailableError("chore.error.review_photo_upload_failed", err)
+	}
+	return objectKey, nil
+}
+
+func prepareChoreReviewPhoto(photo *ChoreReviewPhoto) (io.Reader, string, string, error) {
+	if photo == nil || photo.Reader == nil || photo.Size <= 0 {
+		return nil, "", "", helpers.NewLocalizedError("chore.error.review_photo_invalid")
+	}
+	if photo.Size > maxChoreReviewPhotoSize {
+		return nil, "", "", helpers.NewLocalizedError("chore.error.review_photo_too_large")
+	}
+
+	headerSize := int64(512)
+	if photo.Size < headerSize {
+		headerSize = photo.Size
+	}
+	header := make([]byte, headerSize)
+	read, err := io.ReadFull(photo.Reader, header)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, "", "", helpers.NewLocalizedError("chore.error.review_photo_invalid")
+	}
+	if read == 0 {
+		return nil, "", "", helpers.NewLocalizedError("chore.error.review_photo_invalid")
+	}
+	header = header[:read]
+	contentType := http.DetectContentType(header)
+	extension, supported := supportedChoreReviewPhotoTypes[contentType]
+	if !supported {
+		return nil, "", "", helpers.NewLocalizedError("chore.error.review_photo_type_unsupported")
+	}
+	return io.MultiReader(bytes.NewReader(header), photo.Reader), contentType, extension, nil
+}
+
+func (h *UpdateChoreStatusHandler) deleteUploadedPhoto(objectKey string) error {
+	if h.objectStorage == nil {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), reviewPhotoCleanupLimit)
+	defer cancel()
+	if err := h.objectStorage.DeleteObject(cleanupCtx, objectKey); err != nil {
+		return fmt.Errorf("delete uncommitted chore review photo: %w", err)
+	}
+	return nil
 }
 
 var _ cqrs.CommandHandler[UpdateChoreStatusCommand, []dtos.ChoreResponseModel] = (*UpdateChoreStatusHandler)(nil)

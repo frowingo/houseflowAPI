@@ -134,17 +134,18 @@ func (h *GetHouseDetailsHandler) Handle(ctx context.Context, query GetHouseDetai
 		}
 
 		details = &dtos.HouseDetailsModel{
-			Id:             house.Id.Hex(),
-			OwnerId:        house.OwnerId,
-			Name:           house.Name,
-			Type:           house.Type,
-			MaxMemberCount: house.MaxMemberCount,
-			ProfileImage:   house.ProfileImage,
-			CreatedOn:      dtos.NewUTCDateTime(house.CreatedOn),
-			UpdatedOn:      dtos.NewUTCDateTime(house.UpdatedOn),
-			Members:        make([]dtos.UserResultModel, 0, len(house.MemberIds)),
-			Chores:         make([]dtos.ChoreResponseModel, 0, len(choreEntities)),
-			Announcements:  make([]dtos.AnnouncementResponseModel, 0, len(announcements)),
+			Id:                         house.Id.Hex(),
+			OwnerId:                    house.OwnerId,
+			Name:                       house.Name,
+			Type:                       house.Type,
+			MaxMemberCount:             house.MaxMemberCount,
+			ProfileImage:               house.ProfileImage,
+			IsChoreReviewPhotoRequired: house.IsChoreReviewPhotoRequired,
+			CreatedOn:                  dtos.NewUTCDateTime(house.CreatedOn),
+			UpdatedOn:                  dtos.NewUTCDateTime(house.UpdatedOn),
+			Members:                    make([]dtos.UserResultModel, 0, len(house.MemberIds)),
+			Chores:                     make([]dtos.ChoreResponseModel, 0, len(choreEntities)),
+			Announcements:              make([]dtos.AnnouncementResponseModel, 0, len(announcements)),
 		}
 		for _, id := range house.MemberIds {
 			if user, ok := usersByID[id]; ok {

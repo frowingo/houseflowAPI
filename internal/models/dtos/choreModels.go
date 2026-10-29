@@ -1,8 +1,11 @@
 package dtos
 
 import (
-	"houseflowApi/internal/data/entities"
+	"sort"
+	"strconv"
 	"time"
+
+	"houseflowApi/internal/data/entities"
 )
 
 type CreateChoreModel struct {
@@ -49,6 +52,11 @@ type ChoreReviewVoteModel struct {
 	CreatedOn   UTCDateTime `json:"createdOn"`
 }
 
+type ChoreReviewPhotoURLModel struct {
+	URL       string      `json:"url"`
+	ExpiresAt UTCDateTime `json:"expiresAt"`
+}
+
 type ChoreResponseModel struct {
 	Id                string                    `json:"id"`
 	Title             string                    `json:"title"`
@@ -64,6 +72,7 @@ type ChoreResponseModel struct {
 	Level             entities.ChoreLevel       `json:"level"`
 	Status            entities.ChoreStatus      `json:"status"`
 	ReviewRound       int                       `json:"reviewRound"`
+	ReviewPhotoRounds []int                     `json:"reviewPhotoRounds"`
 	IsRecurring       bool                      `json:"isRecurring"`
 	RecurringInterval int                       `json:"recurringInterval"`
 	StatusHistories   []ChoreStatusHistoryModel `json:"statusHistories"`
@@ -83,6 +92,7 @@ func (m *CreateChoreModel) ToEntity(houseOwnerId string) entities.Chore {
 		Level:             m.Level,
 		Status:            entities.Draft,
 		ReviewRound:       0,
+		ReviewPhotoKeys:   map[string]string{},
 		IsRecurring:       m.IsRecurring,
 		RecurringInterval: m.RecurringInterval,
 	}
@@ -117,6 +127,15 @@ func ChoreToResponseModelWithReview(chore entities.Chore, histories []entities.C
 		})
 	}
 
+	reviewPhotoRounds := make([]int, 0, len(chore.ReviewPhotoKeys))
+	for rawRound := range chore.ReviewPhotoKeys {
+		round, err := strconv.Atoi(rawRound)
+		if err == nil && round > 0 {
+			reviewPhotoRounds = append(reviewPhotoRounds, round)
+		}
+	}
+	sort.Ints(reviewPhotoRounds)
+
 	return ChoreResponseModel{
 		Id:                chore.Id.Hex(),
 		Title:             chore.Title,
@@ -132,6 +151,7 @@ func ChoreToResponseModelWithReview(chore entities.Chore, histories []entities.C
 		Level:             chore.Level,
 		Status:            chore.Status,
 		ReviewRound:       chore.ReviewRound,
+		ReviewPhotoRounds: reviewPhotoRounds,
 		IsRecurring:       chore.IsRecurring,
 		RecurringInterval: chore.RecurringInterval,
 		StatusHistories:   statusHistories,

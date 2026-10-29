@@ -167,7 +167,7 @@ func (r *HouseController) GetHouseInfos(c *fiber.Ctx) error {
 }
 
 // @Summary Update house profile
-// @Description Only the house owner can update fields. Each field can be changed once every 48 hours.
+// @Description Only the house owner can update fields. Profile fields can be changed once every 48 hours; the chore review photo requirement can be changed twice every 24 hours.
 // @Tags House
 // @Accept json
 // @Produce json
@@ -210,12 +210,13 @@ func (r *HouseController) UpdateHouseProfile(c *fiber.Ctx) error {
 	ctx, cancel := requestContext(c)
 	defer cancel()
 	response, err := cqrs.Send[*dtos.HouseInfosResponseModel](ctx, r.sender, housecommands.UpdateHouseProfileCommand{
-		HouseID:               houseID,
-		RequesterID:           c.Locals("userID").(string),
-		HouseName:             model.HouseName,
-		HouseProfileImage:     model.HouseProfileImage,
-		HouseMemberCountLimit: model.HouseMemberCountLimit,
-		HouseType:             model.HouseType,
+		HouseID:                    houseID,
+		RequesterID:                c.Locals("userID").(string),
+		HouseName:                  model.HouseName,
+		HouseProfileImage:          model.HouseProfileImage,
+		HouseMemberCountLimit:      model.HouseMemberCountLimit,
+		HouseType:                  model.HouseType,
+		IsChoreReviewPhotoRequired: model.IsChoreReviewPhotoRequired,
 	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)

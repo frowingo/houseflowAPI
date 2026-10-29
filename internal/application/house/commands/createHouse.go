@@ -50,13 +50,14 @@ func (h *CreateHouseHandler) Handle(ctx context.Context, command CreateHouseComm
 
 		now := time.Now()
 		createdHouse, err = h.houseRepository.Insert(txCtx, entities.House{
-			OwnerId:        command.OwnerID,
-			Name:           command.Name,
-			Type:           command.Type,
-			MemberIds:      []string{command.OwnerID},
-			MaxMemberCount: command.MaxMemberCount,
-			CreatedOn:      now,
-			UpdatedOn:      now,
+			OwnerId:                    command.OwnerID,
+			Name:                       command.Name,
+			Type:                       command.Type,
+			MemberIds:                  []string{command.OwnerID},
+			MaxMemberCount:             command.MaxMemberCount,
+			IsChoreReviewPhotoRequired: false,
+			CreatedOn:                  now,
+			UpdatedOn:                  now,
 		})
 		if err != nil {
 			return err

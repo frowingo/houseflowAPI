@@ -119,7 +119,16 @@ func runAPI() error {
 		controllers.ReadinessController(coordinationReadiness(coordinator)),
 	)
 
-	realtimeService, appEventService, err := SetupRoutes(rootCtx, app, mongoClient, db.Name(), cfg.Internal, cfg.External.SocialAuth, coordinator)
+	realtimeService, appEventService, err := SetupRoutes(
+		rootCtx,
+		app,
+		mongoClient,
+		db.Name(),
+		cfg.Internal,
+		cfg.External.SocialAuth,
+		cfg.External.Tigris,
+		coordinator,
+	)
 	if err != nil {
 		return fmt.Errorf("set up routes: %w", err)
 	}

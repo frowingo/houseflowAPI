@@ -316,7 +316,7 @@ func (r *UserController) GetImage(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param image body dtos.UpdateImageAssetModel true "Fields to update"
-// @Success 200 {object} core.ApiResponse[any]
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} core.ErrorResponse
 // @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Failure 403 {object} core.ErrorResponse "Forbidden"
@@ -350,7 +350,7 @@ func (r *UserController) UpdateImageAsset(c *fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param image body dtos.CreateImageAssetModel true "Image asset data"
-// @Success 201 {object} core.ApiResponse[any]
+// @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} core.ErrorResponse
 // @Failure 401 {object} core.ErrorResponse "Unauthorized"
 // @Failure 403 {object} core.ErrorResponse "Forbidden"

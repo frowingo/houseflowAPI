@@ -35,7 +35,7 @@ func NewGameController(sender cqrs.Sender, localizer helpers.MessageLocalizer) *
 // @Produce json
 // @Security BearerAuth
 // @Param sessionId path string true "Game session ID"
-// @Success 200 {object} core.ApiResponse[any]
+// @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} core.ErrorResponse
 // @Failure 403 {object} core.ErrorResponse "Current house membership required"
 // @Failure 404 {object} core.ErrorResponse "Session or committed result not found"

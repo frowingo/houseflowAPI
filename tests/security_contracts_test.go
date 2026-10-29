@@ -21,6 +21,11 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	t.Setenv("RESET_CODE_VALIDITY_MINUTES", "7")
 	t.Setenv("JOIN_CODE_SECRET", "join-code-secret")
 	t.Setenv("SMTP_PASSWORD", "smtp-secret")
+	t.Setenv("AWS_ENDPOINT_URL_S3", "https://t3.storage.dev")
+	t.Setenv("AWS_REGION", "auto")
+	t.Setenv("BUCKET_NAME", "houseflow-test")
+	t.Setenv("AWS_ACCESS_KEY_ID", "tid_test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "tsec_test")
 
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
@@ -41,6 +46,32 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	}
 	if cfg.Internal.SMTP.Password != "smtp-secret" {
 		t.Fatal("SMTP password environment override was not applied")
+	}
+	if cfg.External.Tigris.Endpoint != "https://t3.storage.dev" || cfg.External.Tigris.Region != "auto" ||
+		cfg.External.Tigris.Bucket != "houseflow-test" || cfg.External.Tigris.AccessKeyID != "tid_test" ||
+		cfg.External.Tigris.SecretAccessKey != "tsec_test" {
+		t.Fatalf("Tigris environment overrides were not applied: %+v", cfg.External.Tigris)
+	}
+}
+
+func TestValidateTigrisRequiresCompleteConfiguration(t *testing.T) {
+	if err := config.ValidateTigris(config.ConfigTigris{}); err == nil {
+		t.Fatal("missing Tigris config must be invalid")
+	}
+	if err := config.ValidateTigris(config.ConfigTigris{Bucket: "partial"}); err == nil {
+		t.Fatal("partial Tigris config must be invalid")
+	}
+	if err := config.ValidateTigris(config.ConfigTigris{
+		Endpoint: "not-a-url", Region: "auto", Bucket: "bucket",
+		AccessKeyID: "access", SecretAccessKey: "secret",
+	}); err == nil {
+		t.Fatal("invalid Tigris endpoint must be rejected")
+	}
+	if err := config.ValidateTigris(config.ConfigTigris{
+		Endpoint: "https://t3.storage.dev", Region: "auto", Bucket: "bucket",
+		AccessKeyID: "access", SecretAccessKey: "secret",
+	}); err != nil {
+		t.Fatalf("complete Tigris config must be valid: %v", err)
 	}
 }
 

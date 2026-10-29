@@ -1,12 +1,14 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	choreQueries "houseflowApi/internal/application/chore/queries"
 	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
@@ -24,7 +26,9 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
 	"houseflowApi/internal/models/dtos"
+	"io"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -41,6 +45,56 @@ type concurrencyFixture struct {
 	db          *mongo.Database
 	sender      cqrs.Sender
 	emailSender *recordingEmailSender
+	photoStore  *recordingObjectStorage
+}
+
+type recordingObjectStorage struct {
+	mu           sync.Mutex
+	objects      map[string][]byte
+	presignedKey string
+	presignedTTL time.Duration
+}
+
+func newRecordingObjectStorage() *recordingObjectStorage {
+	return &recordingObjectStorage{objects: make(map[string][]byte)}
+}
+
+func (s *recordingObjectStorage) PutImage(_ context.Context, objectKey string, reader io.Reader, size int64, _ string) error {
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) != size {
+		return fmt.Errorf("uploaded size=%d, want %d", len(data), size)
+	}
+	s.mu.Lock()
+	s.objects[objectKey] = data
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *recordingObjectStorage) DeleteObject(_ context.Context, objectKey string) error {
+	s.mu.Lock()
+	delete(s.objects, objectKey)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *recordingObjectStorage) PresignGet(_ context.Context, objectKey string, ttl time.Duration) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.objects[objectKey]; !exists {
+		return "", fmt.Errorf("object %q does not exist", objectKey)
+	}
+	s.presignedKey = objectKey
+	s.presignedTTL = ttl
+	return "https://storage.test/" + objectKey, nil
+}
+
+func (s *recordingObjectStorage) object(objectKey string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.objects[objectKey]...)
 }
 
 type recordingEmailSender struct {
@@ -117,6 +171,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	)
 	assignmentPolicy := chorePolicies.NewAssignmentPolicy(users)
 	workflowPolicy := chorePolicies.NewWorkflowPolicy()
+	photoStore := newRecordingObjectStorage()
 	createChoreHandler := choreCommands.NewCreateChoreHandler(
 		chores, choreStatusHistories, membershipPolicy, assignmentPolicy,
 	)
@@ -124,11 +179,12 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy,
 	)
 	updateChoreStatusHandler := choreCommands.NewUpdateChoreStatusHandler(
-		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy,
+		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy, photoStore,
 	)
 	reviewChoreHandler := choreCommands.NewReviewChoreHandler(
 		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy,
 	)
+	getReviewPhotoURLHandler := choreQueries.NewGetReviewPhotoURLHandler(chores, membershipPolicy, photoStore)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(users, histories)
 	createUserHandler := userCommands.NewCreateUserHandler(users, histories)
 	userIdentities := database.NewDbContext[entities.UserIdentity](client, db.Name())
@@ -183,6 +239,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.UpdateChoreCommand](sender, updateChoreHandler)
 	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](sender, updateChoreStatusHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](sender, reviewChoreHandler)
+	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](sender, getReviewPhotoURLHandler)
 	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](sender, updateProfileHandler)
 	cqrs.MustRegister[*dtos.NewUserModel, userCommands.CreateUserCommand](sender, createUserHandler)
 	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](sender, deleteUserHandler)
@@ -194,7 +251,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 	cqrs.MustRegister[[]dtos.ImageAssetResultModel, imageAssetQueries.GetImagesByCategoryQuery](sender, getImagesByCategoryHandler)
 	cqrs.MustRegister[*dtos.ImageAssetResultModel, imageAssetQueries.GetImageByPublicIDQuery](sender, getImageByPublicIDHandler)
 	return &concurrencyFixture{
-		ctx: ctx, db: db, sender: sender, emailSender: emailSender,
+		ctx: ctx, db: db, sender: sender, emailSender: emailSender, photoStore: photoStore,
 	}
 }
 
@@ -478,6 +535,88 @@ func TestChoreBulkRollbackAndConcurrentTransition(t *testing.T) {
 	}
 	if historyCount != 2 {
 		t.Fatalf("history count = %d, want 2", historyCount)
+	}
+}
+
+func TestRequiredChoreReviewPhotoUploadsAndStoresRoundKey(t *testing.T) {
+	f := newConcurrencyFixture(t)
+	owner := f.seedUser(t, "correct-password")
+	house := f.createHouse(t, owner, 1)
+	if _, err := f.db.Collection("House").UpdateByID(f.ctx, house.Id, bson.M{
+		"$set": bson.M{"isChoreReviewPhotoRequired": true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	chore, err := cqrs.Send[*dtos.ChoreResponseModel](f.ctx, f.sender, createChoreCommand(dtos.CreateChoreModel{
+		Title: "Photo chore", Description: "Review photo integration test", AssignedTo: owner.Id.Hex(),
+		DueDate: dtos.NewUTCDateTime(time.Now().Add(time.Hour)), HouseId: house.Id.Hex(), Level: entities.Easy,
+	}, owner.Id.Hex()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cqrs.Send[[]dtos.ChoreResponseModel](f.ctx, f.sender, updateChoreStatusCommand(dtos.BulkUpdateChoreStatusModel{
+		HouseId: house.Id.Hex(),
+		Chores:  []dtos.UpdateChoreStatusModel{{ChoreId: chore.Id, Status: entities.Progress}},
+	}, owner.Id.Hex())); err != nil {
+		t.Fatal(err)
+	}
+
+	withoutPhoto := updateChoreStatusCommand(dtos.BulkUpdateChoreStatusModel{
+		HouseId: house.Id.Hex(),
+		Chores:  []dtos.UpdateChoreStatusModel{{ChoreId: chore.Id, Status: entities.InTest}},
+	}, owner.Id.Hex())
+	if _, err := cqrs.Send[[]dtos.ChoreResponseModel](f.ctx, f.sender, withoutPhoto); !helpers.IsApplicationError(err, "chore.error.review_photo_required") {
+		t.Fatalf("missing photo error=%v", err)
+	}
+
+	photo := []byte{0xff, 0xd8, 0xff, 0xe0, 0x01, 0x02}
+	withPhoto := withoutPhoto
+	withPhoto.Photo = &choreCommands.ChoreReviewPhoto{Reader: bytes.NewReader(photo), Size: int64(len(photo))}
+	result, err := cqrs.Send[[]dtos.ChoreResponseModel](f.ctx, f.sender, withPhoto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || len(result[0].ReviewPhotoRounds) != 1 || result[0].ReviewPhotoRounds[0] != 1 {
+		t.Fatalf("review photo rounds=%v", result)
+	}
+
+	choreID, _ := primitive.ObjectIDFromHex(chore.Id)
+	var stored entities.Chore
+	if err := f.db.Collection("Chore").FindOne(f.ctx, bson.M{"_id": choreID}).Decode(&stored); err != nil {
+		t.Fatal(err)
+	}
+	objectKey := stored.ReviewPhotoKeys["1"]
+	wantPrefix := "houses/" + house.Id.Hex() + "/chores/" + chore.Id + "/review-rounds/1/"
+	if !strings.HasPrefix(objectKey, wantPrefix) || !strings.HasSuffix(objectKey, ".jpg") {
+		t.Fatalf("object key=%q, want round-scoped JPEG key", objectKey)
+	}
+	if uploaded := f.photoStore.object(objectKey); !bytes.Equal(uploaded, photo) {
+		t.Fatalf("uploaded photo=%x, want %x", uploaded, photo)
+	}
+
+	photoURL, err := cqrs.Send[*dtos.ChoreReviewPhotoURLModel](f.ctx, f.sender, choreQueries.GetReviewPhotoURLQuery{
+		ChoreID: chore.Id, Round: 1, RequesterID: owner.Id.Hex(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if photoURL.URL != "https://storage.test/"+objectKey || photoURL.ExpiresAt.IsZero() {
+		t.Fatalf("unexpected presigned response: %+v", photoURL)
+	}
+	f.photoStore.mu.Lock()
+	presignedKey, presignedTTL := f.photoStore.presignedKey, f.photoStore.presignedTTL
+	f.photoStore.mu.Unlock()
+	if presignedKey != objectKey || presignedTTL != 5*time.Minute {
+		t.Fatalf("presigned key=%q ttl=%s", presignedKey, presignedTTL)
+	}
+
+	outsider := f.seedUser(t, "correct-password")
+	_, err = cqrs.Send[*dtos.ChoreReviewPhotoURLModel](f.ctx, f.sender, choreQueries.GetReviewPhotoURLQuery{
+		ChoreID: chore.Id, Round: 1, RequesterID: outsider.Id.Hex(),
+	})
+	if !helpers.IsApplicationError(err, "house.error.user_not_member") {
+		t.Fatalf("outsider access error=%v", err)
 	}
 }
 

@@ -87,5 +87,9 @@ func AllMigrations() []Migration {
 		// --- House Tanks ---
 		&houseTanksLocalizations{},
 		&houseTanksConfig{},
+		// --- Chore Review Photos ---
+		&houseChoreReviewPhoto{},
+		&choreReviewPhotoUpload{},
+		&choreReviewPhotoAccess{},
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-func TestHouseInfoHistoryContractAndMigration(t *testing.T) {
+func TestHouseInfoHistoryContractAndMigrations(t *testing.T) {
 	history := entities.HouseInfoHistory{
 		Id: primitive.NewObjectID(), HouseId: primitive.NewObjectID().Hex(),
 		ColumnName: entities.HouseInfoColumnName, Value: "New name",
@@ -36,15 +36,23 @@ func TestHouseInfoHistoryContractAndMigration(t *testing.T) {
 		}
 	}
 
-	registered := false
+	registered := map[string]bool{}
 	for _, migration := range migrations.AllMigrations() {
-		if migration.Version() == "0036" {
-			registered = true
-			break
-		}
+		registered[migration.Version()] = true
 	}
-	if !registered {
+	if !registered["0036"] {
 		t.Fatal("migration 0036 is not registered")
+	}
+	if !registered["0055"] {
+		t.Fatal("migration 0055 is not registered")
+	}
+}
+
+func TestUpdateHouseProfileModelAcceptsFalseReviewPhotoRequirement(t *testing.T) {
+	value := false
+	model := dtos.UpdateHouseProfileModel{IsChoreReviewPhotoRequired: &value}
+	if !model.HasChanges() {
+		t.Fatal("explicit false review photo requirement must count as a requested change")
 	}
 }
 
@@ -132,6 +140,83 @@ func TestUpdateHouseProfileTracksEachChangedFieldFor48Hours(t *testing.T) {
 	})
 	if !helpers.IsApplicationError(err, "house.error.owner_required") {
 		t.Fatalf("non-owner update error = %v", err)
+	}
+}
+
+func TestUpdateHouseProfileLimitsReviewPhotoRequirementToTwicePer24Hours(t *testing.T) {
+	f := newConcurrencyFixture(t)
+	owner := f.seedUser(t, "correct-password")
+	house := f.createHouse(t, owner, 2)
+
+	disabled := false
+	infos, err := cqrs.Send[*dtos.HouseInfosResponseModel](f.ctx, f.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(), IsChoreReviewPhotoRequired: &disabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if infos.IsChoreReviewPhotoRequired {
+		t.Fatalf("no-op update changed review photo requirement: %+v", infos)
+	}
+
+	enabled := true
+	infos, err = cqrs.Send[*dtos.HouseInfosResponseModel](f.ctx, f.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(), IsChoreReviewPhotoRequired: &enabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !infos.IsChoreReviewPhotoRequired {
+		t.Fatalf("review photo requirement was not enabled: %+v", infos)
+	}
+
+	// Sending the same value is a no-op and must not consume the second change.
+	if _, err := cqrs.Send[*dtos.HouseInfosResponseModel](f.ctx, f.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(), IsChoreReviewPhotoRequired: &enabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	infos, err = cqrs.Send[*dtos.HouseInfosResponseModel](f.ctx, f.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(), IsChoreReviewPhotoRequired: &disabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if infos.IsChoreReviewPhotoRequired {
+		t.Fatalf("review photo requirement was not disabled: %+v", infos)
+	}
+
+	_, err = cqrs.Send[*dtos.HouseInfosResponseModel](f.ctx, f.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(), IsChoreReviewPhotoRequired: &enabled,
+	})
+	if !helpers.IsApplicationError(err, "house.error.review_photo_setting_update_limit") {
+		t.Fatalf("third review photo setting update error = %v", err)
+	}
+
+	historyFilter := bson.M{
+		"houseId": house.Id.Hex(), "columnName": entities.HouseInfoColumnReviewPhoto,
+	}
+	historyCount, err := f.db.Collection("HouseInfoHistory").CountDocuments(f.ctx, historyFilter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if historyCount != 2 {
+		t.Fatalf("review photo setting history count = %d, want 2", historyCount)
+	}
+
+	if _, err := f.db.Collection("HouseInfoHistory").UpdateMany(f.ctx, historyFilter,
+		bson.M{"$set": bson.M{"updateOn": time.Now().UTC().Add(-25 * time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
+	infos, err = cqrs.Send[*dtos.HouseInfosResponseModel](f.ctx, f.sender, housecommands.UpdateHouseProfileCommand{
+		HouseID: house.Id.Hex(), RequesterID: owner.Id.Hex(), IsChoreReviewPhotoRequired: &enabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !infos.IsChoreReviewPhotoRequired {
+		t.Fatalf("review photo requirement was not enabled after the rolling window elapsed: %+v", infos)
 	}
 }
 
