@@ -35,6 +35,11 @@ func setRequiredConfigEnv(t *testing.T) {
 	t.Setenv("RESET_CODE_VALIDITY_MINUTES", "5")
 	t.Setenv("JOIN_CODE_SECRET", "join-secret")
 	t.Setenv("SMTP_PASSWORD", "smtp-password")
+	t.Setenv("AWS_ENDPOINT_URL_S3", "https://t3.storage.dev")
+	t.Setenv("AWS_REGION", "auto")
+	t.Setenv("BUCKET_NAME", "houseflow-test")
+	t.Setenv("AWS_ACCESS_KEY_ID", "tid_test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "tsec_test")
 	for _, name := range []string{
 		"GOOGLE_CLIENT_IDS", "APPLE_CLIENT_IDS", "APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY",
 		"FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET", "FACEBOOK_GRAPH_VERSION", "SNAPCHAT_CLIENT_ID", "SOCIAL_TOKEN_ENC_KEY",
