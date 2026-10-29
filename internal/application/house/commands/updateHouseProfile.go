@@ -16,24 +16,34 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const houseProfileFieldUpdateInterval = 48 * time.Hour
+const (
+	houseProfileFieldUpdateInterval  = 48 * time.Hour
+	reviewPhotoSettingUpdateInterval = 24 * time.Hour
+	profileFieldUpdateLimit          = int64(1)
+	reviewPhotoSettingUpdateLimit    = int64(2)
+)
 
 type UpdateHouseProfileCommand struct {
 	cqrs.Request[*dtos.HouseInfosResponseModel]
-	HouseID               string
-	RequesterID           string
-	HouseName             *string
-	HouseProfileImage     *string
-	HouseMemberCountLimit *int
-	HouseType             *entities.HouseType
+	HouseID                    string
+	RequesterID                string
+	HouseName                  *string
+	HouseProfileImage          *string
+	HouseMemberCountLimit      *int
+	HouseType                  *entities.HouseType
+	IsChoreReviewPhotoRequired *bool
 }
 
 type houseProfileChange struct {
 	columnName string
-	fieldName  string
 	value      any
+	interval   time.Duration
+	maxUpdates int64
+	limitError string
+	limitArgs  []string
 }
 
 type UpdateHouseProfileHandler struct {
@@ -80,16 +90,16 @@ func (h *UpdateHouseProfileHandler) Handle(
 		now := time.Now().UTC()
 		canonicalHouseID := house.Id.Hex()
 		for _, change := range changes {
-			hasRecentUpdate, err := h.houseHistoryRepository.ExistsByFilter(txCtx, bson.M{
+			recentUpdates, err := h.houseHistoryRepository.Collection().CountDocuments(txCtx, bson.M{
 				"houseId":    canonicalHouseID,
 				"columnName": change.columnName,
-				"updateOn":   bson.M{"$gte": now.Add(-houseProfileFieldUpdateInterval)},
-			})
+				"updateOn":   bson.M{"$gte": now.Add(-change.interval)},
+			}, options.Count().SetLimit(change.maxUpdates))
 			if err != nil {
 				return err
 			}
-			if hasRecentUpdate {
-				return helpers.NewRateLimitError("house.error.profile_field_update_limit", change.fieldName)
+			if recentUpdates >= change.maxUpdates {
+				return helpers.NewRateLimitError(change.limitError, change.limitArgs...)
 			}
 		}
 
@@ -126,21 +136,21 @@ func (h *UpdateHouseProfileHandler) Handle(
 }
 
 func houseProfileChanges(command UpdateHouseProfileCommand, house *entities.House) ([]houseProfileChange, bson.M, error) {
-	changes := make([]houseProfileChange, 0, 4)
+	changes := make([]houseProfileChange, 0, 5)
 	fields := bson.M{}
 
 	if command.HouseName != nil {
 		value := strings.TrimSpace(*command.HouseName)
 		if value != house.Name {
 			fields["name"] = value
-			changes = append(changes, houseProfileChange{entities.HouseInfoColumnName, "houseName", value})
+			changes = append(changes, profileChange(entities.HouseInfoColumnName, "houseName", value))
 		}
 	}
 	if command.HouseProfileImage != nil {
 		value := strings.TrimSpace(*command.HouseProfileImage)
 		if value != house.ProfileImage {
 			fields["profileImage"] = value
-			changes = append(changes, houseProfileChange{entities.HouseInfoColumnProfileImage, "houseProfileImage", value})
+			changes = append(changes, profileChange(entities.HouseInfoColumnProfileImage, "houseProfileImage", value))
 		}
 	}
 	if command.HouseMemberCountLimit != nil {
@@ -153,15 +163,37 @@ func houseProfileChanges(command UpdateHouseProfileCommand, house *entities.Hous
 		}
 		if value != house.MaxMemberCount {
 			fields["maxMemberCount"] = value
-			changes = append(changes, houseProfileChange{entities.HouseInfoColumnMemberCountLimit, "houseMemberCountLimit", value})
+			changes = append(changes, profileChange(entities.HouseInfoColumnMemberCountLimit, "houseMemberCountLimit", value))
 		}
 	}
 	if command.HouseType != nil && *command.HouseType != house.Type {
 		fields["type"] = *command.HouseType
-		changes = append(changes, houseProfileChange{entities.HouseInfoColumnType, "houseType", *command.HouseType})
+		changes = append(changes, profileChange(entities.HouseInfoColumnType, "houseType", *command.HouseType))
+	}
+	if command.IsChoreReviewPhotoRequired != nil && *command.IsChoreReviewPhotoRequired != house.IsChoreReviewPhotoRequired {
+		value := *command.IsChoreReviewPhotoRequired
+		fields["isChoreReviewPhotoRequired"] = value
+		changes = append(changes, houseProfileChange{
+			columnName: entities.HouseInfoColumnReviewPhoto,
+			value:      value,
+			interval:   reviewPhotoSettingUpdateInterval,
+			maxUpdates: reviewPhotoSettingUpdateLimit,
+			limitError: "house.error.review_photo_setting_update_limit",
+		})
 	}
 
 	return changes, fields, nil
+}
+
+func profileChange(columnName, fieldName string, value any) houseProfileChange {
+	return houseProfileChange{
+		columnName: columnName,
+		value:      value,
+		interval:   houseProfileFieldUpdateInterval,
+		maxUpdates: profileFieldUpdateLimit,
+		limitError: "house.error.profile_field_update_limit",
+		limitArgs:  []string{fieldName},
+	}
 }
 
 var _ cqrs.CommandHandler[UpdateHouseProfileCommand, *dtos.HouseInfosResponseModel] = (*UpdateHouseProfileHandler)(nil)

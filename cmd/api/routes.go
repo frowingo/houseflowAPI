@@ -7,6 +7,7 @@ import (
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	choreQueries "houseflowApi/internal/application/chore/queries"
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
@@ -50,6 +51,7 @@ func SetupRoutes(
 	dbName string,
 	cfg config.ConfigInternal,
 	socialAuthConfig config.ConfigSocialAuth,
+	tigrisConfig config.ConfigTigris,
 	coordinator coordinationAbstract.Coordinator,
 ) (*realtime.Service, *infrastructureAppEvents.Service, error) {
 	applicationMediator := cqrs.New()
@@ -408,6 +410,10 @@ func SetupRoutes(
 	// - CHORE -
 	choreAssignmentPolicy := chorePolicies.NewAssignmentPolicy(userRepository)
 	choreWorkflowPolicy := chorePolicies.NewWorkflowPolicy()
+	chorePhotoStorage, err := database.NewTigrisContext(ctx, tigrisConfig)
+	if err != nil {
+		return nil, nil, err
+	}
 	createChoreHandler := choreCommands.NewCreateChoreHandler(
 		houseChoreRepository,
 		houseChoreStatusHistoryRepository,
@@ -427,6 +433,7 @@ func SetupRoutes(
 		houseChoreReviewVoteRepository,
 		houseMembershipPolicy,
 		choreWorkflowPolicy,
+		chorePhotoStorage,
 	)
 	reviewChoreHandler := choreCommands.NewReviewChoreHandler(
 		houseChoreRepository,
@@ -434,6 +441,11 @@ func SetupRoutes(
 		houseChoreReviewVoteRepository,
 		houseMembershipPolicy,
 		choreWorkflowPolicy,
+	)
+	getReviewPhotoURLHandler := choreQueries.NewGetReviewPhotoURLHandler(
+		houseChoreRepository,
+		houseMembershipPolicy,
+		chorePhotoStorage,
 	)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.CreateChoreCommand](applicationMediator,
 		infrastructureAppEvents.NotifyAfter(createChoreHandler, func(ctx context.Context, _ choreCommands.CreateChoreCommand, result *dtos.ChoreResponseModel) {
@@ -453,12 +465,14 @@ func SetupRoutes(
 		infrastructureAppEvents.NotifyAfter(reviewChoreHandler, func(ctx context.Context, _ choreCommands.ReviewChoreCommand, result *dtos.ChoreResponseModel) {
 			appEventService.HouseChanged(ctx, result.HouseId, false)
 		}))
+	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](applicationMediator, getReviewPhotoURLHandler)
 	choreController := controllers.NewChoreController(applicationMediator, localizationCache)
 
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	choreRoutes.Post("", choreController.CreateChore)
 	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
 	choreRoutes.Put("/review", choreController.ReviewChore)
+	choreRoutes.Get("/:id/review-photo/:round", choreController.GetReviewPhotoURL)
 	choreRoutes.Put("/:id", choreController.UpdateChore)
 	// ----------
 	gameController := controllers.NewGameController(applicationMediator, localizationCache)

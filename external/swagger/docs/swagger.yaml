@@ -36,12 +36,6 @@ definitions:
     - Progress
     - InTest
     - Completed
-  houseflowApi_internal_models_core.ApiResponse-any:
-    properties:
-      data: {}
-      success:
-        type: boolean
-    type: object
   houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel:
     properties:
       data:
@@ -267,6 +261,10 @@ definitions:
         $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreLevel'
       recurringInterval:
         type: integer
+      reviewPhotoRounds:
+        items:
+          type: integer
+        type: array
       reviewRound:
         type: integer
       reviewVotes:
@@ -280,6 +278,13 @@ definitions:
           $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreStatusHistoryModel'
         type: array
       title:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.ChoreReviewPhotoURLModel:
+    properties:
+      expiresAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      url:
         type: string
     type: object
   houseflowApi_internal_models_dtos.ChoreReviewVoteModel:
@@ -588,6 +593,8 @@ definitions:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       id:
         type: string
+      isChoreReviewPhotoRequired:
+        type: boolean
       maxMemberCount:
         type: integer
       members:
@@ -629,6 +636,8 @@ definitions:
         - 2
         - 3
         type: integer
+      isChoreReviewPhotoRequired:
+        type: boolean
     type: object
   houseflowApi_internal_models_dtos.HouseInviteCodeResponseModel:
     properties:
@@ -654,6 +663,8 @@ definitions:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       id:
         type: string
+      isChoreReviewPhotoRequired:
+        type: boolean
       maxMemberCount:
         type: integer
       memberIds:
@@ -962,6 +973,8 @@ definitions:
         - 2
         - 3
         type: integer
+      isChoreReviewPhotoRequired:
+        type: boolean
     required:
     - houseName
     - houseProfileImage
@@ -1680,6 +1693,52 @@ paths:
       summary: Update chore
       tags:
       - Chore
+  /chore/{id}/review-photo/{round}:
+    get:
+      description: Returns a five-minute presigned URL after verifying house membership.
+      parameters:
+      - description: Chore ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Review round
+        in: path
+        name: round
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreReviewPhotoURLModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Not a house member
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Photo not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a temporary chore review photo URL
+      tags:
+      - Chore
   /chore/review:
     put:
       consumes:
@@ -1723,7 +1782,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update the status of multiple chores
+      - multipart/form-data
+      description: Update statuses with JSON. Multipart requests use houseId, a JSON-encoded
+        chores field, and an optional file; they must contain one InTest transition.
       parameters:
       - description: Array of status updates
         in: body
@@ -1982,7 +2043,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+            additionalProperties: true
+            type: object
         "401":
           description: Unauthorized
           schema:
@@ -2243,8 +2305,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Only the house owner can update fields. Each field can be changed
-        once every 48 hours.
+      description: Only the house owner can update fields. Profile fields can be changed
+        once every 48 hours; the chore review photo requirement can be changed twice
+        every 24 hours.
       parameters:
       - description: House ID
         in: query
@@ -2312,7 +2375,8 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -2347,7 +2411,8 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -2638,7 +2703,8 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -2674,7 +2740,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-any'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:

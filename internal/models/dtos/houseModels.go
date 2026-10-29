@@ -23,17 +23,18 @@ type UserResultModel struct {
 }
 
 type HouseDetailsModel struct {
-	Id             string                      `json:"id"`
-	OwnerId        string                      `json:"ownerId"`
-	Name           string                      `json:"name"`
-	Type           entities.HouseType          `json:"type" swaggertype:"integer" enums:"1,2,3"`
-	Members        []UserResultModel           `json:"members"`
-	MaxMemberCount int                         `json:"maxMemberCount"`
-	ProfileImage   string                      `json:"profileImage"`
-	CreatedOn      UTCDateTime                 `json:"createdOn"`
-	UpdatedOn      UTCDateTime                 `json:"updatedOn"`
-	Chores         []ChoreResponseModel        `json:"chores"`
-	Announcements  []AnnouncementResponseModel `json:"announcements"`
+	Id                         string                      `json:"id"`
+	OwnerId                    string                      `json:"ownerId"`
+	Name                       string                      `json:"name"`
+	Type                       entities.HouseType          `json:"type" swaggertype:"integer" enums:"1,2,3"`
+	Members                    []UserResultModel           `json:"members"`
+	MaxMemberCount             int                         `json:"maxMemberCount"`
+	ProfileImage               string                      `json:"profileImage"`
+	IsChoreReviewPhotoRequired bool                        `json:"isChoreReviewPhotoRequired"`
+	CreatedOn                  UTCDateTime                 `json:"createdOn"`
+	UpdatedOn                  UTCDateTime                 `json:"updatedOn"`
+	Chores                     []ChoreResponseModel        `json:"chores"`
+	Announcements              []AnnouncementResponseModel `json:"announcements"`
 }
 
 func UserToResultModel(u entities.User) UserResultModel {
@@ -120,23 +121,26 @@ type HouseMemberInfoModel struct {
 }
 
 type HouseInfosResponseModel struct {
-	HouseName             string                 `json:"houseName"`
-	HouseProfileImage     string                 `json:"houseProfileImage"`
-	HouseMemberCount      int                    `json:"houseMemberCount"`
-	HouseMemberCountLimit int                    `json:"houseMemberCountLimit"`
-	HouseType             entities.HouseType     `json:"houseType" swaggertype:"integer" enums:"1,2,3"`
-	HouseMembers          []HouseMemberInfoModel `json:"houseMembers"`
+	HouseName                  string                 `json:"houseName"`
+	HouseProfileImage          string                 `json:"houseProfileImage"`
+	HouseMemberCount           int                    `json:"houseMemberCount"`
+	HouseMemberCountLimit      int                    `json:"houseMemberCountLimit"`
+	HouseType                  entities.HouseType     `json:"houseType" swaggertype:"integer" enums:"1,2,3"`
+	IsChoreReviewPhotoRequired bool                   `json:"isChoreReviewPhotoRequired"`
+	HouseMembers               []HouseMemberInfoModel `json:"houseMembers"`
 }
 
 type UpdateHouseProfileModel struct {
-	HouseName             *string             `json:"houseName,omitempty" validate:"omitempty,required,min=3,max=100"`
-	HouseProfileImage     *string             `json:"houseProfileImage,omitempty" validate:"omitempty,required,url"`
-	HouseMemberCountLimit *int                `json:"houseMemberCountLimit,omitempty" validate:"omitempty,gte=1,lte=8"`
-	HouseType             *entities.HouseType `json:"houseType,omitempty" validate:"omitempty,oneof=1 2 3" swaggertype:"integer" enums:"1,2,3"`
+	HouseName                  *string             `json:"houseName,omitempty" validate:"omitempty,required,min=3,max=100"`
+	HouseProfileImage          *string             `json:"houseProfileImage,omitempty" validate:"omitempty,required,url"`
+	HouseMemberCountLimit      *int                `json:"houseMemberCountLimit,omitempty" validate:"omitempty,gte=1,lte=8"`
+	HouseType                  *entities.HouseType `json:"houseType,omitempty" validate:"omitempty,oneof=1 2 3" swaggertype:"integer" enums:"1,2,3"`
+	IsChoreReviewPhotoRequired *bool               `json:"isChoreReviewPhotoRequired,omitempty"`
 }
 
 func (m UpdateHouseProfileModel) HasChanges() bool {
-	return m.HouseName != nil || m.HouseProfileImage != nil || m.HouseMemberCountLimit != nil || m.HouseType != nil
+	return m.HouseName != nil || m.HouseProfileImage != nil || m.HouseMemberCountLimit != nil ||
+		m.HouseType != nil || m.IsChoreReviewPhotoRequired != nil
 }
 
 type ExitHouseModel struct {
@@ -145,27 +149,29 @@ type ExitHouseModel struct {
 }
 
 type HouseResponseModel struct {
-	Id             string             `json:"id"`
-	OwnerId        string             `json:"ownerId"`
-	Name           string             `json:"name"`
-	Type           entities.HouseType `json:"type" swaggertype:"integer" enums:"1,2,3"`
-	MemberIds      []string           `json:"memberIds"`
-	MaxMemberCount int                `json:"maxMemberCount"`
-	ProfileImage   string             `json:"profileImage"`
-	CreatedOn      UTCDateTime        `json:"createdOn"`
-	UpdatedOn      UTCDateTime        `json:"updatedOn"`
+	Id                         string             `json:"id"`
+	OwnerId                    string             `json:"ownerId"`
+	Name                       string             `json:"name"`
+	Type                       entities.HouseType `json:"type" swaggertype:"integer" enums:"1,2,3"`
+	MemberIds                  []string           `json:"memberIds"`
+	MaxMemberCount             int                `json:"maxMemberCount"`
+	ProfileImage               string             `json:"profileImage"`
+	IsChoreReviewPhotoRequired bool               `json:"isChoreReviewPhotoRequired"`
+	CreatedOn                  UTCDateTime        `json:"createdOn"`
+	UpdatedOn                  UTCDateTime        `json:"updatedOn"`
 }
 
 func HouseToResponseModel(house entities.House) HouseResponseModel {
 	return HouseResponseModel{
-		Id:             house.Id.Hex(),
-		OwnerId:        house.OwnerId,
-		Name:           house.Name,
-		Type:           house.Type,
-		MemberIds:      house.MemberIds,
-		MaxMemberCount: house.MaxMemberCount,
-		ProfileImage:   house.ProfileImage,
-		CreatedOn:      NewUTCDateTime(house.CreatedOn),
-		UpdatedOn:      NewUTCDateTime(house.UpdatedOn),
+		Id:                         house.Id.Hex(),
+		OwnerId:                    house.OwnerId,
+		Name:                       house.Name,
+		Type:                       house.Type,
+		MemberIds:                  house.MemberIds,
+		MaxMemberCount:             house.MaxMemberCount,
+		ProfileImage:               house.ProfileImage,
+		IsChoreReviewPhotoRequired: house.IsChoreReviewPhotoRequired,
+		CreatedOn:                  NewUTCDateTime(house.CreatedOn),
+		UpdatedOn:                  NewUTCDateTime(house.UpdatedOn),
 	}
 }

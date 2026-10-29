@@ -71,6 +71,7 @@ func (h *CreateChoreHandler) Handle(ctx context.Context, command CreateChoreComm
 			HouseOwnerId:      house.OwnerId,
 			Level:             command.Level,
 			Status:            entities.Draft,
+			ReviewPhotoKeys:   map[string]string{},
 			IsRecurring:       command.IsRecurring,
 			RecurringInterval: command.RecurringInterval,
 		})

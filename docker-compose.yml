@@ -11,6 +11,11 @@ services:
       - MONGO_DB=houseflowDb
       - MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
       - REDIS_URL=redis://redis:6379/0
+      - AWS_ENDPOINT_URL_S3
+      - AWS_REGION
+      - BUCKET_NAME
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
     depends_on:
       migration:
         condition: service_completed_successfully

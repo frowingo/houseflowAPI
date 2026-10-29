@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -26,7 +27,7 @@ type ConfigModel struct {
 
 type ConfigExternal struct {
 	Mongo      ConfigMongo      `json:"mongo"`
-	Cloudinary ConfigCloudinary `json:"cloudinary"`
+	Tigris     ConfigTigris     `json:"tigris"`
 	Redis      ConfigRedis      `json:"redis"`
 	SocialAuth ConfigSocialAuth `json:"socialAuth"`
 }
@@ -65,11 +66,16 @@ type ConfigRedis struct {
 	URL string `json:"url"`
 }
 
-type ConfigCloudinary struct {
-	CloudName string `json:"cloudName"`
-	APIKey    string `json:"apiKey"`
-	APISecret string `json:"apiSecret"`
-	Folder    string `json:"folder"`
+type ConfigTigris struct {
+	Endpoint        string `json:"endpoint"`
+	Region          string `json:"region"`
+	Bucket          string `json:"bucket"`
+	AccessKeyID     string `json:"accessKeyId"`
+	SecretAccessKey string `json:"secretAccessKey"`
+}
+
+func (c ConfigTigris) Configured() bool {
+	return c.Endpoint != "" || c.Region != "" || c.Bucket != "" || c.AccessKeyID != "" || c.SecretAccessKey != ""
 }
 
 // ConfigSocialAuth holds the third-party sign-in providers. A provider whose
@@ -161,20 +167,20 @@ func applyEnvOverrides(config *ConfigModel) {
 		config.External.Redis.URL = redisURL
 	}
 
-	if cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME"); cloudName != "" {
-		config.External.Cloudinary.CloudName = cloudName
+	if endpoint := os.Getenv("AWS_ENDPOINT_URL_S3"); endpoint != "" {
+		config.External.Tigris.Endpoint = endpoint
 	}
-
-	if apiKey := os.Getenv("CLOUDINARY_API_KEY"); apiKey != "" {
-		config.External.Cloudinary.APIKey = apiKey
+	if region := os.Getenv("AWS_REGION"); region != "" {
+		config.External.Tigris.Region = region
 	}
-
-	if apiSecret := os.Getenv("CLOUDINARY_API_SECRET"); apiSecret != "" {
-		config.External.Cloudinary.APISecret = apiSecret
+	if bucket := os.Getenv("BUCKET_NAME"); bucket != "" {
+		config.External.Tigris.Bucket = bucket
 	}
-
-	if folder := os.Getenv("CLOUDINARY_FOLDER"); folder != "" {
-		config.External.Cloudinary.Folder = folder
+	if accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID"); accessKeyID != "" {
+		config.External.Tigris.AccessKeyID = accessKeyID
+	}
+	if secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY"); secretAccessKey != "" {
+		config.External.Tigris.SecretAccessKey = secretAccessKey
 	}
 
 	if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
@@ -251,6 +257,9 @@ func Validate(config *ConfigModel) error {
 	if err := ValidateMongo(config.External.Mongo); err != nil {
 		return err
 	}
+	if err := ValidateTigris(config.External.Tigris); err != nil {
+		return err
+	}
 	if config.Internal.JWT.ApiSecret == "" {
 		return errors.New("jwt secret is required")
 	}
@@ -295,6 +304,19 @@ func ValidateMongo(config ConfigMongo) error {
 	}
 	if config.DbName == "" {
 		return errors.New("mongo db name is required")
+	}
+	return nil
+}
+
+func ValidateTigris(config ConfigTigris) error {
+	if config.Endpoint == "" || config.Region == "" || config.Bucket == "" ||
+		config.AccessKeyID == "" || config.SecretAccessKey == "" {
+		return errors.New("tigris storage needs AWS_ENDPOINT_URL_S3, AWS_REGION, BUCKET_NAME, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+	}
+	endpoint, err := url.Parse(config.Endpoint)
+	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" ||
+		(endpoint.Scheme != "https" && endpoint.Scheme != "http") {
+		return errors.New("tigris endpoint must be an absolute HTTP or HTTPS URL")
 	}
 	return nil
 }

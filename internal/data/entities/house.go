@@ -7,15 +7,16 @@ import (
 )
 
 type House struct {
-	Id             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	OwnerId        string             `bson:"ownerId" json:"ownerId"`
-	Name           string             `bson:"name" json:"name"`
-	Type           HouseType          `bson:"type" json:"type"`
-	MemberIds      []string           `bson:"memberIds" json:"memberIds"`
-	MaxMemberCount int                `bson:"maxMemberCount" json:"maxMemberCount"`
-	ProfileImage   string             `bson:"profileImage" json:"profileImage"`
-	CreatedOn      time.Time          `bson:"createdOn" json:"createdOn"`
-	UpdatedOn      time.Time          `bson:"updatedOn" json:"updatedOn"`
+	Id                         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	OwnerId                    string             `bson:"ownerId" json:"ownerId"`
+	Name                       string             `bson:"name" json:"name"`
+	Type                       HouseType          `bson:"type" json:"type"`
+	MemberIds                  []string           `bson:"memberIds" json:"memberIds"`
+	MaxMemberCount             int                `bson:"maxMemberCount" json:"maxMemberCount"`
+	ProfileImage               string             `bson:"profileImage" json:"profileImage"`
+	IsChoreReviewPhotoRequired bool               `bson:"isChoreReviewPhotoRequired" json:"isChoreReviewPhotoRequired"`
+	CreatedOn                  time.Time          `bson:"createdOn" json:"createdOn"`
+	UpdatedOn                  time.Time          `bson:"updatedOn" json:"updatedOn"`
 }
 
 type HouseInviteCode struct {

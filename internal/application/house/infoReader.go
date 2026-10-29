@@ -44,12 +44,13 @@ func (r *InfoReader) Read(ctx context.Context, house *entities.House) (*dtos.Hou
 	}
 
 	response := &dtos.HouseInfosResponseModel{
-		HouseName:             house.Name,
-		HouseProfileImage:     house.ProfileImage,
-		HouseMemberCount:      len(house.MemberIds),
-		HouseMemberCountLimit: house.MaxMemberCount,
-		HouseType:             house.Type,
-		HouseMembers:          make([]dtos.HouseMemberInfoModel, 0, len(house.MemberIds)),
+		HouseName:                  house.Name,
+		HouseProfileImage:          house.ProfileImage,
+		HouseMemberCount:           len(house.MemberIds),
+		HouseMemberCountLimit:      house.MaxMemberCount,
+		HouseType:                  house.Type,
+		IsChoreReviewPhotoRequired: house.IsChoreReviewPhotoRequired,
+		HouseMembers:               make([]dtos.HouseMemberInfoModel, 0, len(house.MemberIds)),
 	}
 	for _, memberID := range house.MemberIds {
 		member, exists := membersByID[memberID]

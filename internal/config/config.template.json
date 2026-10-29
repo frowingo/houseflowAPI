@@ -7,11 +7,12 @@
         "redis": {
             "url": ""
         },
-        "cloudinary": {
-            "cloudName": "CLOUDINARY_CLOUD_NAME",
-            "apiKey": "CLOUDINARY_API_KEY",
-            "apiSecret": "CLOUDINARY_API_SECRET",
-            "folder": "houseflow/images"
+        "tigris": {
+            "endpoint": "",
+            "region": "",
+            "bucket": "",
+            "accessKeyId": "",
+            "secretAccessKey": ""
         },
         "socialAuth": {
             "google": {
