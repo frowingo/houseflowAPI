@@ -175,7 +175,10 @@ func houseProfileChanges(command UpdateHouseProfileCommand, house *entities.Hous
 		fields["isChoreReviewPhotoRequired"] = value
 		changes = append(changes, houseProfileChange{
 			columnName: entities.HouseInfoColumnReviewPhoto,
-			value:      value,
+			// HouseInfoHistory's established validator accepts scalar strings and
+			// integers. Persist the audit value canonically without requiring the
+			// release user to have MongoDB collMod/dbAdmin privileges.
+			value:      strconv.FormatBool(value),
 			interval:   reviewPhotoSettingUpdateInterval,
 			maxUpdates: reviewPhotoSettingUpdateLimit,
 			limitError: "house.error.review_photo_setting_update_limit",
