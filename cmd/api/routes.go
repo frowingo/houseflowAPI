@@ -5,6 +5,7 @@ import (
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
+	choreApplication "houseflowApi/internal/application/chore"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	choreQueries "houseflowApi/internal/application/chore/queries"
@@ -53,7 +54,7 @@ func SetupRoutes(
 	socialAuthConfig config.ConfigSocialAuth,
 	tigrisConfig config.ConfigTigris,
 	coordinator coordinationAbstract.Coordinator,
-) (*realtime.Service, *infrastructureAppEvents.Service, error) {
+) (*realtime.Service, *infrastructureAppEvents.Service, *choreApplication.DeadlineService, error) {
 	applicationMediator := cqrs.New()
 	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
@@ -123,7 +124,7 @@ func SetupRoutes(
 	userIdentityRepository := database.NewDbContext[entities.UserIdentity](client, dbName)
 	socialAdapters, err := socialAuthAdapters(socialAuthConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	socialAccounts := authPolicies.NewSocialAccounts(userRepository, userIdentityRepository, userInfoHistoryRepository, jwtService)
 	socialPendingTokens := helpers.NewSocialPendingTokenService(cfg.JWT.ApiSecret)
@@ -229,7 +230,7 @@ func SetupRoutes(
 	// Realtime games need the coordinator; without it no game module is registered.
 	gameRegistry, err := games.NewRegistry(games.Options{Realtime: coordinator != nil})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	gameConfigRepository := database.NewGameConfigRepository(client, dbName)
 	gameConfigBus, _ := coordinator.(coordinationAbstract.GameConfigBus)
@@ -410,9 +411,17 @@ func SetupRoutes(
 	// - CHORE -
 	choreAssignmentPolicy := chorePolicies.NewAssignmentPolicy(userRepository)
 	choreWorkflowPolicy := chorePolicies.NewWorkflowPolicy()
+	choreDeadlineService := choreApplication.NewDeadlineService(
+		houseChoreRepository,
+		houseChoreStatusHistoryRepository,
+		choreWorkflowPolicy,
+		func(ctx context.Context, houseID string) {
+			appEventService.HouseChanged(ctx, houseID, false)
+		},
+	)
 	chorePhotoStorage, err := database.NewTigrisContext(ctx, tigrisConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	createChoreHandler := choreCommands.NewCreateChoreHandler(
 		houseChoreRepository,
@@ -426,6 +435,7 @@ func SetupRoutes(
 		houseChoreReviewVoteRepository,
 		houseMembershipPolicy,
 		choreAssignmentPolicy,
+		choreWorkflowPolicy,
 	)
 	updateChoreStatusHandler := choreCommands.NewUpdateChoreStatusHandler(
 		houseChoreRepository,
@@ -509,11 +519,11 @@ func SetupRoutes(
 				)
 			})
 		}
-		return nil, appEventService, nil
+		return nil, appEventService, choreDeadlineService, nil
 	}
 	limits, err := config.LoadRealtimeLimits()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	realtimeService, err := realtime.NewService(
 		coordinator,
@@ -527,14 +537,14 @@ func SetupRoutes(
 		},
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := realtimeService.Start(ctx); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, path := range realtimePaths {
 		gameRoutes.Get(path, realtimeService.UpgradeMiddleware(), realtimeService.Handler())
 	}
 	appEventService.Start(ctx)
-	return realtimeService, appEventService, nil
+	return realtimeService, appEventService, choreDeadlineService, nil
 }

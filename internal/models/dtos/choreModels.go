@@ -21,7 +21,7 @@ type CreateChoreModel struct {
 
 type UpdateChoreStatusModel struct {
 	ChoreId string               `json:"choreId" validate:"required,len=24"`
-	Status  entities.ChoreStatus `json:"status" validate:"required,oneof=0 1 2 3"`
+	Status  entities.ChoreStatus `json:"status" validate:"required,oneof=0 1 2 3 4"`
 }
 
 type BulkUpdateChoreStatusModel struct {

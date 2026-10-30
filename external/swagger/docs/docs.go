@@ -2757,13 +2757,15 @@ const docTemplate = `{
                 0,
                 1,
                 2,
-                3
+                3,
+                4
             ],
             "x-enum-varnames": [
                 "Draft",
                 "Progress",
                 "InTest",
-                "Completed"
+                "Completed",
+                "Failed"
             ]
         },
         "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel": {

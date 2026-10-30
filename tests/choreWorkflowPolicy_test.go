@@ -58,7 +58,7 @@ func TestChoreWorkflowCompletesAfterRequiredApprovals(t *testing.T) {
 	}
 }
 
-func TestChoreWorkflowSystemCompletesAfterFinalRejectedRound(t *testing.T) {
+func TestChoreWorkflowFailsAfterFinalRejectedRound(t *testing.T) {
 	policy := chorePolicies.NewWorkflowPolicy()
 	now := time.Now()
 	chore := entities.Chore{AssignedTo: "assignee", Status: entities.InTest, ReviewRound: 3}
@@ -67,7 +67,39 @@ func TestChoreWorkflowSystemCompletesAfterFinalRejectedRound(t *testing.T) {
 	if !outcome.StatusChanged || outcome.HistoryUpdater != "system" {
 		t.Fatalf("unexpected rejection outcome: %+v", outcome)
 	}
-	if chore.Status != entities.Completed || !chore.IsCompleted || chore.CompletedBy != "system" {
-		t.Fatalf("final rejected chore was not system-completed: %+v", chore)
+	if chore.Status != entities.Failed || chore.IsCompleted || chore.CompletedBy != "" || !chore.CompletedAt.IsZero() {
+		t.Fatalf("final rejected chore was not failed: %+v", chore)
+	}
+}
+
+func TestChoreWorkflowDeadlinePreservesEarlyCompletion(t *testing.T) {
+	policy := chorePolicies.NewWorkflowPolicy()
+	dueDate := time.Now()
+	chore := entities.Chore{
+		Status: entities.Completed, IsCompleted: true,
+		CompletedAt: dueDate.Add(-time.Second), CompletedBy: "assignee", DueDate: dueDate,
+	}
+
+	if policy.ApplyDeadline(&chore, dueDate) {
+		t.Fatalf("early completed chore was failed: %+v", chore)
+	}
+}
+
+func TestChoreWorkflowDeadlineFailsIncompleteAndLateCompletion(t *testing.T) {
+	policy := chorePolicies.NewWorkflowPolicy()
+	dueDate := time.Now()
+	chores := []entities.Chore{
+		{Status: entities.Progress, DueDate: dueDate},
+		{Status: entities.Completed, IsCompleted: true, CompletedAt: dueDate, CompletedBy: "assignee", DueDate: dueDate},
+	}
+
+	for index := range chores {
+		if !policy.ApplyDeadline(&chores[index], dueDate) {
+			t.Fatalf("chore %d was not failed: %+v", index, chores[index])
+		}
+		if chores[index].Status != entities.Failed || chores[index].IsCompleted ||
+			chores[index].CompletedBy != "" || !chores[index].CompletedAt.IsZero() {
+			t.Fatalf("unexpected failed state for chore %d: %+v", index, chores[index])
+		}
 	}
 }

@@ -176,7 +176,7 @@ func newConcurrencyFixture(t *testing.T) *concurrencyFixture {
 		chores, choreStatusHistories, membershipPolicy, assignmentPolicy,
 	)
 	updateChoreHandler := choreCommands.NewUpdateChoreHandler(
-		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy,
+		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, assignmentPolicy, workflowPolicy,
 	)
 	updateChoreStatusHandler := choreCommands.NewUpdateChoreStatusHandler(
 		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy, photoStore,

@@ -91,5 +91,7 @@ func AllMigrations() []Migration {
 		&houseChoreReviewPhoto{},
 		&choreReviewPhotoUpload{},
 		&choreReviewPhotoAccess{},
+		// --- Chore Deadline Failure ---
+		&choreFailedDeadline{},
 	}
 }
