@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	gameCommands "houseflowApi/internal/application/game/commands"
 	gameDomain "houseflowApi/internal/application/game/domain"
 	"houseflowApi/internal/application/game/games"
+	fausSwitch "houseflowApi/internal/application/game/games/fausSwitch"
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	"houseflowApi/internal/application/game/games/houseTanks"
 	"houseflowApi/internal/application/game/module"
@@ -196,11 +198,17 @@ func TestGameConfigControlsNewSessionsOnly(t *testing.T) {
 	}
 
 	entries, err := catalogQuery.Handle(fixture.ctx, gameQueries.GetGameCatalogQuery{HouseID: fixture.houseID, UserID: fixture.memberID})
-	// Entries are ordered by key; House Tanks is seeded for every house.
-	if err != nil || len(entries) != 2 || entries[0].Definition.GameKey != houseRockets.GameKey {
-		t.Fatalf("catalog = %+v %v", entries, err)
+	// Entries are ordered by key; House Tanks and Faus Switch are seeded for
+	// every house.
+	keys := make([]string, len(entries))
+	for index, entry := range entries {
+		keys[index] = entry.Definition.GameKey
 	}
-	model, _ := json.Marshal(dtos.GameCatalogEntryToModel(entries[0].Definition, entries[0].Config, entries[0].ClientSettings))
+	if err != nil || !slices.Equal(keys, []string{fausSwitch.GameKey, houseRockets.GameKey, houseTanks.GameKey}) {
+		t.Fatalf("catalog = %v %v", keys, err)
+	}
+	rockets := entries[1]
+	model, _ := json.Marshal(dtos.GameCatalogEntryToModel(rockets.Definition, rockets.Config, rockets.ClientSettings))
 	var public struct {
 		GameKey       string `json:"gameKey"`
 		ConfigVersion int64  `json:"configVersion"`

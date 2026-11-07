@@ -42,6 +42,7 @@ type GameSession struct {
 	settings          json.RawMessage
 	gameState         json.RawMessage
 	turnDeadline      time.Time
+	lobbyState        json.RawMessage
 	players           []SessionPlayer
 	createdBy         string
 	createdAt         time.Time
@@ -96,6 +97,7 @@ func RestoreGameSession(snapshot SessionSnapshot) (*GameSession, error) {
 		settings:          append(json.RawMessage(nil), snapshot.Settings...),
 		gameState:         append(json.RawMessage(nil), snapshot.GameState...),
 		turnDeadline:      snapshot.TurnDeadline.UTC(),
+		lobbyState:        append(json.RawMessage(nil), snapshot.LobbyState...),
 		players:           players,
 		createdBy:         snapshot.CreatedBy,
 		createdAt:         snapshot.CreatedAt.UTC(),
@@ -122,6 +124,7 @@ func (session *GameSession) Snapshot() SessionSnapshot {
 		Settings:          append(json.RawMessage(nil), session.settings...),
 		GameState:         append(json.RawMessage(nil), session.gameState...),
 		TurnDeadline:      session.turnDeadline,
+		LobbyState:        append(json.RawMessage(nil), session.lobbyState...),
 		Players:           append([]SessionPlayer(nil), session.players...),
 		CreatedBy:         session.createdBy,
 		CreatedAt:         session.createdAt,
@@ -322,7 +325,7 @@ func (session *GameSession) ExcludePlayers(playerIDs []string, reason string, no
 // UpdateGameState stores a running turn game's state, a JSON object, and the
 // deadline of its current turn (zero for none).
 func (session *GameSession) UpdateGameState(state json.RawMessage, turnDeadline time.Time, now time.Time) error {
-	if trimmed := bytes.TrimSpace(state); len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
+	if !isJSONObject(state) {
 		return ErrGameStateRequired
 	}
 	if err := session.requireOperationTime(now); err != nil {
@@ -337,6 +340,30 @@ func (session *GameSession) UpdateGameState(state json.RawMessage, turnDeadline 
 		session.turnDeadline = time.Time{}
 	}
 	session.recordEvent(GameStateChanged, "", "", session.turnDeadline, now.UTC())
+	return nil
+}
+
+// UpdateLobbyState stores the lobby choices of a game with lobby intents, a
+// JSON object, on behalf of a joined player. They can change only in the
+// lobby and the ready window; from the countdown on they are fixed.
+func (session *GameSession) UpdateLobbyState(playerID string, state json.RawMessage, now time.Time) error {
+	if !isJSONObject(state) {
+		return ErrLobbyStateRequired
+	}
+	if err := session.requireOperationTime(now); err != nil {
+		return err
+	}
+	if session.state != SessionLobby && session.state != SessionReadyWindow {
+		return ErrLobbyClosed
+	}
+	if index := session.playerIndex(playerID); index < 0 || session.players[index].State == PlayerLeft {
+		return ErrPlayerNotFound
+	}
+	if bytes.Equal(state, session.lobbyState) {
+		return nil
+	}
+	session.lobbyState = append(json.RawMessage(nil), state...)
+	session.recordEvent(LobbyStateChanged, playerID, "", time.Time{}, now.UTC())
 	return nil
 }
 
@@ -559,7 +586,8 @@ func validateSnapshot(snapshot SessionSnapshot) error {
 	if err := validateNewSession(params); err != nil {
 		return errors.Join(ErrSnapshotInvalid, err)
 	}
-	if !isSupportedSessionState(snapshot.State) || snapshot.Version < 1 || snapshot.UpdatedAt.IsZero() {
+	if !isSupportedSessionState(snapshot.State) || snapshot.Version < 1 || snapshot.UpdatedAt.IsZero() ||
+		(len(snapshot.LobbyState) > 0 && !isJSONObject(snapshot.LobbyState)) {
 		return ErrSnapshotInvalid
 	}
 	seenPlayers := make(map[string]struct{}, len(snapshot.Players))
@@ -618,6 +646,11 @@ func validateSnapshot(snapshot SessionSnapshot) error {
 		}
 	}
 	return nil
+}
+
+func isJSONObject(value json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(value)
+	return len(trimmed) > 0 && trimmed[0] == '{' && json.Valid(trimmed)
 }
 
 func requireTimestamp(now time.Time) error {

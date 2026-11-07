@@ -22,15 +22,18 @@ type ReadyCommandPayload struct {
 
 type commandProcessor struct {
 	sender cqrs.Sender
+	games  *module.Registry
 }
 
-func newCommandProcessor(sender cqrs.Sender) commandProcessor {
-	return commandProcessor{sender: sender}
+func newCommandProcessor(sender cqrs.Sender, games *module.Registry) commandProcessor {
+	return commandProcessor{sender: sender, games: games}
 }
 
+// Process runs one room command of a session of game gameKey.
 func (processor commandProcessor) Process(
 	ctx context.Context,
 	envelope coordinationAbstract.MessageEnvelope,
+	gameKey string,
 ) (gameDomain.SessionSnapshot, error) {
 	switch envelope.Type {
 	case gameCommands.JoinGameSessionCommandType:
@@ -63,6 +66,15 @@ func (processor commandProcessor) Process(
 			UserID:    envelope.ActorID,
 		})
 	default:
+		if game, ok := processor.games.Game(gameKey); ok && isLobbyIntent(game, envelope.Type) {
+			return cqrs.Send[gameDomain.SessionSnapshot](ctx, processor.sender, gameCommands.ApplyLobbyIntentCommand{
+				CommandID:  envelope.MessageID,
+				SessionID:  envelope.RoomID,
+				UserID:     envelope.ActorID,
+				IntentType: envelope.Type,
+				Payload:    envelope.Payload,
+			})
+		}
 		// Any other type can only be a turn game's move; the module decides.
 		snapshot, err := cqrs.Send[gameDomain.SessionSnapshot](ctx, processor.sender, gameCommands.ApplyTurnMoveCommand{
 			CommandID: envelope.MessageID,

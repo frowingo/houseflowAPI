@@ -27,6 +27,9 @@ type DecodedV2ClientMessage struct {
 	Intent module.Intent
 	// Move is a turn game's canonical move payload, validated by its module.
 	Move json.RawMessage
+	// LobbyIntent is a lobby choice's canonical payload (module.LobbyModule);
+	// like a lobby command it needs no control grant.
+	LobbyIntent json.RawMessage
 }
 
 type V2ServerMessage[T any] struct {
@@ -120,6 +123,8 @@ func DecodeV2ClientMessage(data []byte, game module.Game) (DecodedV2ClientMessag
 			strings.TrimSpace(decoded.Ping.PingID) != decoded.Ping.PingID) {
 			err = ErrInvalidClientMessage
 		}
+	case game != nil && isLobbyIntent(game, message.Type):
+		decoded.LobbyIntent, err = game.(module.LobbyModule).DecodeLobbyIntent(message.Type, message.Payload)
 	case game != nil:
 		switch lane := game.(type) {
 		case module.TickModule:
@@ -139,6 +144,16 @@ func DecodeV2ClientMessage(data []byte, game module.Game) (DecodedV2ClientMessag
 		return decoded, errors.Join(ErrInvalidClientMessage, err)
 	}
 	return decoded, nil
+}
+
+// isLobbyIntent reports whether a game with lobby intents owns the message type.
+func isLobbyIntent(game module.Game, messageType string) bool {
+	lobby, ok := game.(module.LobbyModule)
+	if !ok {
+		return false
+	}
+	_, err := lobby.DecodeLobbyIntent(messageType, nil)
+	return !errors.Is(err, module.ErrUnsupportedIntent)
 }
 
 // tickProtocolError maps runtime rejections to the game's namespaced codes.

@@ -212,6 +212,9 @@ type RuntimeParams struct {
 	// InitialSequence continues countdown preview frame numbering.
 	InitialSequence int64
 	Settings        json.RawMessage
+	// LobbyState is the session's lobby state, fixed since the countdown
+	// started; empty for a game without lobby intents.
+	LobbyState json.RawMessage
 }
 
 type RestoreParams struct {
@@ -232,6 +235,8 @@ type PreviewParams struct {
 	Players         []Player
 	Epoch           int64
 	Sequence        int64
+	// LobbyState is as in RuntimeParams; preview and runtime read the same.
+	LobbyState json.RawMessage
 }
 
 // Config is the operator-tunable part of a game, kept in the Game collection.
@@ -291,6 +296,23 @@ type FrameView interface {
 }
 
 var ErrUnsupportedIntent = errors.New("unsupported gameplay message type")
+
+// LobbyModule is an optional Game capability: choices a player makes before
+// the match (a color, a team), kept on the session as its lobby state, a JSON
+// object, and fixed once the countdown starts. Lobby intents need no control
+// grant; the core applies them as durable session commands while the session
+// is in its lobby or ready window and the player has joined.
+type LobbyModule interface {
+	// DecodeLobbyIntent strictly decodes a lobby message type the module owns
+	// into its canonical payload; any other type returns ErrUnsupportedIntent.
+	// It checks the type before the payload: the core asks with no payload
+	// whether a type is a lobby intent.
+	DecodeLobbyIntent(messageType string, payload json.RawMessage) (json.RawMessage, error)
+	// ApplyLobbyIntent returns the lobby state after one player's intent; the
+	// current state is session.LobbyState. It runs only in the lobby or ready
+	// window and for a joined player; returning the same state changes nothing.
+	ApplyLobbyIntent(session gameDomain.SessionSnapshot, playerID, messageType string, intent json.RawMessage) (json.RawMessage, error)
+}
 
 // TickRuntime is one running match. Submit only writes bounded mailboxes; Run
 // owns advancement and no callback runs under the runtime's lock.

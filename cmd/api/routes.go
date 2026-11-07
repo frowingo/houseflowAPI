@@ -245,6 +245,7 @@ func SetupRoutes(
 	cqrs.MustRegister[gameApplication.CatalogEntry, gameCommands.UpdateGameConfigCommand](applicationMediator, gameCommands.NewUpdateGameConfigHandler(gameCatalog, gameConfigRepository, reportGameConfig))
 	turnEngine := gameCommands.NewTurnEngine(gameRegistry, matchRepository)
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyTurnMoveCommand](applicationMediator, gameCommands.NewApplyTurnMoveHandler(gameSessionRepository, houseMembershipPolicy, turnEngine))
+	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyLobbyIntentCommand](applicationMediator, gameCommands.NewApplyLobbyIntentHandler(gameSessionRepository, houseMembershipPolicy, gameRegistry))
 	cqrs.MustRegister[gameDomain.MatchResult, gameCommands.CompleteMatchCommand](applicationMediator, gameCommands.NewCompleteMatchHandler(gameSessionRepository, matchRepository, gameRegistry))
 	cqrs.MustRegister[any, gameQueries.GetMatchResultQuery](applicationMediator, gameQueries.NewGetMatchResultHandler(gameSessionRepository, matchRepository, gameRegistry, houseMembershipPolicy))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](applicationMediator, gameQueries.NewAuthorizeCancellationHandler(gameSessionRepository, houseMembershipPolicy))

@@ -186,7 +186,7 @@ func (room *managedRoom) startRuntimeLocked(snapshot gameDomain.SessionSnapshot)
 	} else if time.Since(snapshot.StartedAt) > room.manager.options.RecoveryMaxAge && room.manager.options.MatchRepository != nil {
 		return room.abandonUnstartedMatch(snapshot)
 	} else {
-		runtime, err = room.tick.game.NewRuntime(module.RuntimeParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.lobby.frozen, Epoch: room.runtimeOwner.Generation, Now: time.Now(), InitialSequence: room.tick.previewSequence, Settings: snapshot.Settings})
+		runtime, err = room.tick.game.NewRuntime(module.RuntimeParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, StartedAt: snapshot.StartedAt, Players: room.lobby.frozen, Epoch: room.runtimeOwner.Generation, Now: time.Now(), InitialSequence: room.tick.previewSequence, Settings: snapshot.Settings, LobbyState: snapshot.LobbyState})
 	}
 	if err != nil || runtime == nil {
 		return err
@@ -347,7 +347,7 @@ func (room *managedRoom) publishPreviewLocked(connectionID, messageID string) er
 		room.freezePlayers(*snapshot)
 	}
 	room.tick.previewSequence++
-	frame, err := room.tick.game.PreviewFrame(module.PreviewParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, CountdownEndsAt: snapshot.CountdownEndsAt, Players: room.lobby.frozen, Epoch: room.runtimeOwner.Generation, Sequence: room.tick.previewSequence})
+	frame, err := room.tick.game.PreviewFrame(module.PreviewParams{SessionID: snapshot.SessionID, HouseID: snapshot.HouseID, CountdownEndsAt: snapshot.CountdownEndsAt, Players: room.lobby.frozen, Epoch: room.runtimeOwner.Generation, Sequence: room.tick.previewSequence, LobbyState: snapshot.LobbyState})
 	if err != nil {
 		return err
 	}

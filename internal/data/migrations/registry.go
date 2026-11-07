@@ -93,5 +93,8 @@ func AllMigrations() []Migration {
 		&choreReviewPhotoAccess{},
 		// --- Chore Deadline Failure ---
 		&choreFailedDeadline{},
+		// --- Faus Switch ---
+		&fausSwitchLocalizations{},
+		&fausSwitchConfig{},
 	}
 }

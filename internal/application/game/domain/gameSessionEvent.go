@@ -15,6 +15,7 @@ const (
 	CountdownStarted     SessionEventType = "session.countdownStarted"
 	GameStarted          SessionEventType = "session.gameStarted"
 	GameStateChanged     SessionEventType = "session.gameStateChanged"
+	LobbyStateChanged    SessionEventType = "session.lobbyStateChanged"
 	GameFinished         SessionEventType = "session.gameFinished"
 	GameCancelled        SessionEventType = "session.gameCancelled"
 )

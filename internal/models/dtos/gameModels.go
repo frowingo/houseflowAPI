@@ -44,6 +44,10 @@ type GameSessionResponseModel struct {
 	EndedAt           *UTCDateTime             `json:"endedAt,omitempty"`
 	EndReason         string                   `json:"endReason,omitempty"`
 	Version           int64                    `json:"version"`
+	// LobbyState is the game's lobby choices (Faus Switch: robot colors). It
+	// is written only when the game keeps one, so other games' snapshots stay
+	// as they were.
+	LobbyState json.RawMessage `json:"lobbyState,omitempty" swaggertype:"object"`
 }
 
 func GameSessionToResponseModel(snapshot gameDomain.SessionSnapshot) GameSessionResponseModel {
@@ -75,6 +79,7 @@ func GameSessionToResponseModel(snapshot gameDomain.SessionSnapshot) GameSession
 		EndedAt:           optionalUTCDateTime(snapshot.EndedAt),
 		EndReason:         snapshot.EndReason,
 		Version:           snapshot.Version,
+		LobbyState:        append(json.RawMessage(nil), snapshot.LobbyState...),
 	}
 }
 

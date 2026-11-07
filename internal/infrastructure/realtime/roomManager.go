@@ -154,7 +154,7 @@ func NewRoomManager(
 		coordinator: coordinator,
 		repository:  repository,
 		sender:      sender,
-		processor:   newCommandProcessor(sender),
+		processor:   newCommandProcessor(sender, options.Games),
 		options:     options,
 		rooms:       make(map[string]*managedRoom),
 		activations: make(map[string]*roomActivation),

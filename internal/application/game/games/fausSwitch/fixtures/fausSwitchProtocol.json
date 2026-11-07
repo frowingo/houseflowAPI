@@ -1,0 +1,709 @@
+{
+  "schemaVersion": 1,
+  "contractRevision": "fausSwitch.v1",
+  "protocolVersion": 2,
+  "courseVersion": 7,
+  "rules": {
+    "minimumPlayers": 2,
+    "maximumPlayers": 8,
+    "maximumPlayersPolicy": "min(houseCapacity, 8); never fill with bots",
+    "readyWindowMilliseconds": 30000,
+    "countdownMilliseconds": 3000,
+    "physicsRateHz": 120,
+    "snapshotRateHz": 20,
+    "maximumInputRateHz": 20,
+    "maximumRewindMilliseconds": 250,
+    "controlHeartbeatMilliseconds": 2000,
+    "controlTimeoutMilliseconds": 6000,
+    "reconnectGraceMilliseconds": 10000,
+    "maximumMatchMilliseconds": 120000,
+    "crowdedRunnerThreshold": 4,
+    "crowdedRunnerScale": 0.75,
+    "crowdedRunnerScalePolicy": "runnerScale = runners at race start > crowdedRunnerThreshold ? crowdedRunnerScale : 1; fixed for the race"
+  },
+  "settings": {
+    "physicsRateHz": 120,
+    "snapshotRateHz": 20,
+    "maximumInputRateHz": 20,
+    "maximumRewindMilliseconds": 250,
+    "controlHeartbeatMilliseconds": 2000,
+    "controlTimeoutMilliseconds": 6000,
+    "reconnectGraceMilliseconds": 10000,
+    "maximumMatchMilliseconds": 120000
+  },
+  "playerColors": [
+    "plum",
+    "forest",
+    "ocean",
+    "lavender",
+    "olive",
+    "bronze",
+    "graphite",
+    "berry"
+  ],
+  "clientMessages": [
+    {
+      "name": "join",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "join1",
+        "type": "gameSession.join",
+        "payload": {}
+      }
+    },
+    {
+      "name": "ready",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "ready1",
+        "type": "gameSession.setReady",
+        "payload": {
+          "ready": true
+        }
+      }
+    },
+    {
+      "name": "selectColor",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "color1",
+        "type": "fausSwitch.selectColor",
+        "payload": {
+          "color": "ocean"
+        }
+      }
+    },
+    {
+      "name": "flip",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "flip1",
+        "type": "fausSwitch.flip",
+        "payload": {
+          "controlGeneration": "controlA",
+          "inputSequence": 1,
+          "clientTick": 118
+        }
+      }
+    },
+    {
+      "name": "resync",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "resync1",
+        "type": "fausSwitch.resync",
+        "payload": {}
+      }
+    },
+    {
+      "name": "ping",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "ping1",
+        "type": "realtime.ping",
+        "payload": {
+          "pingId": "clock1"
+        }
+      }
+    }
+  ],
+  "serverMessages": [
+    {
+      "name": "welcome",
+      "message": {
+        "protocolVersion": 2,
+        "type": "realtime.welcome",
+        "sentAt": "2026-11-05T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "fausSwitch",
+          "connectionId": "connectionA",
+          "protocolVersion": 2,
+          "courseVersion": 7,
+          "settings": {
+            "physicsRateHz": 120,
+            "snapshotRateHz": 20,
+            "maximumInputRateHz": 20,
+            "maximumRewindMilliseconds": 250,
+            "controlHeartbeatMilliseconds": 2000,
+            "controlTimeoutMilliseconds": 6000,
+            "reconnectGraceMilliseconds": 10000,
+            "maximumMatchMilliseconds": 120000
+          }
+        }
+      }
+    },
+    {
+      "name": "pong",
+      "message": {
+        "protocolVersion": 2,
+        "type": "realtime.pong",
+        "sentAt": "2026-11-05T12:00:30.125Z",
+        "payload": {
+          "pingId": "clock1",
+          "serverTime": "2026-11-05T12:00:33.125Z"
+        },
+        "messageId": "ping1"
+      }
+    },
+    {
+      "name": "accepted",
+      "message": {
+        "protocolVersion": 2,
+        "type": "gameSession.commandAccepted",
+        "sentAt": "2026-11-05T12:00:30.125Z",
+        "payload": {},
+        "messageId": "ready1"
+      }
+    },
+    {
+      "name": "sessionSnapshot",
+      "message": {
+        "protocolVersion": 2,
+        "type": "gameSession.snapshot",
+        "sentAt": "2026-10-03T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "fausSwitch",
+          "protocolVersion": 2,
+          "mode": "realtime",
+          "state": "countdown",
+          "rules": {
+            "minimumPlayers": 2,
+            "maximumPlayers": 8,
+            "readyWindowMilliseconds": 30000,
+            "countdownMilliseconds": 3000
+          },
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "state": "ready",
+              "joinedAt": "2026-11-05T12:00:00Z",
+              "readyAt": "2026-11-05T12:00:00Z"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "state": "ready",
+              "joinedAt": "2026-11-05T12:00:00Z",
+              "readyAt": "2026-11-05T12:00:00Z"
+            }
+          ],
+          "createdBy": "507f1f77bcf86cd799439021",
+          "createdAt": "2026-11-05T12:00:00Z",
+          "updatedAt": "2026-11-05T12:00:30Z",
+          "countdownEndsAt": "2026-11-05T12:00:33Z",
+          "version": 5
+        },
+        "sequence": 5
+      }
+    },
+    {
+      "name": "controlGranted",
+      "message": {
+        "protocolVersion": 2,
+        "type": "fausSwitch.controlGranted",
+        "sentAt": "2026-11-05T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "playerId": "507f1f77bcf86cd799439021",
+          "runtimeEpoch": 7,
+          "controlGeneration": "controlA"
+        }
+      }
+    },
+    {
+      "name": "countdown",
+      "message": {
+        "protocolVersion": 2,
+        "type": "fausSwitch.snapshot",
+        "sentAt": "2026-11-05T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "fausSwitch",
+          "runtimeEpoch": 7,
+          "stateSequence": 1,
+          "tick": 0,
+          "elapsedSeconds": 0.0,
+          "phase": "countdown",
+          "courseVersion": 7,
+          "runnerScale": 1,
+          "runners": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "color": "ocean",
+              "x": 380,
+              "y": 114.1,
+              "velocityY": 0,
+              "gravity": "down",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "color": "plum",
+              "x": 380,
+              "y": 275.8,
+              "velocityY": 0,
+              "gravity": "up",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            }
+          ],
+          "countdownEndsAt": "2026-11-05T12:00:33Z",
+          "winnerId": null
+        },
+        "sequence": 1
+      }
+    },
+    {
+      "name": "crowdedCountdown",
+      "message": {
+        "protocolVersion": 2,
+        "type": "fausSwitch.snapshot",
+        "sentAt": "2026-11-05T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "fausSwitch",
+          "runtimeEpoch": 7,
+          "stateSequence": 1,
+          "tick": 0,
+          "elapsedSeconds": 0.0,
+          "phase": "countdown",
+          "courseVersion": 7,
+          "runnerScale": 0.75,
+          "runners": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "color": "plum",
+              "x": 380,
+              "y": 51.2,
+              "velocityY": 0,
+              "gravity": "down",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "color": "forest",
+              "x": 380,
+              "y": 338.7,
+              "velocityY": 0,
+              "gravity": "up",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Mert",
+              "color": "ocean",
+              "x": 380,
+              "y": 93.1,
+              "velocityY": 0,
+              "gravity": "down",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439024",
+              "displayName": "Zeynep",
+              "color": "lavender",
+              "x": 380,
+              "y": 296.8,
+              "velocityY": 0,
+              "gravity": "up",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439025",
+              "displayName": "Kaan",
+              "color": "olive",
+              "x": 380,
+              "y": 135.1,
+              "velocityY": 0,
+              "gravity": "down",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439026",
+              "displayName": "Elif",
+              "color": "bronze",
+              "x": 380,
+              "y": 254.8,
+              "velocityY": 0,
+              "gravity": "up",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439027",
+              "displayName": "Arda",
+              "color": "graphite",
+              "x": 380,
+              "y": 177.0,
+              "velocityY": 0,
+              "gravity": "down",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439028",
+              "displayName": "Selin",
+              "color": "berry",
+              "x": 380,
+              "y": 212.9,
+              "velocityY": 0,
+              "gravity": "up",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            }
+          ],
+          "countdownEndsAt": "2026-11-05T12:00:33Z",
+          "winnerId": null
+        },
+        "sequence": 1
+      }
+    },
+    {
+      "name": "playing",
+      "message": {
+        "protocolVersion": 2,
+        "type": "fausSwitch.snapshot",
+        "sentAt": "2026-11-05T12:00:34.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "fausSwitch",
+          "runtimeEpoch": 7,
+          "stateSequence": 2,
+          "tick": 120,
+          "elapsedSeconds": 1.0,
+          "phase": "playing",
+          "courseVersion": 7,
+          "runnerScale": 1,
+          "runners": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "color": "ocean",
+              "x": 605,
+              "y": 44.1,
+              "velocityY": 0,
+              "gravity": "down",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": "controlA"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "color": "plum",
+              "x": 605,
+              "y": 345.9,
+              "velocityY": 0,
+              "gravity": "up",
+              "boostedUntilTick": 0,
+              "usedBoosts": [],
+              "slowedUntilTick": 0,
+              "usedSlows": [],
+              "status": "running",
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "connected": true,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            }
+          ],
+          "countdownEndsAt": null,
+          "winnerId": null
+        },
+        "sequence": 2
+      }
+    },
+    {
+      "name": "result",
+      "message": {
+        "protocolVersion": 2,
+        "type": "fausSwitch.result",
+        "sentAt": "2026-11-05T12:01:15.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "fausSwitch",
+          "protocolVersion": 2,
+          "courseVersion": 7,
+          "status": "completed",
+          "endReason": "raceComplete",
+          "winnerId": "507f1f77bcf86cd799439021",
+          "startedAt": "2026-11-05T12:00:33Z",
+          "endedAt": "2026-11-05T12:01:15Z",
+          "durationSeconds": 42,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "rank": 1,
+              "finishedAtTick": 4920,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "distance": 8780
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "rank": 2,
+              "finishedAtTick": null,
+              "eliminatedAtTick": 2310,
+              "eliminationReason": "boundary",
+              "distance": 4470
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "cancelledResult",
+      "message": {
+        "protocolVersion": 2,
+        "type": "fausSwitch.result",
+        "sentAt": "2026-11-05T12:00:31.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "fausSwitch",
+          "protocolVersion": 2,
+          "courseVersion": 7,
+          "status": "cancelled",
+          "endReason": "cancelledByUser",
+          "winnerId": null,
+          "startedAt": null,
+          "endedAt": "2026-11-05T12:00:31Z",
+          "durationSeconds": 0,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "rank": null,
+              "finishedAtTick": null,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "distance": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "rejected",
+      "message": {
+        "protocolVersion": 2,
+        "type": "gameSession.commandRejected",
+        "sentAt": "2026-11-05T12:00:34.125Z",
+        "messageId": "flip1",
+        "error": {
+          "code": "fausSwitch.error.stale_control",
+          "args": [],
+          "retryable": false
+        }
+      }
+    }
+  ],
+  "http": {
+    "ensure": {
+      "method": "PUT",
+      "path": "/api/v1/game/fausSwitch/session",
+      "request": {
+        "houseId": "507f1f77bcf86cd799439012"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "fausSwitch",
+          "protocolVersion": 2,
+          "mode": "realtime",
+          "state": "countdown",
+          "rules": {
+            "minimumPlayers": 2,
+            "maximumPlayers": 8,
+            "readyWindowMilliseconds": 30000,
+            "countdownMilliseconds": 3000
+          },
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "state": "ready",
+              "joinedAt": "2026-11-05T12:00:00Z",
+              "readyAt": "2026-11-05T12:00:00Z"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "state": "ready",
+              "joinedAt": "2026-11-05T12:00:00Z",
+              "readyAt": "2026-11-05T12:00:00Z"
+            }
+          ],
+          "createdBy": "507f1f77bcf86cd799439021",
+          "createdAt": "2026-11-05T12:00:00Z",
+          "updatedAt": "2026-11-05T12:00:30Z",
+          "countdownEndsAt": "2026-11-05T12:00:33Z",
+          "version": 5
+        }
+      }
+    },
+    "result": {
+      "method": "GET",
+      "path": "/api/v1/game/sessions/7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0/result",
+      "response": {
+        "success": true,
+        "data": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "fausSwitch",
+          "protocolVersion": 2,
+          "courseVersion": 7,
+          "status": "completed",
+          "endReason": "raceComplete",
+          "winnerId": "507f1f77bcf86cd799439021",
+          "startedAt": "2026-11-05T12:00:33Z",
+          "endedAt": "2026-11-05T12:01:15Z",
+          "durationSeconds": 42,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "rank": 1,
+              "finishedAtTick": 4920,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "distance": 8780
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "rank": 2,
+              "finishedAtTick": null,
+              "eliminatedAtTick": 2310,
+              "eliminationReason": "boundary",
+              "distance": 4470
+            }
+          ]
+        }
+      },
+      "notFoundStatus": 404
+    }
+  },
+  "errorCodes": [
+    "fausSwitch.error.invalid_input",
+    "fausSwitch.error.control_unavailable",
+    "fausSwitch.error.stale_control",
+    "fausSwitch.error.runner_finished",
+    "fausSwitch.error.not_running",
+    "fausSwitch.error.not_in_lobby",
+    "fausSwitch.error.result_not_found",
+    "realtime.error.invalid_command",
+    "realtime.error.rate_limited",
+    "realtime.error.unavailable",
+    "realtime.error.command_failed"
+  ]
+}

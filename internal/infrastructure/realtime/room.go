@@ -259,7 +259,7 @@ func (loop *roomLoop) handleDelivery(delivery coordinationAbstract.CommandDelive
 		room.cancelRunningMatch(delivery)
 		return true
 	}
-	updated, err := room.processCommand(envelope)
+	updated, err := room.processCommand(envelope, loop.snapshot.GameKey)
 	if err != nil {
 		room.manager.report(room.lease.RoomID, err)
 		if isRetryableCommandError(err) {
@@ -368,12 +368,13 @@ func (loop *roomLoop) deadlineChannel() <-chan time.Time {
 
 func (room *managedRoom) processCommand(
 	envelope coordinationAbstract.MessageEnvelope,
+	gameKey string,
 ) (gameDomain.SessionSnapshot, error) {
 	var snapshot gameDomain.SessionSnapshot
 	var err error
 	for attempt := 1; attempt <= room.manager.options.MaxCommandAttempts; attempt++ {
 		commandCtx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
-		snapshot, err = room.manager.processor.Process(commandCtx, envelope)
+		snapshot, err = room.manager.processor.Process(commandCtx, envelope, gameKey)
 		cancel()
 		if err == nil || !isRetryableCommandError(err) || attempt == room.manager.options.MaxCommandAttempts {
 			return snapshot, err

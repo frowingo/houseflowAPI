@@ -18,6 +18,7 @@ import (
 	gameDomain "houseflowApi/internal/application/game/domain"
 	"houseflowApi/internal/application/game/games"
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
+	"houseflowApi/internal/application/game/module"
 	gameQueries "houseflowApi/internal/application/game/queries"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -59,13 +60,19 @@ func newConfiguredRocketsGatewayFixture(t *testing.T, rules gameDomain.SessionRu
 // definition; every built-in tick game has a realtime module.
 func newGameGatewayFixture(t *testing.T, definition gameDomain.GameDefinition, maxRooms, maxConnections int, enabledOptions ...bool) *rocketsGatewayFixture {
 	t.Helper()
-	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret"), gameKey: definition.GameKey}
 	enabled := len(enabledOptions) == 0 || enabledOptions[0]
 	// A disabled game keeps its catalog entry but has no realtime module.
 	fixtureGames, err := games.NewRegistry(games.Options{Realtime: enabled})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return newGameGatewayFixtureWith(t, definition, fixtureGames, maxRooms, maxConnections)
+}
+
+// newGameGatewayFixtureWith runs the gateways with the given game modules.
+func newGameGatewayFixtureWith(t *testing.T, definition gameDomain.GameDefinition, fixtureGames *module.Registry, maxRooms, maxConnections int) *rocketsGatewayFixture {
+	t.Helper()
+	fixture := &rocketsGatewayFixture{gameSessionApplicationFixture: newGameSessionApplicationFixture(t), jwt: helpers.NewJWTService("rockets-gateway-secret"), gameKey: definition.GameKey}
 	for index, id := range []string{fixture.ownerID, fixture.memberID, fixture.outsiderID} {
 		objectID, _ := primitive.ObjectIDFromHex(id)
 		_, err := fixture.db.Collection("User").InsertOne(fixture.ctx, entities.User{Id: objectID, Firstname: fmt.Sprintf("Player%d", index), Lastname: "House", Email: id + "@test.dev", IsActive: true, HouseIds: []string{}})
@@ -82,6 +89,7 @@ func newGameGatewayFixture(t *testing.T, definition gameDomain.GameDefinition, m
 		mediator := newGameSessionMediator(fixture.gameSessionApplicationFixture)
 		matches := database.NewGameMatchRepository(fixture.db.Client(), fixture.db.Name())
 		registerRocketsResults(mediator, fixture.repository, matches, fixture.membershipPolicy())
+		cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyLobbyIntentCommand](mediator, gameCommands.NewApplyLobbyIntentHandler(fixture.repository, fixture.membershipPolicy(), fixtureGames))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](mediator, gameQueries.NewAuthorizeCancellationHandler(fixture.repository, fixture.membershipPolicy()))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.EnsureActiveGameSessionCommand](mediator, gameCommands.NewEnsureActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
 		cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.GetActiveGameSessionQuery](mediator, gameQueries.NewGetActiveGameSessionHandler(fixture.repository, catalog, fixture.membershipPolicy()))
@@ -164,7 +172,7 @@ func (fixture *rocketsGatewayFixture) connect(t *testing.T, index int, sessionID
 	t.Helper()
 	endpoint := "ws" + fixture.urls[index][4:] + "/api/v1/game/" + sessionID + "/realtime?protocolVersion=2"
 	connection := dialGateway(t, endpoint, generateGatewayToken(t, fixture.jwt, userID))
-	socket := &rocketsSocket{connection: connection, messages: make(chan realtime.ServerMessage, 256), errors: make(chan error, 1)}
+	socket := &rocketsSocket{connection: connection, messages: make(chan realtime.ServerMessage, 1024), errors: make(chan error, 1)}
 	t.Cleanup(func() { _ = connection.Close() })
 	go func() {
 		for {
@@ -212,7 +220,13 @@ func (socket *rocketsSocket) send(t *testing.T, kind, messageID string, payload 
 
 func (socket *rocketsSocket) await(t *testing.T, predicate func(realtime.ServerMessage) bool) realtime.ServerMessage {
 	t.Helper()
-	timer := time.NewTimer(6 * time.Second)
+	return socket.awaitWithin(t, 6*time.Second, predicate)
+}
+
+// awaitWithin is await with a longer wait, for a whole match.
+func (socket *rocketsSocket) awaitWithin(t *testing.T, timeout time.Duration, predicate func(realtime.ServerMessage) bool) realtime.ServerMessage {
+	t.Helper()
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
 		select {
