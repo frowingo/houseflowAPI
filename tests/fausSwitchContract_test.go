@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	gameDomain "houseflowApi/internal/application/game/domain"
 	"houseflowApi/internal/application/game/games"
 	"houseflowApi/internal/application/game/games/fausSwitch"
 	"houseflowApi/internal/application/game/module"
@@ -315,6 +316,47 @@ func TestFausSwitchServerContractFixtures(t *testing.T) {
 			t.Fatalf("server message %s has no fixture", name)
 		}
 	}
+}
+
+// The fixture's sessionSnapshot carries the lobby state the server itself
+// writes (ADR-030): replaying each joined player's color claim through the
+// module's ApplyLobbyIntent yields the fixture's lobbyState exactly.
+func TestFausSwitchSessionSnapshotLobbyState(t *testing.T) {
+	fixture := readFausSwitchFixture(t)
+	index := slices.IndexFunc(fixture.ServerMessages, func(entry fausSwitchFixtureMessage) bool { return entry.Name == "sessionSnapshot" })
+	if index < 0 {
+		t.Fatal("no sessionSnapshot fixture")
+	}
+	var message realtime.V2ServerMessage[dtos.GameSessionResponseModel]
+	if err := json.Unmarshal(fixture.ServerMessages[index].Message, &message); err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Colors map[string]string `json:"colors"`
+	}
+	if err := json.Unmarshal(message.Payload.LobbyState, &claims); err != nil || len(claims.Colors) == 0 {
+		t.Fatalf("lobbyState %s: %v", message.Payload.LobbyState, err)
+	}
+	session := gameDomain.SessionSnapshot{SessionID: message.Payload.SessionId, GameKey: message.Payload.GameKey}
+	for _, player := range message.Payload.Players {
+		session.Players = append(session.Players, gameDomain.SessionPlayer{PlayerID: player.PlayerId, State: gameDomain.PlayerState(player.State)})
+	}
+	for _, player := range session.Players {
+		color, claimed := claims.Colors[player.PlayerID]
+		if !claimed {
+			continue
+		}
+		if player.State == gameDomain.PlayerLeft {
+			t.Fatalf("player %s left but keeps %s", player.PlayerID, color)
+		}
+		intent, _ := json.Marshal(map[string]string{"color": color})
+		state, err := fausSwitch.ApplyLobbyIntent(session, player.PlayerID, fausSwitch.SelectColorMessageType, intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.LobbyState = state
+	}
+	assertHouseRocketsJSON(t, message.Payload.LobbyState, json.RawMessage(session.LobbyState))
 }
 
 // The start grids of the fixture's countdowns are the briefing's control
