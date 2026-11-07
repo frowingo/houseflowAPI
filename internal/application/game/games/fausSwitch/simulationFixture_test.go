@@ -2,6 +2,8 @@ package fausSwitch
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -12,7 +14,8 @@ import (
 )
 
 // fixtures/fausSwitchSimulation.json is the client's own recording of the
-// Swift engine (plan §9, item 1). Until the client sends it this test skips;
+// Swift engine (plan §9, item 1), copied unchanged from the client's
+// FausCrew/shared/Fixtures. Without the file this test skips;
 // TestSwiftParityTrace covers the same ground with traces built here.
 //
 // Each scenario starts from the start grid of runnerCount robots on its race
@@ -71,6 +74,11 @@ func (want simulationRunner) matches(got simulationRunner) bool {
 		(want.EliminationReason == nil || *want.EliminationReason == *got.EliminationReason)
 }
 
+// simulationFixtureSHA256 pins the copy to the client's recording; the client
+// pins the same digest in FausSwitchSimulationFixtureTests. A regenerated
+// fixture (course or physics change) updates both.
+const simulationFixtureSHA256 = "5bf34d8ddd81cdf4773565212e7ee389d8bd985ab55e359e9864a3d6ce807976"
+
 func TestClientSimulationFixture(t *testing.T) {
 	data, err := os.ReadFile("fixtures/fausSwitchSimulation.json")
 	if errors.Is(err, fs.ErrNotExist) {
@@ -79,6 +87,9 @@ func TestClientSimulationFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if digest := sha256.Sum256(data); hex.EncodeToString(digest[:]) != simulationFixtureSHA256 {
+		t.Fatalf("fixture sha256 %x, want %s", digest, simulationFixtureSHA256)
+	}
 	var fixture simulationFixture
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
@@ -86,6 +97,7 @@ func TestClientSimulationFixture(t *testing.T) {
 	if fixture.CourseVersion != CourseVersion || len(fixture.Scenarios) == 0 {
 		t.Fatalf("courseVersion %d with %d scenarios", fixture.CourseVersion, len(fixture.Scenarios))
 	}
+	reasons := map[EliminationReason]bool{}
 	for _, scenario := range fixture.Scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
 			if scenario.RunnerCount < 1 || scenario.RunnerCount > MaximumPlayers {
@@ -114,9 +126,25 @@ func TestClientSimulationFixture(t *testing.T) {
 					}
 				}
 			}
+			// The recording is a whole race: every flip lands before the
+			// last checkpoint, where every robot has stopped.
 			if len(flips) > 0 {
-				t.Logf("%d flips after the last checkpoint are not checked", len(flips))
+				t.Fatalf("%d flips after the last checkpoint are not checked", len(flips))
 			}
+			stopped := map[RunnerStatus]int{}
+			for seat := range runners {
+				if runners[seat].running() {
+					t.Fatalf("seat %d still running at the last checkpoint (tick %d)", seat, tick)
+				}
+				stopped[runners[seat].status]++
+				if runners[seat].status == RunnerCrashed {
+					reasons[runners[seat].crashReason] = true
+				}
+			}
+			t.Logf("%d robots, %d flips, %d checkpoints to tick %d: %v", scenario.RunnerCount, len(scenario.Flips), len(scenario.Checkpoints), tick, stopped)
 		})
+	}
+	if !reasons[EliminationBoundary] || !reasons[EliminationLeftBehind] {
+		t.Fatalf("fixture eliminates by %v; want both boundary and leftBehind", reasons)
 	}
 }

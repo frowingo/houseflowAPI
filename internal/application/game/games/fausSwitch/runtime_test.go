@@ -750,3 +750,59 @@ func TestRuntimeStepBetweenFramesDoesNotAllocate(t *testing.T) {
 		t.Fatalf("a quiet step allocates %v times", allocations)
 	}
 }
+
+// A late flip that rescues a stopped robot shows in the frame of the very
+// step that applies it: the status change is critical, so the frame does not
+// wait for the snapshot interval. The flip reaches at most MaximumRewindTicks
+// back and the robot was running at the flip's tick, so that frame is at most
+// MaximumRewindTicks-1 ticks after the robot's end, and the robot is running
+// with finishedAtTick, eliminatedAtTick and eliminationReason null.
+// (Client report §3.1: the client bounds a rescue by tick - end ≤ 36.)
+func TestRuntimeRescueShowsInTheStepThatAppliesIt(t *testing.T) {
+	// Without flips seat 0 crashes at end; find the latest flip tick that
+	// rescues it, then send that flip as late as the rewind window allows.
+	plain := newDriver(t, 2)
+	plain.bindAll()
+	for plain.world()[0].status == RunnerRunning {
+		plain.advance()
+	}
+	end := plain.world()[0].crashedAtTick
+	for flipTick := end - 1; flipTick > end-MaximumRewindTicks; flipTick-- {
+		driver := newDriver(t, 2)
+		driver.bindAll()
+		// Flips apply after the step's ticks, so a flip one step from now
+		// reaches back MaximumRewindTicks from the tick that step reaches.
+		driver.ticks(int(flipTick + MaximumRewindTicks - 1 - driver.tick()))
+		before := SnapshotForConnection(driver.frame, playerID(0), "", nil)
+		if before.Runners[0].Status != RunnerCrashed || *before.Runners[0].EliminatedAtTick != end {
+			t.Fatalf("before the flip the last frame shows %+v", before.Runners[0])
+		}
+		if _, err := driver.flip(playerID(0), flipTick); err != nil {
+			t.Fatal(err)
+		}
+		driver.advance()
+		if driver.world()[0].status != RunnerRunning {
+			continue // this flip does not save the robot; try an earlier one
+		}
+		after := SnapshotForConnection(driver.frame, playerID(0), "", nil)
+		rescued := after.Runners[0]
+		if after.Tick != driver.tick() || after.StateSequence <= before.StateSequence {
+			t.Fatalf("the rescue frame is tick %d sequence %d; the step reached %d (last frame sequence %d)", after.Tick, after.StateSequence, driver.tick(), before.StateSequence)
+		}
+		if rescued.Status != RunnerRunning || rescued.FinishedAtTick != nil || rescued.EliminatedAtTick != nil || rescued.EliminationReason != nil {
+			t.Fatalf("rescued robot %+v", rescued)
+		}
+		encoded, _ := json.Marshal(rescued)
+		for _, field := range []string{`"finishedAtTick":null`, `"eliminatedAtTick":null`, `"eliminationReason":null`} {
+			if !strings.Contains(string(encoded), field) {
+				t.Fatalf("rescued robot on the wire lacks %s: %s", field, encoded)
+			}
+		}
+		if gap := after.Tick - end; gap > MaximumRewindTicks-1 {
+			t.Fatalf("rescue shows %d ticks after the end", gap)
+		}
+		t.Logf("crashed at %d, rescued by a flip for %d applied at %d: first running frame at tick %d (tick - end = %d)", end, flipTick, after.Tick, after.Tick, after.Tick-end)
+		return
+	}
+	t.Fatalf("no flip within the rewind window rescues the robot that crashes at %d", end)
+}
