@@ -4,6 +4,7 @@
 package games
 
 import (
+	fausSwitch "houseflowApi/internal/application/game/games/fausSwitch"
 	houseRockets "houseflowApi/internal/application/game/games/houseRockets"
 	houseTanks "houseflowApi/internal/application/game/games/houseTanks"
 	ticTacToe "houseflowApi/internal/application/game/games/ticTacToe"
@@ -17,7 +18,7 @@ type Options struct{ Realtime bool }
 func NewRegistry(options Options) (*module.Registry, error) {
 	var games []module.Game
 	if options.Realtime {
-		games = append(games, houseRockets.Module(), houseTanks.Module(), ticTacToe.Module())
+		games = append(games, houseRockets.Module(), houseTanks.Module(), ticTacToe.Module(), fausSwitch.Module())
 	}
 	return module.NewRegistry(games...)
 }

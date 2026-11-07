@@ -37,6 +37,7 @@ type UpdateChoreHandler struct {
 	reviewVoteRepository    databaseAbstract.DbRepository[entities.ChoreReviewVote]
 	membershipPolicy        *housePolicies.MembershipPolicy
 	assignmentPolicy        *chorePolicies.AssignmentPolicy
+	workflowPolicy          *chorePolicies.WorkflowPolicy
 }
 
 func NewUpdateChoreHandler(
@@ -45,6 +46,7 @@ func NewUpdateChoreHandler(
 	reviewVoteRepository databaseAbstract.DbRepository[entities.ChoreReviewVote],
 	membershipPolicy *housePolicies.MembershipPolicy,
 	assignmentPolicy *chorePolicies.AssignmentPolicy,
+	workflowPolicy *chorePolicies.WorkflowPolicy,
 ) *UpdateChoreHandler {
 	return &UpdateChoreHandler{
 		choreRepository:         choreRepository,
@@ -52,6 +54,7 @@ func NewUpdateChoreHandler(
 		reviewVoteRepository:    reviewVoteRepository,
 		membershipPolicy:        membershipPolicy,
 		assignmentPolicy:        assignmentPolicy,
+		workflowPolicy:          workflowPolicy,
 	}
 }
 
@@ -60,34 +63,64 @@ func (h *UpdateChoreHandler) Handle(ctx context.Context, command UpdateChoreComm
 	if err != nil {
 		return nil, err
 	}
-	currentChore, err := h.choreRepository.FindByID(ctx, choreObjectID)
-	if err != nil {
-		return nil, err
-	}
-	if currentChore.HouseId != command.HouseID {
-		return nil, helpers.NewLocalizedError("chore.error.house_cannot_change")
-	}
+	var updatedChore *entities.Chore
+	err = h.choreRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
+		currentChore, err := h.choreRepository.FindByID(txCtx, choreObjectID)
+		if err != nil {
+			return err
+		}
+		if currentChore.HouseId != command.HouseID {
+			return helpers.NewLocalizedError("chore.error.house_cannot_change")
+		}
 
-	house, err := h.membershipPolicy.RequireMember(ctx, currentChore.HouseId, command.RequesterID)
-	if err != nil {
-		return nil, err
-	}
-	if err := h.assignmentPolicy.RequireValidAssignee(ctx, house, command.AssignedTo); err != nil {
-		return nil, err
-	}
+		house, err := h.membershipPolicy.RequireMember(txCtx, currentChore.HouseId, command.RequesterID)
+		if err != nil {
+			return err
+		}
+		if err := h.assignmentPolicy.RequireValidAssignee(txCtx, house, command.AssignedTo); err != nil {
+			return err
+		}
 
-	update := bson.M{"$set": bson.M{
-		"title": command.Title, "description": command.Description, "assignedTo": command.AssignedTo,
-		"dueDate": command.DueDate, "level": command.Level, "isRecurring": command.IsRecurring,
-		"recurringInterval": command.RecurringInterval,
-	}, "$inc": bson.M{"version": 1}}
-	var updatedChore entities.Chore
-	err = h.choreRepository.Collection().FindOneAndUpdate(ctx, bson.M{
-		"_id": choreObjectID, "version": currentChore.Version,
-	}, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedChore)
-	if err == mongo.ErrNoDocuments {
-		return nil, helpers.NewConflictError("chore.error.concurrent_update")
-	}
+		now := time.Now()
+		failedChore, failed, err := failChoreIfDue(
+			txCtx, h.choreRepository, h.statusHistoryRepository, h.workflowPolicy, currentChore, now,
+		)
+		if err != nil {
+			return err
+		}
+		if failed {
+			updatedChore = failedChore
+			return nil
+		}
+
+		update := bson.M{"$set": bson.M{
+			"title": command.Title, "description": command.Description, "assignedTo": command.AssignedTo,
+			"dueDate": command.DueDate, "level": command.Level, "isRecurring": command.IsRecurring,
+			"recurringInterval": command.RecurringInterval,
+		}, "$inc": bson.M{"version": 1}}
+		var result entities.Chore
+		err = h.choreRepository.Collection().FindOneAndUpdate(txCtx, bson.M{
+			"_id": choreObjectID, "version": currentChore.Version,
+		}, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&result)
+		if err == mongo.ErrNoDocuments {
+			return helpers.NewConflictError("chore.error.concurrent_update")
+		}
+		if err != nil {
+			return err
+		}
+		failedChore, failed, err = failChoreIfDue(
+			txCtx, h.choreRepository, h.statusHistoryRepository, h.workflowPolicy, &result, now,
+		)
+		if err != nil {
+			return err
+		}
+		if failed {
+			updatedChore = failedChore
+			return nil
+		}
+		updatedChore = &result
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +133,7 @@ func (h *UpdateChoreHandler) Handle(ctx context.Context, command UpdateChoreComm
 	if err != nil {
 		return nil, err
 	}
-	response := dtos.ChoreToResponseModelWithReview(updatedChore, histories, votes)
+	response := dtos.ChoreToResponseModelWithReview(*updatedChore, histories, votes)
 	return &response, nil
 }
 

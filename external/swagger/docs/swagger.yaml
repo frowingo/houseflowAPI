@@ -30,12 +30,14 @@ definitions:
     - 1
     - 2
     - 3
+    - 4
     type: integer
     x-enum-varnames:
     - Draft
     - Progress
     - InTest
     - Completed
+    - Failed
   houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_GameCatalogEntryModel:
     properties:
       data:

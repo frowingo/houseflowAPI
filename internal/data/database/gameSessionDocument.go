@@ -39,10 +39,13 @@ type gameSessionDocument struct {
 	Rules           gameSessionRulesDocument `bson:"rules"`
 	// ConfigVersion and Settings are the game config frozen at creation;
 	// sessions written by an older release have neither.
-	ConfigVersion     int64                       `bson:"configVersion,omitempty"`
-	Settings          bson.M                      `bson:"settings,omitempty"`
-	GameState         bson.M                      `bson:"gameState,omitempty"`
-	TurnDeadline      *time.Time                  `bson:"turnDeadline,omitempty"`
+	ConfigVersion int64      `bson:"configVersion,omitempty"`
+	Settings      bson.M     `bson:"settings,omitempty"`
+	GameState     bson.M     `bson:"gameState,omitempty"`
+	TurnDeadline  *time.Time `bson:"turnDeadline,omitempty"`
+	// LobbyState is set only for games with lobby intents; an older release
+	// neither writes nor reads it.
+	LobbyState        bson.M                      `bson:"lobbyState,omitempty"`
 	Players           []gameSessionPlayerDocument `bson:"players"`
 	CreatedBy         string                      `bson:"createdBy"`
 	CreatedAt         time.Time                   `bson:"createdAt"`
@@ -81,6 +84,7 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 	// A module's state is a JSON object; storing it as a subdocument keeps it
 	// readable. Its key order is not preserved, its content is.
 	gameState, _ := jsonDocument(snapshot.GameState)
+	lobbyState, _ := jsonDocument(snapshot.LobbyState)
 	activeKey := ""
 	if !isTerminalSession(snapshot.State) {
 		activeKey = activeSessionKey(snapshot.HouseID, snapshot.GameKey)
@@ -102,6 +106,7 @@ func gameSessionDocumentFromSnapshot(snapshot gameDomain.SessionSnapshot) gameSe
 		Settings:          settings,
 		GameState:         gameState,
 		TurnDeadline:      optionalTime(snapshot.TurnDeadline),
+		LobbyState:        lobbyState,
 		Players:           players,
 		CreatedBy:         snapshot.CreatedBy,
 		CreatedAt:         snapshot.CreatedAt,
@@ -152,6 +157,7 @@ func (document gameSessionDocument) snapshot() gameDomain.SessionSnapshot {
 		Settings:          documentJSON(document.Settings),
 		GameState:         documentJSON(document.GameState),
 		TurnDeadline:      dereferenceTime(document.TurnDeadline),
+		LobbyState:        documentJSON(document.LobbyState),
 		Players:           players,
 		CreatedBy:         document.CreatedBy,
 		CreatedAt:         document.CreatedAt,

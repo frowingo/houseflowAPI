@@ -77,10 +77,7 @@ func (p *WorkflowPolicy) ApplyReview(
 		chore.CompletedAt = time.Time{}
 		updater := reviewerID
 		if chore.ReviewRound >= maxReviewRounds {
-			chore.Status = entities.Completed
-			chore.IsCompleted = true
-			chore.CompletedBy = systemUpdater
-			chore.CompletedAt = now
+			markFailed(chore)
 			updater = systemUpdater
 		}
 		return ReviewOutcome{
@@ -103,6 +100,26 @@ func (p *WorkflowPolicy) ApplyReview(
 		HistoryStatus:  entities.Completed,
 		HistoryUpdater: reviewerID,
 	}
+}
+
+// ApplyDeadline marks a chore as failed once its due date is reached. A chore
+// completed strictly before its due date remains completed permanently.
+func (p *WorkflowPolicy) ApplyDeadline(chore *entities.Chore, now time.Time) bool {
+	if chore.Status == entities.Failed || chore.DueDate.IsZero() || now.Before(chore.DueDate) {
+		return false
+	}
+	if chore.Status == entities.Completed && !chore.CompletedAt.IsZero() && chore.CompletedAt.Before(chore.DueDate) {
+		return false
+	}
+	markFailed(chore)
+	return true
+}
+
+func markFailed(chore *entities.Chore) {
+	chore.Status = entities.Failed
+	chore.IsCompleted = false
+	chore.CompletedBy = ""
+	chore.CompletedAt = time.Time{}
 }
 
 func nextStatus(current entities.ChoreStatus) (entities.ChoreStatus, bool) {

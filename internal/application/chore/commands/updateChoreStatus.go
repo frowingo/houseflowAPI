@@ -122,13 +122,23 @@ func (h *UpdateChoreStatusHandler) Handle(ctx context.Context, command UpdateCho
 			if currentChore.HouseId != command.HouseID {
 				return helpers.NewLocalizedError("chore.error.not_in_house", updateRequest.ChoreID)
 			}
+			now := time.Now()
+			failedChore, failed, err := failChoreIfDue(
+				txCtx, h.choreRepository, h.statusHistoryRepository, h.workflowPolicy, currentChore, now,
+			)
+			if err != nil {
+				return err
+			}
+			if failed {
+				updatedChores = append(updatedChores, *failedChore)
+				continue
+			}
 			if updateRequest.Status == entities.InTest && house.IsChoreReviewPhotoRequired && command.Photo == nil {
 				return helpers.NewLocalizedError("chore.error.review_photo_required")
 			}
 
 			previousStatus := currentChore.Status
 			previousVersion := currentChore.Version
-			now := time.Now()
 			if err := h.workflowPolicy.Advance(currentChore, updateRequest.Status, len(house.MemberIds), command.UserID, now); err != nil {
 				return err
 			}
@@ -217,7 +227,11 @@ func (h *UpdateChoreStatusHandler) uploadReviewPhoto(ctx context.Context, comman
 	if currentChore.HouseId != command.HouseID {
 		return "", helpers.NewLocalizedError("chore.error.not_in_house", update.ChoreID)
 	}
-	if err := h.workflowPolicy.Advance(currentChore, update.Status, len(house.MemberIds), command.UserID, time.Now()); err != nil {
+	now := time.Now()
+	if h.workflowPolicy.ApplyDeadline(currentChore, now) {
+		return "", helpers.NewLocalizedError("chore.error.invalid_status_transition")
+	}
+	if err := h.workflowPolicy.Advance(currentChore, update.Status, len(house.MemberIds), command.UserID, now); err != nil {
 		return "", err
 	}
 

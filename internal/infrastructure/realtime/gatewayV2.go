@@ -517,8 +517,11 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 			}
 		}
 		payload := message.Payload
-		if decoded.Move != nil {
+		switch {
+		case decoded.Move != nil:
 			payload = decoded.Move
+		case decoded.LobbyIntent != nil:
+			payload = decoded.LobbyIntent
 		}
 		if err := client.gateway.manager.Dispatch(ctx, coordinationAbstract.MessageEnvelope{MessageID: message.MessageID, RoomID: client.roomID, ActorID: client.userID, ConnectionID: client.id, Type: message.Type, Payload: payload}); err != nil {
 			return err

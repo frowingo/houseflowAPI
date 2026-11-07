@@ -77,8 +77,11 @@ type SessionSnapshot struct {
 	Settings        json.RawMessage
 	// GameState and TurnDeadline belong to turn-based games: the state its
 	// module keeps between moves and when the current turn expires.
-	GameState         json.RawMessage
-	TurnDeadline      time.Time
+	GameState    json.RawMessage
+	TurnDeadline time.Time
+	// LobbyState belongs to games with lobby intents (module.LobbyModule):
+	// the players' choices before the match, a JSON object or empty.
+	LobbyState        json.RawMessage
 	Players           []SessionPlayer
 	CreatedBy         string
 	CreatedAt         time.Time
@@ -115,6 +118,8 @@ var (
 	ErrTimestampOutOfOrder = errors.New("operation timestamp cannot be earlier than the latest session change")
 	ErrSnapshotInvalid     = errors.New("game session snapshot is invalid")
 	ErrGameStateRequired   = errors.New("game state must be a JSON object")
+	ErrLobbyStateRequired  = errors.New("lobby state must be a JSON object")
+	ErrLobbyClosed         = errors.New("game session no longer accepts lobby choices")
 )
 
 func isSupportedGameMode(mode GameMode) bool {

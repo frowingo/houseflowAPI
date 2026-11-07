@@ -42,4 +42,5 @@ const (
 	Progress  ChoreStatus = 1
 	InTest    ChoreStatus = 2
 	Completed ChoreStatus = 3
+	Failed    ChoreStatus = 4
 )

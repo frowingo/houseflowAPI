@@ -1186,3 +1186,114 @@ tanımadığı oyunun dokümanını yok sayar, bu yüzden geri alma da güvenli;
 eski sürümde kurtarılamaz ve `recoveryFailed` ile biter. Ev kısıtı (`houseIds`) ileride kademeli
 açılış için config API'sinde kalır. Çekirdek ve diğer oyunların wire formatları değişmedi.
 Migration 0053 yalnız yerelleştirme mesajı ekler.
+
+## ADR-030 — Lobi niyetleri ve oturumun `lobbyState` alanı
+
+**Durum:** Kabul edildi — 6 Kasım 2026.
+
+Faus Switch'te oyuncu lobide robot rengini seçer (`fausSwitch.selectColor`) ve herkes
+seçimleri lobide görür. Mevcut yolda bu mesaj sunucuya ulaşamıyordu: tick modülünün her niyeti
+kontrol yetkisi ister, lobide yetki yok; oda komut işleyicisi bilinmeyen komutu yalnız tur
+oyununun hamlesi sayar. Bunun için oyuna özel bir dal yerine genel bir yol eklendi. İleride
+takım, harita ya da karakter seçimi de aynı yolu kullanır.
+
+**Karar.**
+- İsteğe bağlı oyun yeteneği `module.LobbyModule`:
+  `DecodeLobbyIntent(messageType, payload)` ve
+  `ApplyLobbyIntent(session, playerID, messageType, intent)`. İlki başka türler için
+  `ErrUnsupportedIntent` döner ve tür kontrolünü yükten önce yapar; çekirdek bir mesajın lobi
+  niyeti olup olmadığını boş yükle sorarak anlar. İkincisi yeni lobi durumunu (JSON nesnesi)
+  döner; eldeki oturum görüntüsünden çalışan saf bir fonksiyondur.
+- Oturum modeline `lobbyState` (JSON nesnesi) eklendi. `GameSession.UpdateLobbyState` yalnız
+  `lobby` ve `readyWindow` aşamasında, katılmış ve ayrılmamış oyuncu için çalışır; aynı bayt
+  dizisi sürüm artırmaz, değişiklik `session.lobbyStateChanged` olayı ve sürüm artışı üretir.
+  Geri sayım başlayınca seçimler donar. Mongo'da `lobbyState`, oturum cevabında ve
+  `sessionSnapshot`'ta `lobbyState` alanı **yalnız doluyken yazılır**.
+- `ApplyLobbyIntentCommand` (CQRS) diğer oturum komutları gibi üyelik kontrolü yapar ve komut
+  makbuzuyla kalıcıdır: aynı `commandId` ile tekrar aynı sonucu verir, farklı içerikle
+  `game.error.command_id_reused`. Hatalar oyunun ad alanındadır:
+  `<gameKey>.error.not_in_lobby` (aşama ya da oyuncu uygun değil) ve
+  `<gameKey>.error.invalid_input`.
+- Gateway lobi niyetini `realtime.ready` gibi işler: kontrol yetkisi istemez, komut hız
+  sınırına tabidir, oda sahibine gider, başarıda `accepted` döner. Oda komut işleyicisi
+  oyun kaydını ve oturumun `gameKey`'ini görür; mesaj o oyunun lobi niyetiyse komutu
+  `ApplyLobbyIntentCommand`'a, değilse eskisi gibi tur hamlesine yollar.
+- Runtime'a geçiş: `PreviewParams.LobbyState` ve `RuntimeParams.LobbyState`. Önizleme ve
+  runtime aynı girdiden aynı sonucu üretir; kurtarma nihai seçimleri checkpoint'ten okur.
+
+**Gerekçe.** Seçim oturumun kalıcı durumudur: odanın sahibi değişse ya da süreç ölse de kaybolmaz
+ve her instance'ın `sessionSnapshot` yayınına kendiliğinden girer. Ayrı bir mesaj türü, ayrı
+yayın ya da oyuna özel çekirdek dalı gerekmedi. Alanın yalnız doluyken yazılması House Rockets,
+House Tanks ve Tic-Tac-Toe'nun wire formatını bayt düzeyinde korur (test edildi).
+
+**Rolling deploy ve geri alma.** Alan eklemelidir. Eski sürüm `fausSwitch`'i tanımadığı için bu
+oturumların odasını sahiplenemez. Yayın sırasında eski bir instance'ın işlediği bir oturum
+komutu (katılma, ayrılma) belgeyi `ReplaceOne` ile yazarsa `lobbyState` düşer; sonuç yalnız
+seçimlerin kaybolmasıdır, renkler katalog sırasıyla atanır. İstemci yayında olmadığı için bu
+kabul edildi. Geri almada eski sürüm alanı yok sayar.
+
+## ADR-031 — Faus Switch'te geri sarma, kırpılmış tick'te geçerlilik ve yarış sonu penceresi
+
+**Durum:** Kabul edildi — 7 Kasım 2026.
+
+Faus Switch'te oyuncunun tek girdisi flip'tir (yer çekimini değiştirir) ve bir flip'in sonucu
+robotun o anda bir raya basıp basmamasına bağlıdır. İstemci flip'i ekranda gördüğü tick ile
+gönderir (`clientTick`); mobil ağda bu tick sunucunun gerisindedir. Flip sunucunun şimdiki
+tick'inde uygulansaydı oyuncu, ekranında rayda olan robotun havada olduğu bir anda flip yapmış
+sayılır ve girdi kaybolurdu. House Rockets ve House Tanks'te girdi sürekli bir durumdur (basılı /
+bırakılmış), birkaç tick gecikme sonucu değiştirmez; burada değiştirir. Simülasyon bu yüzden
+sunucu tarafında geri sarar.
+
+**Karar.**
+- **Geri sarma penceresi 30 tick (250 ms).** Simülasyon son 32 tick'in dünyasını bir halkada
+  tutar. Flip, `clientTick` kırpılarak uygulanır: `now − 30`'dan eskiyse `now − 30`'a,
+  gelecekteyse `now`'a, yarış başlamadan önceyse 0'a, kurtarmadan sonra geri yüklenen tick'ten
+  eskiyse o tick'e. Sabit sözleşmenin parçasıdır (`maximumRewindMilliseconds`).
+- **Adım başına tek geri sarma.** Runtime 60 Hz'lik bir scheduler adımında gelen bütün
+  flip'leri toplar ve simülasyona tek batch olarak verir. Simülasyon en erken kırpılmış tick'e
+  bir kez döner, o tick'ten şimdiye kadar her tick'te önce olayları (forfeit,
+  membershipRevoked), sonra o tick'in flip'lerini (koltuk, sonra varış sırası) uygular ve
+  adımlar. Olaylar da günlükte tutulduğu için yeniden simülasyonda kaybolmaz. En erken tick
+  şimdiki tick ise geri sarma yapılmaz.
+- **Geçerlilik kırpılmış tick'te.** Robotun koşup koşmadığına ve desteğine flip'in uygulandığı
+  tick'teki dünyaya göre bakılır, şimdiki tick'e göre değil. 10 tick önce flip yapıp 5 tick önce
+  elenen oyuncunun flip'i geçerlidir ve robotu kurtarabilir. Desteksiz flip hata değil no-op'tur.
+  `fausSwitch.error.runner_finished` yalnız robot kırpılmış tick'te zaten durmuşsa döner. Her iki
+  durumda da sıra numarası işlenmiş sayılır. Yinelenen `inputSequence` hatasız kabul edilir ve
+  uygulanmaz (istemcinin yeniden gönderimi).
+- **Kontrol hakkı robot durumundan bağımsız.** Çerçeve başlığındaki `isAlive` "oyuncu yarıştan
+  çıkmadı" demektir (ADR-029 ile aynı anlam). Elenen robotun oyuncusu kontrolü ve heartbeat'ini
+  korur; kurtaran geç flip gateway'den geçer. Yarıştan yalnız oturumdan ayrılan (`forfeit`) ya da
+  evden çıkan (`membershipRevoked`) oyuncu düşer. Bağlantı kopması eleme değildir: robot girdisiz
+  koşar.
+- **Yarış sonu penceresi 30 tick.** Tick `T`'de koşan robot kalmazsa yarış hemen bitmez: geri
+  sarma penceresi kapanana kadar (`T + 30`) bir geç flip son robotu kurtarabilir. Pencere kapanınca
+  hâlâ koşan yoksa sonuç `raceComplete`'tir ve sonucun tick'i `T`'dir; süre ve sıralama `T`'deki
+  durumdan çıkar. Pencerede kurtarılan robot yarışı sürdürür. `timeLimit` 14.400. tick'te kesindir,
+  pencere beklenmez. Sonuç istemciye son elenmeden en geç 250 ms sonra ulaşır (kullanıcı kararı K2).
+- **Checkpoint halkayı yazmaz.** Checkpoint son tick'in dünyasını, kimin yarıştan çıktığını,
+  işlenmiş sıra numaralarını ve önerilen sonucu yazar. Halka ve girdi günlükleri yazılmaz; halka
+  olmadan günlükler yeniden oynatılamaz. Kurtarmadan sonra geri sarma tabanı geri yüklenen
+  tick'tir. O tick'in dünyası önceki girdileri zaten içerdiği için kayıp yoktur; kurtarma
+  aralığında gelen flip'ler eski kontrol nesliyle reddedilir (`stale_control`).
+- **`runtimeOverloaded` eşiği pencereyle aynı (250 ms).** Bir `Advance` en fazla 30 tick
+  kapsayabilir: daha uzun bir scheduler boşluğunda o boşluğa ait flip'ler halkadan düşmüş olur ve
+  yarış adil sürdürülemez. Bu yüzden yarış `runtimeOverloaded` ile iptal edilir.
+
+**Gerekçe.** Tek geri sarma, her flip için ayrı geri sarmanın maliyetini adım başına bire indirir.
+`BenchmarkFausSwitchSession8` (8 robot, robot başına 20 flip/sn, her flip 0–30 tick geç; neredeyse
+her adım geri sarar) adımı ~30 µs ölçtü: tick başına ~15 µs, oda başına bir çekirdeğin ~%0,2'si.
+Pencerenin tamamını kapsayan en kötü adım (30 tick + 8 robotun 29 tick geriye flip'i) ~80 µs;
+250 ms eşiğine göre üç bin katı aşkın pay var. Eşiği tetikleyecek olan hesap maliyeti değil,
+sürecin duraklamasıdır (ayrıntı: `multiplayerBaseline.md` §11). Değerler bit düzeyinde Swift
+referans motoruyla aynı olduğu için geri sarma sonucu istemcinin yerel tahminiyle örtüşür.
+
+**Sonuçları.**
+- Simülasyon zaman bilmez; geri sarma ve yarış sonu penceresi runtime olmadan test edilir
+  (`simulation_test.go`). 20 tick geç gelen flip'in zamanında gelenle aynı dünyayı ürettiği,
+  elenmeden önce yapılmış flip'in robotu kurtardığı ve pencerede kurtarılan yarışın sürdüğü
+  testlidir.
+- Sözleşmede yeni bir hata kodu yok; `runner_finished` sebepsiz bir uygulama hatasıdır, çekirdeğin
+  `player_eliminated` eşlemesine düşmez.
+- Rolling deploy'a etkisi yok: geri sarma tamamen oda sahibinin süreç içi durumudur, wire formatı
+  ve checkpoint şeması bundan bağımsızdır.

@@ -70,6 +70,17 @@ func (h *ReviewChoreHandler) Handle(ctx context.Context, command ReviewChoreComm
 		if currentChore.AssignedTo == command.ReviewerID {
 			return helpers.NewLocalizedError("chore.error.assignee_cannot_review_own")
 		}
+		now := time.Now()
+		failedChore, failed, err := failChoreIfDue(
+			txCtx, h.choreRepository, h.statusHistoryRepository, h.workflowPolicy, currentChore, now,
+		)
+		if err != nil {
+			return err
+		}
+		if failed {
+			reviewedChore = failedChore
+			return nil
+		}
 
 		var lockedChore entities.Chore
 		err = h.choreRepository.Collection().FindOneAndUpdate(txCtx, bson.M{
@@ -84,7 +95,6 @@ func (h *ReviewChoreHandler) Handle(ctx context.Context, command ReviewChoreComm
 			return err
 		}
 
-		now := time.Now()
 		_, err = h.reviewVoteRepository.Insert(txCtx, entities.ChoreReviewVote{
 			ChoreId: command.ChoreID, HouseId: lockedChore.HouseId, ReviewRound: lockedChore.ReviewRound,
 			ReviewerId: command.ReviewerID, IsApproved: command.IsApproved, CreatedOn: now,

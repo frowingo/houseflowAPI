@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/swagger"
 
 	docs "houseflowApi/external/swagger/docs" // Swagger docs
+	choreApplication "houseflowApi/internal/application/chore"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -119,7 +120,7 @@ func runAPI() error {
 		controllers.ReadinessController(coordinationReadiness(coordinator)),
 	)
 
-	realtimeService, appEventService, err := SetupRoutes(
+	realtimeService, appEventService, choreDeadlineService, err := SetupRoutes(
 		rootCtx,
 		app,
 		mongoClient,
@@ -134,6 +135,8 @@ func runAPI() error {
 	}
 	defer closeRealtimeService(realtimeService)
 	defer closeAppEventService(appEventService)
+	choreDeadlineService.Start(rootCtx)
+	defer closeChoreDeadlineService(choreDeadlineService)
 	go observeRealtime(rootCtx, coordinator, realtimeService, appEventService)
 
 	listenError := make(chan error, 1)
@@ -188,6 +191,17 @@ func closeAppEventService(service *appEvents.Service) {
 	defer cancel()
 	if err := service.Close(ctx); err != nil && err != context.Canceled {
 		log.Printf("app event service shutdown failed: %v", err)
+	}
+}
+
+func closeChoreDeadlineService(service *choreApplication.DeadlineService) {
+	if service == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	if err := service.Close(ctx); err != nil && err != context.Canceled {
+		log.Printf("chore deadline service shutdown failed: %v", err)
 	}
 }
 

@@ -21,6 +21,11 @@ HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseRocketsLoadMatrix
 
 # House Tanks: 8 oyunculu oda, ağır atış altında frame bütçesi (20 ve 30 Hz)
 HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseTanksFrameBudgetUnderFire ./tests/
+
+# Faus Switch: 8 robotlu oda, adım ve en kötü geri sarma (7200 adım = 120 sn yarış)
+go test -run '^$' -bench 'FausSwitch' -benchtime 7200x ./internal/application/game/games/fausSwitch/
+# Faus Switch: snapshot boyutu ve bant, 20 Hz × 8 izleyici (120 sn)
+HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestFausSwitchSnapshotBandwidth ./internal/application/game/games/fausSwitch/
 ```
 
 ## 1. Kalıcı veri — 4 oyunculu normal maç
@@ -243,3 +248,57 @@ olduğu için mermiler daha erken düşüyor; aynı anda en fazla mermi 67'den 5
 
 En büyük frame'de `projectiles` 7,9 KB (%51). Sonuç değişmedi: adım süresi bütçenin çok altında,
 20 Hz varsayılan kalıyor.
+
+## 11. Faus Switch oda maliyeti — 7 Kasım 2026
+
+`BenchmarkFausSwitchSession8`: 8 robot, hepsi bağlı ve kontrol ediyor. Her robot hız sınırında
+(20 flip/sn, üç scheduler adımında bir) flip yapıyor; her flip'in `clientTick`'i 0–30 tick
+(0–250 ms) rastgele geride, yani neredeyse her adım geri sarıyor. Bir op bir 60 Hz scheduler
+adımıdır (2 fizik tick'i): `Submit`'ler, heartbeat'ler, `Advance` ve 20 Hz'de bir frame. Bir robot
+durunca yarış yenisiyle değiştirilir (kurulum ölçüme girmez), böylece her ölçülen adımda 8 robot
+koşar. `cpu%`, odanın gerçek zamanda bir çekirdekten aldığı paydır. Saat sanal, süre gerçek.
+
+| | Değer |
+|---|---|
+| Scheduler adımı (2 tick) | 30–34 µs |
+| Tick başına | 15–17 µs |
+| Tick başına ayırma | 1,9 (frame inşası, 20 Hz) |
+| Oda başına CPU | bir çekirdeğin %0,18–0,20'si |
+| En kötü adım: 30 tick + 8 robotun 29 tick geriye flip'i (`BenchmarkFausSwitchCatchUpStep`) | ~80 µs |
+| Frame'siz adımda ayırma | 0 (`TestRuntimeStepBetweenFramesDoesNotAllocate`) |
+
+Sürenin ~%70'i Swift'le bit düzeyinde aynı fizik adımında (`stepRobot`, `resolveContacts`,
+temas kutuları). Planın kaba tahmini (oda başına %2–4) karşılaştırma noktası olarak fazla
+temkinliymiş; geri sarma birleştirmesi (adım başına tek geri sarma) maliyeti adımda tutuyor.
+
+**`runtimeOverloaded` eşiği.** Eşik 250 ms'lik scheduler boşluğudur (ADR-031: geri sarma
+penceresi). En kötü adım 80 µs olduğu için hesap maliyeti eşiğe yaklaşamaz; 60 Hz adım bütçesi
+16,7 ms'nin %0,2'si kullanılıyor. Eşiği tetikleyebilecek tek şey sürecin duraklamasıdır
+(planlayıcının iş parçacığını aç bırakması, makinenin askıya alınması). F6 entegrasyon testlerinde
+(2 instance + çocuk süreçte sahip + Mongo + Redis aynı dizüstünde) kurtarma testinin 13 koşusundan birinde,
+kurtarmadan ~1 sn sonra bir yarış bu yüzden iptal oldu ve tekrar üretilemedi. Aynı eşik House
+Rockets ve House Tanks'te de var; üretimde `runtime_overloaded` metriğinden izlenir.
+
+**Bant: `TestFausSwitchSnapshotBandwidth`.** Aynı yük 120 sn boyunca. Her frame room event
+olarak kodlanıyor, `PrepareFrame` ile bir kez çözülüp 8 izleyici için render ediliyor. Sıkıştırılmış
+boyut mesaj başına permessage-deflate (BestSpeed, context takeover yok). Gerçek oturumda oyuncu
+kimliği 24 karakterlik ObjectID ve görünen ad daha uzun olduğundan boyut biraz büyür.
+
+| | Değer |
+|---|---|
+| Yayın hızı | 20,1 frame/sn |
+| Room event ortalama / max | 3.556 / 3.711 B |
+| Bağlantı başına wire ortalama / max | 3.260 / 3.415 B |
+| Sıkıştırılmış frame ortalaması | 717 B (%78 küçük) |
+| Bağlantı başına bant | 64 KB/s ham, 14 KB/s sıkıştırılmış |
+| Oda çıkışı, 8 izleyici | 511 KB/s ham, ~112 KB/s sıkıştırılmış |
+| Fanout, 8 izleyici | 166–212 µs/frame |
+
+- **Bant House Rockets düzeyinde** (§8: 3,8 KB/frame), House Tanks'in ağır atışının dörtte biri.
+  Robot başına ~400 B: konum, hız, yer çekimi, boost/yavaşlatma, kullanılmış pad listeleri.
+- **Gateway fanout'u oda CPU'sunu geçiyor.** 20 Hz × ~0,19 ms ≈ bir çekirdeğin %0,4'ü; runtime'ın
+  iki katı. Payın çoğu frame'in instance başına bir kez JSON çözülmesi ve snapshot'ın bir kez
+  kodlanmasıdır; izleyici başına iş yalnız `controlGeneration` eklemesi.
+- **20 Hz yeterli.** Her istemci aynı motoru yerelde çalıştırdığı için snapshot ara değer için
+  değil düzeltme için gelir; 30 Hz bandı %50 artırır, kazanç yok.
+

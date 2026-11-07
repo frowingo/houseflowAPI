@@ -65,6 +65,13 @@ func (registry *Registry) Turn(gameKey string) (TurnModule, bool) {
 	return turn, exists
 }
 
+// Lobby returns the lobby capability of a registered game that has one.
+func (registry *Registry) Lobby(gameKey string) (LobbyModule, bool) {
+	game, _ := registry.Game(gameKey)
+	lobby, exists := game.(LobbyModule)
+	return lobby, exists
+}
+
 // Games lists every registered module ordered by game key.
 func (registry *Registry) Games() []Game {
 	if registry == nil {
