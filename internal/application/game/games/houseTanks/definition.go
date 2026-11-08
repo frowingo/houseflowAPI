@@ -174,9 +174,19 @@ const (
 	ColorIvory   Color = "ivory"
 )
 
-// PlayerColors are assigned in seat order.
+// PlayerColors is the catalog order: a player without a valid lobby claim
+// gets the first color nobody holds, in this order (seat order when nobody
+// claims one).
 func PlayerColors() []Color {
 	return []Color{ColorPlum, ColorOrange, ColorBlue, ColorOlive, ColorMustard, ColorCrimson, ColorSky, ColorIvory}
+}
+
+func (color Color) Valid() bool {
+	switch color {
+	case ColorPlum, ColorOrange, ColorBlue, ColorOlive, ColorMustard, ColorCrimson, ColorSky, ColorIvory:
+		return true
+	}
+	return false
 }
 
 type MapID string

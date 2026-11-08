@@ -170,6 +170,10 @@ func TestHouseTanksClientContractFixtures(t *testing.T) {
 				if decoded.Ping == nil || decoded.Ping.PingID != "clock1" {
 					t.Fatal("missing ping correlation")
 				}
+			case "selectColor":
+				if string(decoded.LobbyIntent) != `{"color":"sky"}` || decoded.Intent != nil {
+					t.Fatalf("select color = %+v", decoded)
+				}
 			}
 		})
 	}
@@ -257,9 +261,11 @@ func TestHouseTanksServerContractFixtures(t *testing.T) {
 				roundTripHouseRocketsMessage[dtos.RealtimePongModel](t, entry.Message)
 			case "accepted":
 				roundTripHouseRocketsMessage[struct{}](t, entry.Message)
+			case "sessionSnapshot":
+				roundTripHouseRocketsMessage[dtos.GameSessionResponseModel](t, entry.Message)
 			case "controlGranted":
 				roundTripHouseRocketsMessage[houseTanks.HouseTanksControlGrantedModel](t, entry.Message)
-			case "countdown", "roundCountdown", "roundPlaying", "roundReady", "recovering", "ended":
+			case "countdown", "claimedColorsCountdown", "roundCountdown", "roundPlaying", "roundReady", "recovering", "ended":
 				roundTripHouseRocketsMessage[houseTanks.HouseTanksSnapshotModel](t, entry.Message)
 				var message realtime.V2ServerMessage[houseTanks.HouseTanksSnapshotModel]
 				if err := json.Unmarshal(entry.Message, &message); err != nil {
@@ -306,12 +312,18 @@ func assertHouseTanksSnapshotPolicy(t *testing.T, snapshot houseTanks.HouseTanks
 	if len(snapshot.Players) != len(snapshot.Tanks) || len(snapshot.Players) < houseTanks.MinimumPlayers || len(snapshot.Players) > houseTanks.MaximumPlayers {
 		t.Fatal("every seat has exactly one tank")
 	}
-	colors := houseTanks.PlayerColors()
+	// Colors are fixed for the match: claimed in the lobby or, unclaimed, the
+	// first free catalog color by seat; never two tanks in one color.
+	colors := map[houseTanks.Color]bool{}
 	generations := 0
 	for index, player := range snapshot.Players {
-		if player.Seat != index || player.Color != colors[index] || snapshot.Tanks[index].PlayerID != player.PlayerID {
-			t.Fatal("players, tanks and colors follow seat order")
+		if player.Seat != index || snapshot.Tanks[index].PlayerID != player.PlayerID {
+			t.Fatal("players and tanks follow seat order")
 		}
+		if !player.Color.Valid() || colors[player.Color] {
+			t.Fatalf("color %q is unknown or taken twice", player.Color)
+		}
+		colors[player.Color] = true
 		if player.Armor < 0 || player.Armor > houseTanks.ArmorPerRound || player.IsAlive != (player.Armor > 0) || player.RoundsWon > houseTanks.RoundWinsNeeded {
 			t.Fatal("armor and round wins out of range")
 		}

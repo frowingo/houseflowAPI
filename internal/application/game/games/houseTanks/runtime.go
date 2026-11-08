@@ -27,10 +27,13 @@ var (
 	ErrRuntimeFinished  = module.ErrFinished
 )
 
-// RuntimePlayer is a frozen roster entry.
+// RuntimePlayer is a frozen roster entry. Color is fixed when the match
+// starts (assignColors) and checkpointed with the roster; a checkpoint of an
+// older release has none and keeps the seat colors.
 type RuntimePlayer struct {
 	PlayerID    string `json:"playerId"`
 	DisplayName string `json:"displayName"`
+	Color       Color  `json:"color,omitempty"`
 }
 
 // RuntimeSession identifies the match a runtime plays.
@@ -172,6 +175,11 @@ func newRuntime(settings Settings, session RuntimeSession, epoch int64, now time
 	if epoch <= 0 || now.IsZero() || baseSequence < 0 || settings.Validate() != nil || !validID(session.HouseID) || session.StartedAt.IsZero() {
 		return nil, ErrInvalidMatch
 	}
+	roster, colored := rosterWithColors(session.Players)
+	if !colored {
+		return nil, ErrInvalidMatch
+	}
+	session.Players = roster
 	ids := make([]string, len(session.Players))
 	for index, player := range session.Players {
 		ids[index] = player.PlayerID

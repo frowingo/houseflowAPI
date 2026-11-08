@@ -1,7 +1,8 @@
 # FauseTanks online — istemci entegrasyon belgesi
 
 Tarih: 24 Ekim 2026 · Hazırlayan: backend · Hedef: istemci (mobil) agent'ı · Sözleşme:
-`houseTanks.v2`, protocol `2`, harita kataloğu `2` (25 Ekim: arena 872 × 400, §2.1)
+`houseTanks.v2`, protocol `2`, harita kataloğu `2` (25 Ekim: arena 872 × 400, §2.1; 8 Kasım:
+lobide tank rengi seçimi, §2.2)
 
 Bu belge istemci agent'ına doğrudan verilir. Backend tamamlandı (T0–T6, ayrıntılar
 `houseTanksBackendPlan.md`). Bu belgede, Go motorunun ve fixture'ların referans olduğu
@@ -21,7 +22,7 @@ Sınırlar:
   ve fixture arasında uyuşmazlık görülürse sessizce yeni alan, uç nokta ya da kural
   üretilmez; somut fark (dosya, alan, senaryo, beklenen/gerçek değer) backend'e bildirilir.
 - Kanonik kaynaklar backend deposudadır: bu belge, `houseTanksBackendPlan.md`,
-  `architecture-decisions.md` (ADR-028, ADR-029) ve §2'deki fixture'lar. İstemci
+  `architecture-decisions.md` (ADR-028, ADR-029, ADR-030) ve §2'deki fixture'lar. İstemci
   deposundaki kopyalar §2'deki sha256 ile eşitlenmeden kullanılmaz.
 - Lobi, zarf, heartbeat, sonuç ve rövanş mekanizmaları House Rockets'le aynıdır
   (`houseRocketsMultiplayerPlan.md` §5–7). Ortak transport katmanı yeniden yazılmaz,
@@ -53,7 +54,7 @@ sonra hash doğrulanır, dosyalar elle düzenlenmez:
 |---|---|---|---|
 | `houseTanksMaps.json` | 21.385 B | `fa8d64f37fb35c2e0c737325ac4e5c49acaf038438557a0bffe0a26a131681b9` | Harita kataloğu (5 harita) |
 | `houseTanksSimulation.json` | 197.896 B | `4f7b5ce53fd81cf3ef6cf46c127d17ade68d73450699a3e0baf8c3400e19f712` | Sabitler + 17 adım adım fizik senaryosu |
-| `houseTanksProtocol.json` | 46.309 B | `f0efda9feca82f4cecdce4ebad058a734d77e56e9ad05cfe87ffa4201dab4289` | Kurallar, tüm mesaj örnekleri, geçersiz mesajlar |
+| `houseTanksProtocol.json` | 53.889 B | `93af5513e2d636a0aae8d32378c900cb1d4127a214c823b3f3f4404e919931b6` | Kurallar, tüm mesaj örnekleri, geçersiz mesajlar |
 
 ```bash
 shasum -a 256 houseTanksMaps.json houseTanksSimulation.json houseTanksProtocol.json
@@ -90,6 +91,21 @@ uygulandı. Yeni fixture'larla Faz 0 eşitlik testi yeniden çalıştırılır.
     tickte çarpıyor, iki checkpoint yine çarpmanın hemen öncesi ve sonrası.
 - `houseTanksProtocol.json`'daki snapshot örneklerinin konumları yeni arenaya oranlandı
   (iki ondalık). Wire şekli değişmedi.
+
+### 2.2. Lobide tank rengi seçimi (8 Kasım 2026)
+
+Faus Switch'teki robot rengi seçimi FauseTanks'e de eklendi; aynı genel yol kullanılır
+(ADR-030). Değişiklik eklemelidir: `contractRevision`, `protocolVersion` ve harita kataloğu
+aynı kaldı. Renk seçmeyen oturumlarda snapshot'lar öncekiyle bayt düzeyinde aynıdır.
+
+- Yeni lobi niyeti `houseTanks.selectColor`, payload `{"color": "<renk>"}` (§3.3).
+- Oturumun `lobbyState` alanı `{"colors": {"<playerId>": "<renk>"}}` biçimindedir. Her
+  `gameSession.snapshot` (sessionSnapshot) bunu taşır; alan yalnız doluyken yazılır.
+- Maçın nihai renkleri geri sayım başlarken atanır ve maç boyunca sabittir (§3.4 `color`).
+- Yalnız `houseTanksProtocol.json` değişti: `selectColor` istemci mesajı,
+  `lobbyState.colors` dolu bir `sessionSnapshot`, seçilmiş renklerin taşındığı
+  `claimedColorsCountdown` ve `selectColor*` geçersiz mesajlar eklendi. Harita ve
+  simülasyon fixture'ları aynı (renk fizikte yer almaz).
 
 Sürümler birbirinden bağımsızdır:
 
@@ -167,6 +183,7 @@ aynıdır. Tanklara özgü olanlar:
 | `houseTanks.press` | `{controlGeneration, inputSequence, pressed, clientTick, heading}` | Tek düğmeye basma (`true`) / bırakma (`false`). Yalnız değişimde gönderilir. |
 | `houseTanks.roundReady` | `{controlGeneration, ready}` | Yalnız `roundPhase = roundReady`'de. |
 | `houseTanks.resync` | `{}` | Tam durum ve gerekirse yeniden bind ister. |
+| `houseTanks.selectColor` | `{color}` | Lobi niyeti: yalnız oturum `lobby` ya da `readyWindow` aşamasındayken, katılmış oyuncudan. Kontrol neslini istemez. |
 
 - `controlGeneration`: son geçerli `houseTanks.controlGranted`'daki değer. Opak metin.
 - `inputSequence`: tamsayı, ≥ 1, kontrol nesli içinde kesin artan (boşluk serbest). Yeni
@@ -174,6 +191,18 @@ aynıdır. Tanklara özgü olanlar:
 - `clientTick`: basıldığı anda istemcinin **ekranda gösterdiği** dünya tick'i (≥ 0,
   tamsayı). `heading`: o anda ekranda görünen namlu açısı (radyan, sonlu sayı). İkisi
   yalnız gecikme telafisi içindir (§4.3).
+- `color` (`selectColor`): katalogdaki sekiz renkten biri (`plum`, `orange`, `blue`,
+  `olive`, `mustard`, `crimson`, `sky`, `ivory`). Bilinmeyen renk, eksik ya da `null` alan,
+  fazla alan `houseTanks.error.invalid_input` alır. Başarıda `gameSession.commandAccepted`
+  gelir; seçimin sonucu her zaman sıradaki sessionSnapshot'ın `lobbyState`'inden okunur:
+  - Renk boştaysa (ya da zaten oyuncununsa) oyuncuya geçer; oyuncunun önceki rengi boşalır.
+  - Renk başkasındaysa hiçbir şey değişmez, niyet yine `accepted` olur (lobi değişmez).
+  - Odadan ayrılan oyuncunun rengi boşalır.
+  - Geri sayım başlayınca seçimler donar; sonraki niyet `houseTanks.error.not_in_lobby` alır.
+  - "Hazır olan oyuncu rengini değiştiremez" kuralı istemcidedir; backend `readyWindow`
+    boyunca hazır oyuncunun seçimini de kabul eder (Faus Switch'le aynı).
+  - Rolling deploy sırasında eski sürüm bu mesajı tanımaz (`realtime.error.invalid_command`);
+    o kısa aralıkta seçim kaybolabilir ve renkler koltuk sırasıyla atanır.
 - Sıkı doğrulama: bilinmeyen alan, eksik alan, `null`, kesirli tamsayı, istemcinin kendi
   `playerId`'sini ya da konumunu göndermesi reddedilir. Örnekler protokol fixture'ının
   `invalidClientMessages` bölümündedir; istemci bunları hiçbir zaman üretmemelidir.
@@ -217,8 +246,12 @@ Oyuncu alanlarının anlamı:
 - `controlGeneration`: yalnız **izleyen bağlantının kendi** oyuncusunda, faz `playing`
   iken ve grant o bağlantıya aitken dolu; diğer herkeste `null`. Turda tankı ölen oyuncu
   da kendi neslini görür, çünkü oy vermesi gerekir.
-- `color`: koltuktan gelir (`plum`, `orange`, `blue`, `olive`, `mustard`, `crimson`, `sky`,
-  `ivory` sırasıyla). `seat` başlangıç noktasını da belirler.
+- `color`: tankın maç boyunca sabit rengi. Geri sayım başlarken koltuk sırasıyla atanır:
+  lobide renk seçen oyuncu seçtiği rengi alır (aynı renk iki talepte görünürse önceki koltuk
+  kazanır); kalanlar katalog sırasındaki (`plum`, `orange`, `blue`, `olive`, `mustard`,
+  `crimson`, `sky`, `ivory`) ilk boş rengi alır. Hiç seçim yoksa sonuç eskisi gibi koltuk
+  sırasıdır. Önizleme (`phase = countdown`), maç ve kurtarma aynı renkleri gösterir; renk
+  koltuktan türetilmez, snapshot'tan okunur. `seat` başlangıç noktasını belirler.
 - `powerUpExpiresAtTick` / `token.expiresAtTick`: kalan süre `(expiresAtTick − tick) / 120`.
 
 **`houseTanks.result`**: kalıcı sonuç (§4.6).
@@ -274,7 +307,8 @@ türetilmez.
 | `houseTanks.error.player_eliminated` | Tankı bu turda ölü oyuncunun `press`'i; ayrılmış oyuncu | Tur içi ölüm: "bu turda öldün", maçtan elenme değil. |
 | `houseTanks.error.control_unavailable` | Oyuncu maçta yok | Kontrol yok; izleyici olarak göster. |
 | `houseTanks.error.not_running` | Maç bitmiş ya da başlamamış | Girdiyi kes. |
-| `houseTanks.error.invalid_input` | Yanlış aşamada oy, bozuk payload | Hata kaydı; kullanıcıya gösterme. |
+| `houseTanks.error.invalid_input` | Yanlış aşamada oy, bozuk payload, katalogda olmayan renk | Hata kaydı; kullanıcıya gösterme. |
+| `houseTanks.error.not_in_lobby` | `selectColor` geri sayımdan sonra ya da oturumda olmayan oyuncudan | Renk seçicisini kilitle; seçimler artık sabit. |
 | `realtime.error.rate_limited` | Saniyede 30 `press`'ten fazla ya da oyuncunun girdi kuyruğu dolu | Hızı düşür. |
 | `realtime.error.unavailable` (`retryable: true`) | Sahip geçici meşgul | Kısa backoff ile tekrar. |
 
@@ -282,7 +316,8 @@ Sunucu kuyruğunda 1 sn'den uzun bekleyen basış hata üretmeden atılır. Bu y
 tankın gerçek durumunu (`isDriving`, `fired` olayı) snapshot'tan okur, basışın uygulandığını varsaymaz.
 
 HTTP tarafı (yerelleştirilmiş, 0053 migration'ı): `houseTanks.error.result_not_found`,
-`result_conflict`, `invalid_result`, `finalizing`, `runtime_completion_required`.
+`result_conflict`, `invalid_result`, `finalizing`, `runtime_completion_required`. Lobi
+niyetinin `not_in_lobby` ve `invalid_input` metinleri 0062 migration'ıyla yerelleştirildi.
 
 ### 3.8. Koordinat, açı ve zaman
 

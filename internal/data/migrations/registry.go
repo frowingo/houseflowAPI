@@ -96,5 +96,7 @@ func AllMigrations() []Migration {
 		// --- Faus Switch ---
 		&fausSwitchLocalizations{},
 		&fausSwitchConfig{},
+		// --- House Tanks lobby colors ---
+		&houseTanksLobbyLocalizations{},
 	}
 }
