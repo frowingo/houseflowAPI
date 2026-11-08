@@ -4,11 +4,13 @@ import "time"
 
 // FramePlayer is a seat in a frame. IsAlive is what the transport reads:
 // the player keeps control rights in the match (has not left), whatever
-// happened to the tank this round.
+// happened to the tank this round. Color is the tank's fixed color; a frame
+// of an older release has none and renders the seat color.
 type FramePlayer struct {
 	PlayerID             string       `json:"playerId"`
 	DisplayName          string       `json:"displayName"`
 	Seat                 int          `json:"seat"`
+	Color                Color        `json:"color,omitempty"`
 	IsAlive              bool         `json:"isAlive"`
 	HasLeft              bool         `json:"hasLeft"`
 	TankAlive            bool         `json:"tankAlive"`
@@ -65,7 +67,7 @@ func frameWorld(session RuntimeSession, match *Match) FrameWorld {
 	}
 	for index, player := range match.Players {
 		tank := world.Tanks[index]
-		item := FramePlayer{PlayerID: player.PlayerID, DisplayName: session.Players[index].DisplayName, Seat: player.Seat, IsAlive: !player.HasLeft, HasLeft: player.HasLeft,
+		item := FramePlayer{PlayerID: player.PlayerID, DisplayName: session.Players[index].DisplayName, Seat: player.Seat, Color: session.Players[index].Color, IsAlive: !player.HasLeft, HasLeft: player.HasLeft,
 			TankAlive: tank.Active, Armor: tank.Armor, RoundsWon: player.RoundsWon, RoundReady: player.RoundReady}
 		if effect := tank.PowerUp; effect != nil {
 			kind, expiresAt := effect.Kind, effect.ExpiresAtTick
@@ -141,13 +143,16 @@ func SnapshotForConnection(frame RuntimeFrame, playerID, connectionID string, gr
 		champion := *frame.CommittedResult.ChampionID
 		model.ChampionID = &champion
 	}
-	colors := PlayerColors()
 	for index, player := range world.Players {
 		control := RuntimePlayerControl{}
 		if index < len(frame.Controls) && frame.Controls[index].PlayerID == player.PlayerID {
 			control = frame.Controls[index]
 		}
-		item := HouseTanksPlayerModel{PlayerID: player.PlayerID, DisplayName: player.DisplayName, Seat: player.Seat, Color: colors[player.Seat%len(colors)], Armor: player.Armor,
+		color := player.Color
+		if !color.Valid() {
+			color = seatColor(player.Seat)
+		}
+		item := HouseTanksPlayerModel{PlayerID: player.PlayerID, DisplayName: player.DisplayName, Seat: player.Seat, Color: color, Armor: player.Armor,
 			RoundsWon: player.RoundsWon, IsAlive: player.TankAlive, Connected: control.Connected, HasLeft: player.HasLeft, RoundReady: player.RoundReady, PowerUp: player.PowerUp,
 			PowerUpExpiresAtTick: player.PowerUpExpiresAtTick, LastProcessedInputSequence: control.LastProcessedInputSequence}
 		if player.IsAlive && frame.Phase == PhasePlaying && grant != nil && grant.RuntimeEpoch == frame.RuntimeEpoch && grant.PlayerID == playerID &&

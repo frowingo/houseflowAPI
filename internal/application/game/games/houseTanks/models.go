@@ -1,11 +1,14 @@
 package houseTanks
 
 import (
+	"encoding/json"
+	"errors"
 	"math"
 	"strings"
 	"time"
 
 	"houseflowApi/internal/application/game/module"
+	"houseflowApi/internal/helpers"
 )
 
 // HouseTanksPressModel presses (true) or releases (false) the single button.
@@ -32,6 +35,25 @@ type HouseTanksRoundReadyModel struct {
 
 func (model HouseTanksRoundReadyModel) Valid() bool {
 	return validControlGeneration(model.ControlGeneration)
+}
+
+// HouseTanksSelectColorModel is the lobby claim of a tank color.
+type HouseTanksSelectColorModel struct {
+	Color Color `json:"color"`
+}
+
+func (model HouseTanksSelectColorModel) Valid() bool { return model.Color.Valid() }
+
+// DecodeSelectColor strictly decodes a houseTanks.selectColor payload.
+func DecodeSelectColor(payload json.RawMessage) (HouseTanksSelectColorModel, error) {
+	var selection HouseTanksSelectColorModel
+	if err := helpers.DecodeStrictObject(payload, &selection, nil, "color"); err != nil {
+		return HouseTanksSelectColorModel{}, errors.Join(ErrInvalidInput, err)
+	}
+	if !selection.Valid() {
+		return HouseTanksSelectColorModel{}, ErrInvalidInput
+	}
+	return selection, nil
 }
 
 func validControlGeneration(generation string) bool {

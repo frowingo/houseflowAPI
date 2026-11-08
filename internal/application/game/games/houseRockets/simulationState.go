@@ -98,13 +98,16 @@ func RestoreSimulation(state SimulationState) (*Simulation, error) {
 	for index := 0; index < state.NextGateIndex; index++ {
 		simulation.addCourseEntry(index)
 	}
-	colors, seen, aliveCount, aliveID := PlayerColors(), make(map[string]bool, len(state.Players)), 0, ""
+	// Colors come from the lobby (assignColors): any catalog color, each held
+	// by one player. A checkpoint of the release before lobby colors has the
+	// seat colors, which pass the same check.
+	seen, colorTaken, aliveCount, aliveID := make(map[string]bool, len(state.Players)), make(map[Color]bool, len(state.Players)), 0, ""
 	for index, player := range state.Players {
-		if !validPlayerState(player, state.Tick, travelLimit) || seen[player.PlayerID] || player.Color != colors[index] ||
+		if !validPlayerState(player, state.Tick, travelLimit) || seen[player.PlayerID] || !player.Color.Valid() || colorTaken[player.Color] ||
 			(player.IsAlive && (IsBehindCamera(player.WorldX, state.CameraX) || player.WorldX-LeaderAnchorX > state.CameraX+1e-9)) {
 			return nil, ErrInvalidSimulationState
 		}
-		seen[player.PlayerID] = true
+		seen[player.PlayerID], colorTaken[player.Color] = true, true
 		if state.Tick == 0 && (player.WorldX != SpawnX || player.WorldY != 105+float64(index)*150/float64(len(state.Players)-1) || player.SpeedEffect != nil || len(player.TouchedFieldIDs) != 0) {
 			return nil, ErrInvalidSimulationState
 		}

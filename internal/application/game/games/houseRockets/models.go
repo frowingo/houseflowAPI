@@ -1,7 +1,10 @@
 package houseRockets
 
 import (
+	"encoding/json"
+	"errors"
 	"houseflowApi/internal/application/game/module"
+	"houseflowApi/internal/helpers"
 	"math"
 	"strings"
 	"time"
@@ -17,6 +20,25 @@ func (model HouseRocketsSteerModel) Valid() bool {
 	return model.ControlGeneration != "" && len(model.ControlGeneration) <= 128 &&
 		strings.TrimSpace(model.ControlGeneration) == model.ControlGeneration && model.InputSequence > 0 &&
 		!math.IsNaN(model.Heading) && !math.IsInf(model.Heading, 0)
+}
+
+// HouseRocketsSelectColorModel is the lobby claim of a rocket color.
+type HouseRocketsSelectColorModel struct {
+	Color Color `json:"color"`
+}
+
+func (model HouseRocketsSelectColorModel) Valid() bool { return model.Color.Valid() }
+
+// DecodeSelectColor strictly decodes a houseRockets.selectColor payload.
+func DecodeSelectColor(payload json.RawMessage) (HouseRocketsSelectColorModel, error) {
+	var selection HouseRocketsSelectColorModel
+	if err := helpers.DecodeStrictObject(payload, &selection, nil, "color"); err != nil {
+		return HouseRocketsSelectColorModel{}, errors.Join(ErrInvalidInput, err)
+	}
+	if !selection.Valid() {
+		return HouseRocketsSelectColorModel{}, ErrInvalidInput
+	}
+	return selection, nil
 }
 
 type HouseRocketsRuntimeSettingsModel struct {

@@ -8,19 +8,20 @@ karşılaştırma noktasıdır; aynı makinede aynı komutlarla tekrar alınmal�
 
 ```bash
 export HOUSEFLOW_TEST_MONGO_URI="mongodb://127.0.0.1:27017/?replicaSet=rs0"
-export HOUSEFLOW_TEST_REDIS_URL="redis://127.0.0.1:6379/0"
+# Test paketleri bu veritabanından başlayarak paket başına ayrı Redis DB kullanır (tests/testkit/main.go).
+export HOUSEFLOW_TEST_REDIS_URL="redis://127.0.0.1:6379/1"
 
 # Maç başına Mongo ayak izi ve oda yaşam döngüsü sonrası Redis anahtarları
-go test -count=1 -v -run 'TestGameMatchPersistenceFootprint|TestRoomLifecycleRedisFootprint' ./tests/
+go test -count=1 -v -run 'TestGameMatchPersistenceFootprint|TestRoomLifecycleRedisFootprint' ./tests/...
 
 # Frame başına owner ve gateway maliyeti
 go test -run XXX -bench HouseRocketsFrame -benchtime 2s ./internal/infrastructure/realtime/
 
 # İki instance'lı uçtan uca yük matrisi (worker başına GOMAXPROCS=1)
-HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseRocketsLoadMatrix ./tests/
+HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseRocketsLoadMatrix ./tests/games/houseRockets/
 
 # House Tanks: 8 oyunculu oda, ağır atış altında frame bütçesi (20 ve 30 Hz)
-HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseTanksFrameBudgetUnderFire ./tests/
+HOUSEFLOW_REALTIME_LOAD=true go test -count=1 -v -run TestHouseTanksFrameBudgetUnderFire ./tests/games/houseTanks/
 
 # Faus Switch: 8 robotlu oda, adım ve en kötü geri sarma (7200 adım = 120 sn yarış)
 go test -run '^$' -bench 'FausSwitch' -benchtime 7200x ./internal/application/game/games/fausSwitch/

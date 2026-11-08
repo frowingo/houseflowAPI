@@ -107,7 +107,7 @@ services:
     working_dir: /app
     environment:
       - HOUSEFLOW_TEST_MONGO_URI=mongodb://mongodb:27017/?replicaSet=rs0
-      - HOUSEFLOW_TEST_REDIS_URL=redis://redis:6379/15
+      - HOUSEFLOW_TEST_REDIS_URL=redis://redis:6379/1
     depends_on:
       mongodb-init:
         condition: service_completed_successfully
@@ -117,7 +117,7 @@ services:
       - houseflow-network
     volumes:
       - .:/app
-    command: ["go", "test", "./tests", "-count=1"]
+    command: ["go", "test", "./tests/...", "-count=1"]
 
   # Optional: Mongo Express (MongoDB yönetim paneli)
   mongo-express:

@@ -112,6 +112,11 @@ func restoreRuntime(settings Settings, checkpoint RuntimeCheckpoint, epoch int64
 		return nil, err
 	}
 	session := checkpoint.Session
+	roster, colored := rosterWithColors(session.Players)
+	if !colored {
+		return nil, ErrInvalidMatch
+	}
+	session.Players = roster
 	if match.SessionID != session.SessionID || !validID(session.HouseID) || len(match.Players) != len(session.Players) {
 		return nil, ErrInvalidMatch
 	}

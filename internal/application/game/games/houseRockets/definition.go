@@ -82,8 +82,19 @@ func Definition() gameDomain.GameDefinition {
 	}
 }
 
+// PlayerColors is the catalog order: a player without a valid lobby claim
+// gets the first color nobody holds, in this order (seat order when nobody
+// claims one).
 func PlayerColors() []Color {
 	return []Color{ColorMint, ColorCoral, ColorBlue, ColorGold, ColorViolet, ColorOrange, ColorPink, ColorTeal}
+}
+
+func (color Color) Valid() bool {
+	switch color {
+	case ColorMint, ColorCoral, ColorBlue, ColorGold, ColorViolet, ColorOrange, ColorPink, ColorTeal:
+		return true
+	}
+	return false
 }
 
 type SpeedEffect string

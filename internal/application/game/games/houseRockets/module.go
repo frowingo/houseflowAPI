@@ -13,12 +13,16 @@ import (
 	"houseflowApi/internal/helpers"
 )
 
-// Module exposes House Rockets to the shared multiplayer core.
+// Module exposes House Rockets to the shared multiplayer core: a tick game
+// with a lobby intent (the color claim).
 func Module() module.TickModule { return gameModule{} }
 
 type gameModule struct{}
 
-var _ module.TickModule = gameModule{}
+var (
+	_ module.TickModule  = gameModule{}
+	_ module.LobbyModule = gameModule{}
+)
 
 func (gameModule) Definition() gameDomain.GameDefinition { return Definition() }
 
@@ -62,6 +66,14 @@ func (gameModule) DecodeIntent(messageType string, payload json.RawMessage) (mod
 	return steerIntent{steer}, nil
 }
 
+func (gameModule) DecodeLobbyIntent(messageType string, payload json.RawMessage) (json.RawMessage, error) {
+	return DecodeLobbyIntent(messageType, payload)
+}
+
+func (gameModule) ApplyLobbyIntent(session gameDomain.SessionSnapshot, playerID, messageType string, intent json.RawMessage) (json.RawMessage, error) {
+	return ApplyLobbyIntent(session, playerID, messageType, intent)
+}
+
 type steerIntent struct{ HouseRocketsSteerModel }
 
 func (intent steerIntent) RuntimeInput(control module.ControlInput) any {
@@ -70,7 +82,7 @@ func (intent steerIntent) RuntimeInput(control module.ControlInput) any {
 }
 
 func (gameModule) NewRuntime(params module.RuntimeParams) (module.TickRuntime, error) {
-	runtime, err := newRuntime(sessionSettings(params.Settings), NewSimulationParams{SessionID: params.SessionID, HouseID: params.HouseID, StartedAt: params.StartedAt, Players: params.Players}, params.Epoch, params.Now, params.InitialSequence)
+	runtime, err := newRuntime(sessionSettings(params.Settings), NewSimulationParams{SessionID: params.SessionID, HouseID: params.HouseID, StartedAt: params.StartedAt, Players: params.Players, LobbyState: params.LobbyState}, params.Epoch, params.Now, params.InitialSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +127,11 @@ type wireFrame struct {
 	CountdownEndsAt *time.Time `json:"countdownEndsAt"`
 }
 
+// PreviewFrame shows the course of the coming match during the lobby
+// countdown, with the colors the runtime will assign from the same roster and
+// lobby state (fixed since the countdown).
 func (gameModule) PreviewFrame(params module.PreviewParams) (module.Frame, error) {
-	simulation, err := NewSimulation(NewSimulationParams{SessionID: params.SessionID, HouseID: params.HouseID, StartedAt: params.CountdownEndsAt, Players: params.Players})
+	simulation, err := NewSimulation(NewSimulationParams{SessionID: params.SessionID, HouseID: params.HouseID, StartedAt: params.CountdownEndsAt, Players: params.Players, LobbyState: params.LobbyState})
 	if err != nil {
 		return module.Frame{}, err
 	}

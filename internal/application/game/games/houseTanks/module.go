@@ -13,12 +13,16 @@ import (
 	"houseflowApi/internal/helpers"
 )
 
-// Module exposes FauseTanks to the shared multiplayer core.
+// Module exposes FauseTanks to the shared multiplayer core: a tick game
+// with a lobby intent (the color claim).
 func Module() module.TickModule { return gameModule{} }
 
 type gameModule struct{}
 
-var _ module.TickModule = gameModule{}
+var (
+	_ module.TickModule  = gameModule{}
+	_ module.LobbyModule = gameModule{}
+)
 
 func (gameModule) Definition() gameDomain.GameDefinition { return Definition() }
 
@@ -73,16 +77,32 @@ func (gameModule) DecodeIntent(messageType string, payload json.RawMessage) (mod
 	return nil, module.ErrUnsupportedIntent
 }
 
-func runtimeSession(sessionID, houseID string, startedAt time.Time, players []module.Player) RuntimeSession {
+func (gameModule) DecodeLobbyIntent(messageType string, payload json.RawMessage) (json.RawMessage, error) {
+	return DecodeLobbyIntent(messageType, payload)
+}
+
+func (gameModule) ApplyLobbyIntent(session gameDomain.SessionSnapshot, playerID, messageType string, intent json.RawMessage) (json.RawMessage, error) {
+	return ApplyLobbyIntent(session, playerID, messageType, intent)
+}
+
+// runtimeSession freezes the roster with its final colors: the lobby state is
+// fixed since the countdown, so preview and runtime assign the same.
+func runtimeSession(sessionID, houseID string, startedAt time.Time, players []module.Player, lobbyState json.RawMessage) RuntimeSession {
 	session := RuntimeSession{SessionID: sessionID, HouseID: houseID, StartedAt: startedAt, Players: make([]RuntimePlayer, len(players))}
+	ids := make([]string, len(players))
 	for index, player := range players {
-		session.Players[index] = RuntimePlayer{PlayerID: player.PlayerID, DisplayName: player.DisplayName}
+		ids[index] = player.PlayerID
+	}
+	colors := assignColors(ids, lobbyState)
+	for index, player := range players {
+		session.Players[index] = RuntimePlayer{PlayerID: player.PlayerID, DisplayName: player.DisplayName, Color: colors[index]}
 	}
 	return session
 }
 
 func (gameModule) NewRuntime(params module.RuntimeParams) (module.TickRuntime, error) {
-	runtime, err := newRuntime(sessionSettings(params.Settings), runtimeSession(params.SessionID, params.HouseID, params.StartedAt, params.Players), params.Epoch, params.Now, params.InitialSequence)
+	session := runtimeSession(params.SessionID, params.HouseID, params.StartedAt, params.Players, params.LobbyState)
+	runtime, err := newRuntime(sessionSettings(params.Settings), session, params.Epoch, params.Now, params.InitialSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -121,9 +141,10 @@ func checkpointMatches(checkpoint RuntimeCheckpoint, params module.RestoreParams
 }
 
 // PreviewFrame shows the arena of the coming match during the lobby
-// countdown: the map is already decided by the session and the roster.
+// countdown: the map is already decided by the session and the roster, the
+// colors by the roster and the lobby state.
 func (gameModule) PreviewFrame(params module.PreviewParams) (module.Frame, error) {
-	session := runtimeSession(params.SessionID, params.HouseID, params.CountdownEndsAt, params.Players)
+	session := runtimeSession(params.SessionID, params.HouseID, params.CountdownEndsAt, params.Players, params.LobbyState)
 	ids := make([]string, len(params.Players))
 	for index, player := range params.Players {
 		ids[index] = player.PlayerID
