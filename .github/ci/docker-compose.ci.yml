@@ -1,0 +1,7 @@
+# CI-only override: the PR verification runs the tests on the runner itself
+# (with the Go build and module cache), so Redis is published to the host like
+# MongoDB already is. Used together with the root docker-compose.yml.
+services:
+  redis:
+    ports:
+      - "6379:6379"
