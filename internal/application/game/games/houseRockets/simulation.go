@@ -1,6 +1,7 @@
 package houseRockets
 
 import (
+	"encoding/json"
 	"errors"
 	"houseflowApi/internal/application/game/module"
 	"math"
@@ -34,6 +35,9 @@ type NewSimulationParams struct {
 	HouseID   string
 	StartedAt time.Time
 	Players   []PlayerIdentity
+	// LobbyState is the session's lobby state with the players' color claims;
+	// without it the colors are the catalog in seat order.
+	LobbyState json.RawMessage
 }
 
 type rocket struct {
@@ -72,7 +76,11 @@ func NewSimulation(params NewSimulationParams) (*Simulation, error) {
 		seen[player.PlayerID] = true
 	}
 	simulation := &Simulation{sessionID: params.SessionID, houseID: params.HouseID, startedAt: params.StartedAt.UTC(), players: make([]rocket, len(params.Players))}
-	colors := PlayerColors()
+	ids := make([]string, len(params.Players))
+	for index, player := range params.Players {
+		ids[index] = player.PlayerID
+	}
+	colors := assignColors(ids, params.LobbyState)
 	for index, player := range params.Players {
 		simulation.players[index] = rocket{state: PlayerState{PlayerID: player.PlayerID, DisplayName: player.DisplayName, Color: colors[index],
 			WorldX: SpawnX, WorldY: 105 + float64(index)*150/float64(len(params.Players)-1), IsAlive: true}, touchedFields: make(map[int]struct{})}

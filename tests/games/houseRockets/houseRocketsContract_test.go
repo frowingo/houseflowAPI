@@ -147,6 +147,10 @@ func TestHouseRocketsClientContractFixtures(t *testing.T) {
 				if decoded.Ping == nil || decoded.Ping.PingID != "clock1" {
 					t.Fatal("missing ping correlation")
 				}
+			case "selectColor":
+				if string(decoded.LobbyIntent) != `{"color":"teal"}` || decoded.Intent != nil {
+					t.Fatalf("select color = %+v", decoded)
+				}
 			}
 		})
 	}
@@ -211,11 +215,11 @@ func TestHouseRocketsServerContractFixtures(t *testing.T) {
 				gamekit.RoundTripHouseRocketsMessage[dtos.RealtimePongModel](t, entry.Message)
 			case "accepted":
 				gamekit.RoundTripHouseRocketsMessage[struct{}](t, entry.Message)
-			case "sessionSnapshot":
+			case "sessionSnapshot", "claimedColorsSessionSnapshot":
 				gamekit.RoundTripHouseRocketsMessage[dtos.GameSessionResponseModel](t, entry.Message)
 			case "controlGranted":
 				gamekit.RoundTripHouseRocketsMessage[houseRockets.HouseRocketsControlGrantedModel](t, entry.Message)
-			case "countdown", "playing", "recovering":
+			case "countdown", "claimedColorsCountdown", "playing", "recovering":
 				gamekit.RoundTripHouseRocketsMessage[houseRockets.HouseRocketsSnapshotModel](t, entry.Message)
 				var message realtime.V2ServerMessage[houseRockets.HouseRocketsSnapshotModel]
 				if err := json.Unmarshal(entry.Message, &message); err != nil {

@@ -83,6 +83,17 @@
       }
     },
     {
+      "name": "selectColor",
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "color1",
+        "type": "houseRockets.selectColor",
+        "payload": {
+          "color": "teal"
+        }
+      }
+    },
+    {
       "name": "steer",
       "message": {
         "protocolVersion": 2,
@@ -221,6 +232,66 @@
       }
     },
     {
+      "name": "claimedColorsSessionSnapshot",
+      "message": {
+        "protocolVersion": 2,
+        "type": "gameSession.snapshot",
+        "sentAt": "2026-10-03T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "houseId": "507f1f77bcf86cd799439012",
+          "gameKey": "houseRockets",
+          "protocolVersion": 2,
+          "mode": "realtime",
+          "state": "countdown",
+          "rules": {
+            "minimumPlayers": 2,
+            "maximumPlayers": 8,
+            "readyWindowMilliseconds": 30000,
+            "countdownMilliseconds": 3000
+          },
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "state": "ready",
+              "joinedAt": "2026-10-03T12:00:00Z",
+              "readyAt": "2026-10-03T12:00:00Z"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "state": "ready",
+              "joinedAt": "2026-10-03T12:00:00Z",
+              "readyAt": "2026-10-03T12:00:00Z"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "state": "ready",
+              "joinedAt": "2026-10-03T12:00:00Z",
+              "readyAt": "2026-10-03T12:00:00Z"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439024",
+              "state": "ready",
+              "joinedAt": "2026-10-03T12:00:00Z",
+              "readyAt": "2026-10-03T12:00:00Z"
+            }
+          ],
+          "createdBy": "507f1f77bcf86cd799439021",
+          "createdAt": "2026-10-03T12:00:00Z",
+          "updatedAt": "2026-10-03T12:00:30Z",
+          "countdownEndsAt": "2026-10-03T12:00:33Z",
+          "version": 5,
+          "lobbyState": {
+            "colors": {
+              "507f1f77bcf86cd799439021": "teal",
+              "507f1f77bcf86cd799439022": "mint"
+            }
+          }
+        },
+        "sequence": 5
+      }
+    },
+    {
       "name": "controlGranted",
       "message": {
         "protocolVersion": 2,
@@ -307,6 +378,126 @@
               "playerId": "507f1f77bcf86cd799439024",
               "displayName": "Can",
               "color": "gold",
+              "worldX": 250,
+              "worldY": 255,
+              "courseHeading": 0,
+              "isAlive": true,
+              "connected": true,
+              "distance": 0,
+              "speedEffect": null,
+              "effectRemainingSeconds": 0,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            }
+          ],
+          "gates": [
+            {
+              "id": "gate:0",
+              "worldX": 900,
+              "sections": [
+                {
+                  "offsetX": -46,
+                  "lowerY": 85,
+                  "upperY": 275
+                },
+                {
+                  "offsetX": 46,
+                  "lowerY": 85,
+                  "upperY": 275
+                }
+              ]
+            }
+          ],
+          "speedFields": [
+            {
+              "id": "field:0",
+              "worldX": 1220,
+              "effect": "boost",
+              "phase": 0,
+              "periodSeconds": 3
+            }
+          ],
+          "countdownEndsAt": "2026-10-03T12:00:33Z",
+          "winnerId": null
+        },
+        "sequence": 1
+      }
+    },
+    {
+      "name": "claimedColorsCountdown",
+      "message": {
+        "protocolVersion": 2,
+        "type": "houseRockets.snapshot",
+        "sentAt": "2026-10-03T12:00:30.125Z",
+        "payload": {
+          "sessionId": "7c51a2f7-3c83-4e76-8f97-2dc3cf3191a0",
+          "gameKey": "houseRockets",
+          "runtimeEpoch": 7,
+          "stateSequence": 1,
+          "tick": 0,
+          "elapsedSeconds": 0,
+          "phase": "countdown",
+          "courseVersion": 1,
+          "cameraX": 0,
+          "courseAngle": 0,
+          "players": [
+            {
+              "playerId": "507f1f77bcf86cd799439021",
+              "displayName": "Deniz",
+              "color": "teal",
+              "worldX": 250,
+              "worldY": 105,
+              "courseHeading": 0,
+              "isAlive": true,
+              "connected": true,
+              "distance": 0,
+              "speedEffect": null,
+              "effectRemainingSeconds": 0,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": "controlA"
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439022",
+              "displayName": "Ece",
+              "color": "mint",
+              "worldX": 250,
+              "worldY": 155,
+              "courseHeading": 0,
+              "isAlive": true,
+              "connected": true,
+              "distance": 0,
+              "speedEffect": null,
+              "effectRemainingSeconds": 0,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439023",
+              "displayName": "Ada",
+              "color": "coral",
+              "worldX": 250,
+              "worldY": 205,
+              "courseHeading": 0,
+              "isAlive": true,
+              "connected": true,
+              "distance": 0,
+              "speedEffect": null,
+              "effectRemainingSeconds": 0,
+              "eliminatedAtTick": null,
+              "eliminationReason": null,
+              "lastProcessedInputSequence": 0,
+              "controlGeneration": null
+            },
+            {
+              "playerId": "507f1f77bcf86cd799439024",
+              "displayName": "Can",
+              "color": "blue",
               "worldX": 250,
               "worldY": 255,
               "courseHeading": 0,
@@ -1020,6 +1211,36 @@
       "errorCode": "houseRockets.error.invalid_input"
     },
     {
+      "name": "selectColorUnknownColor",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"color1\",\"type\":\"houseRockets.selectColor\",\"payload\":{\"color\":\"red\"}}",
+      "errorCode": "houseRockets.error.invalid_input"
+    },
+    {
+      "name": "selectColorHouseTanksColor",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"color1\",\"type\":\"houseRockets.selectColor\",\"payload\":{\"color\":\"plum\"}}",
+      "errorCode": "houseRockets.error.invalid_input"
+    },
+    {
+      "name": "selectColorUnknownField",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"color1\",\"type\":\"houseRockets.selectColor\",\"payload\":{\"color\":\"teal\",\"seat\":2}}",
+      "errorCode": "houseRockets.error.invalid_input"
+    },
+    {
+      "name": "selectColorMissingColor",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"color1\",\"type\":\"houseRockets.selectColor\",\"payload\":{}}",
+      "errorCode": "houseRockets.error.invalid_input"
+    },
+    {
+      "name": "selectColorNullColor",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"color1\",\"type\":\"houseRockets.selectColor\",\"payload\":{\"color\":null}}",
+      "errorCode": "houseRockets.error.invalid_input"
+    },
+    {
+      "name": "selectColorMissingPayload",
+      "json": "{\"protocolVersion\":2,\"messageId\":\"color1\",\"type\":\"houseRockets.selectColor\"}",
+      "errorCode": "houseRockets.error.invalid_input"
+    },
+    {
       "name": "emptyControl",
       "json": "{\"protocolVersion\":2,\"messageId\":\"steer1\",\"type\":\"houseRockets.steer\",\"payload\":{\"controlGeneration\":\"\",\"inputSequence\":42,\"heading\":0}}",
       "errorCode": "houseRockets.error.invalid_input"
@@ -1082,6 +1303,7 @@
     "houseRockets.error.player_eliminated",
     "houseRockets.error.not_running",
     "houseRockets.error.result_not_found",
+    "houseRockets.error.not_in_lobby",
     "realtime.error.invalid_command",
     "realtime.error.unsupported_protocol",
     "realtime.error.rate_limited",

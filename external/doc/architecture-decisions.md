@@ -1244,6 +1244,20 @@ istemci aynı maçı kısa süre farklı renklerle görebilir; seçimin kaybolma
 olduğu için bu da kabul edildi. Yerelleştirme: 0062 (`houseTanks.error.not_in_lobby`,
 `houseTanks.error.invalid_input`).
 
+**Ek — Faus Rockets (8 Kasım 2026).** `houseRockets` aynı yolu kullanır: `houseRockets.selectColor`,
+aynı `lobbyState` biçimi ve aynı kurallar (`colors.go`, FauseTanks'teki desenin eşi). Çekirdekte
+değişiklik gerekmedi. `NewSimulation` rengi `assignColors(oyuncular, lobbyState)` ile verir;
+önizleme ve runtime aynı roster ve lobi durumundan aynı renkleri üretir. Renk zaten simülasyon
+durumunda (`PlayerState.Color`) olduğu için checkpoint şeması değişmedi. Restore artık koltuk
+sırasını değil, "geçerli ve oyuncular arasında benzersiz katalog rengi" kuralını arar; koltuk
+renkli eski checkpoint'ler bu kurala da uyar. Talepsiz oturumlarda renkler eskisi gibi koltuk
+sırasıdır. Bilinen sınır: eski sürüm restore'da koltuk sırasını şart koşar. Bu yüzden yeni
+sürümde talep edilmiş renklerle başlamış bir maç, yayın ya da geri alma sırasında eski sürümdeki
+bir instance'ta kurtarılırsa `recoveryFailed` ile iptal edilir. Talepsiz maçlar etkilenmez. Bu
+durum yalnız sahiplik yeni sürümden eski sürüme geçerse oluşur; seçimin kaybolmasıyla aynı
+sınıfta olduğu için kabul edildi. Yerelleştirme: 0063 (`houseRockets.error.not_in_lobby`,
+`houseRockets.error.invalid_input`).
+
 ## ADR-031 — Faus Switch'te geri sarma, kırpılmış tick'te geçerlilik ve yarış sonu penceresi
 
 **Durum:** Kabul edildi — 7 Kasım 2026.

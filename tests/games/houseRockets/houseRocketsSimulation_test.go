@@ -678,7 +678,9 @@ func TestHouseRocketsRestoreRejectsCorruptState(t *testing.T) {
 		func(s *houseRockets.SimulationState) { s.CameraX = math.NaN() }, func(s *houseRockets.SimulationState) { s.CameraX = -1 }, func(s *houseRockets.SimulationState) { s.CameraX = 10000 },
 		func(s *houseRockets.SimulationState) { s.NextGateIndex = 1 }, func(s *houseRockets.SimulationState) { s.NextGateIndex = 99999 }, func(s *houseRockets.SimulationState) { s.NextGateIndex = 3 },
 		func(s *houseRockets.SimulationState) { s.Players = s.Players[:1] }, func(s *houseRockets.SimulationState) { s.Players[1].PlayerID = s.Players[0].PlayerID },
-		func(s *houseRockets.SimulationState) { s.Players[0].Color = houseRockets.ColorTeal }, func(s *houseRockets.SimulationState) { s.Players[0].WorldX = math.Inf(1) },
+		// Lobby colors: any catalog color, each held once (seat order is not required).
+		func(s *houseRockets.SimulationState) { s.Players[0].Color = s.Players[1].Color }, func(s *houseRockets.SimulationState) { s.Players[0].Color = "plum" },
+		func(s *houseRockets.SimulationState) { s.Players[0].Color = "" }, func(s *houseRockets.SimulationState) { s.Players[0].WorldX = math.Inf(1) },
 		func(s *houseRockets.SimulationState) { s.Players[0].WorldY = math.NaN() }, func(s *houseRockets.SimulationState) { s.Players[0].WorldY = 0 },
 		func(s *houseRockets.SimulationState) { s.Players[0].CourseHeading = math.NaN() }, func(s *houseRockets.SimulationState) { s.Players[0].CourseHeading = 4 },
 		func(s *houseRockets.SimulationState) { s.Players[0].WorldX++ }, func(s *houseRockets.SimulationState) { s.Players[0].EffectRemainingSeconds = 1 },
@@ -697,6 +699,11 @@ func TestHouseRocketsRestoreRejectsCorruptState(t *testing.T) {
 	}
 	if _, err := houseRockets.RestoreSimulation(base); err != nil {
 		t.Fatal(err)
+	}
+	swapped := newHouseRocketsSimulation(t, 2).State()
+	swapped.Players[0].Color, swapped.Players[1].Color = houseRockets.ColorTeal, houseRockets.ColorMint
+	if _, err := houseRockets.RestoreSimulation(swapped); err != nil {
+		t.Fatalf("distinct lobby colors out of seat order: %v", err)
 	}
 	fieldState := houseRocketsFieldState(t, 0, nil)
 	for _, ids := range [][]string{{"field:4"}, {"field:0", "field:0"}, {"field:-1"}, {"field:00"}, {"field:999999"}, {"gate:0"}} {
