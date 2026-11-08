@@ -18,6 +18,7 @@ import (
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/infrastructure/realtime"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -106,6 +107,11 @@ func NewRecoveryManager(t *testing.T, fixture *GameSessionApplicationFixture, co
 	return manager
 }
 
+// PersistRocketsSession stores a House Rockets session with a session ID of
+// its own. The ID names the room's Redis channels, and Redis Pub/Sub is not
+// scoped to a database index: test packages that run at the same time would
+// otherwise receive each other's room events (a foreign access update closes
+// the socket as "house membership revoked").
 func PersistRocketsSession(t *testing.T, fixture *GameSessionApplicationFixture, running bool) gameDomain.SessionSnapshot {
 	t.Helper()
 	now := time.Now().UTC()
@@ -114,7 +120,7 @@ func PersistRocketsSession(t *testing.T, fixture *GameSessionApplicationFixture,
 		rules.ReadyWindowDuration = 0
 		rules.CountdownDuration = 0
 	}
-	session, err := gameDomain.NewGameSession(gameDomain.NewSessionParams{SessionID: "rockets-runtime-session", HouseID: fixture.HouseID, GameKey: houseRockets.GameKey,
+	session, err := gameDomain.NewGameSession(gameDomain.NewSessionParams{SessionID: "rockets-runtime-session-" + primitive.NewObjectID().Hex(), HouseID: fixture.HouseID, GameKey: houseRockets.GameKey,
 		ProtocolVersion: houseRockets.ProtocolVersion, Mode: gameDomain.RealtimeGame, Rules: rules, CreatedBy: fixture.OwnerID, CreatedAt: now})
 	if err != nil {
 		t.Fatal(err)

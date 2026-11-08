@@ -56,6 +56,13 @@ Paketler kendi süreçlerinde ve paralel çalışır.
 - **Redis:** Testler DB'yi `FlushDB` ile temizlediği için her paket ayrı bir
   Redis DB'si kullanır. `HOUSEFLOW_TEST_REDIS_URL` ilk DB'yi belirtir (`/1`),
   paket bu DB'ye kendi slotunu ekler.
+- **Redis Pub/Sub DB'ye göre ayrılmaz:** Oda olay kanalları oda ID'siyle
+  adlandırılır (`houseflow:coordination:v1:room:<id>:events`). Aynı anda
+  çalışan iki paket aynı oda ID'sini kullanırsa birbirinin olaylarını alır.
+  Örneğin yabancı bir erişim olayı soketi "house membership revoked" ile
+  kapatır, istemci de 1006 görür. Gateway'e ya da `RoomManager`'a giden
+  oturumların ID'si benzersiz olmalı (`gamekit.PersistRocketsSession` gibi).
+  Sabit ID yalnızca Redis'e ulaşmayan saf modül testlerinde kullanılabilir.
 - **Yeni paket:** Kendi `main_test.go` dosyasında `testkit.Main(m, "<ad>")`
   çağırır ve `testkit/main.go` içindeki `redisSlots` tablosuna eklenir.
 
