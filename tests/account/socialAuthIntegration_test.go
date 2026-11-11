@@ -94,6 +94,7 @@ func newSocialAuthFixture(t *testing.T) *socialAuthFixture {
 	mail := &appkit.RecordingEmailSender{}
 	accounts := authPolicies.NewSocialAccounts(users, identities, histories, jwtService)
 	pendingTokens := helpers.NewSocialPendingTokenService("social-auth-jwt-secret")
+	codeAttempts := authPolicies.NewCodeAttempts(database.NewDbContext[entities.AuthCodeAttempt](client, dbName))
 	return &socialAuthFixture{
 		ConcurrencyFixture: base,
 		apple:              apple,
@@ -104,7 +105,7 @@ func newSocialAuthFixture(t *testing.T) *socialAuthFixture {
 		handler: authCommands.NewSocialAuthHandler(accounts, pendingTokens,
 			[]authAbstract.SocialIdentityVerifier{apple, snapchat}, []authAbstract.SocialAuthorizationKeeper{keeper}),
 		sendCode:   authCommands.NewSendSocialSignUpCodeHandler(accounts, pendingTokens, mail, "social-code-secret", 5),
-		complete:   authCommands.NewCompleteSocialSignUpHandler(accounts, pendingTokens, "social-code-secret", 5),
+		complete:   authCommands.NewCompleteSocialSignUpHandler(accounts, pendingTokens, codeAttempts, "social-code-secret", 5),
 		deleteUser: userCommands.NewDeleteUserHandler(users, houses, identities, []authAbstract.SocialAuthorizationKeeper{keeper}),
 		validate:   authQueries.NewValidateAuthHandler(users, houses, identities, jwtService),
 	}

@@ -25,11 +25,11 @@ type SignUpUserModel struct {
 
 // UpdateUserModel — sadece gönderilen (non-nil) alanlar güncellenir.
 type UpdateUserModel struct {
-	Firstname   *string      `json:"firstName,omitempty"`
-	Lastname    *string      `json:"lastName,omitempty"`
+	Firstname   *string      `json:"firstName,omitempty" validate:"omitempty,max=50"`
+	Lastname    *string      `json:"lastName,omitempty" validate:"omitempty,max=50"`
 	PhoneNumber *string      `json:"phoneNumber,omitempty" validate:"omitempty,min=10,max=15"`
 	BirthDay    *UTCDateTime `json:"birthDay,omitempty"`
-	ImageURL    *string      `json:"imageUrl,omitempty"`
+	ImageURL    *string      `json:"imageUrl,omitempty" validate:"omitempty,max=2048"`
 	Language    *string      `json:"language,omitempty" validate:"omitempty,oneof=en tr"`
 }
 

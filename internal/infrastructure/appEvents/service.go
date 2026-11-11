@@ -188,7 +188,7 @@ func (service *Service) deliver(event coordinationAbstract.AppEvent) {
 }
 
 func (service *Service) HouseChanged(ctx context.Context, houseID string, refreshHouseList bool) {
-	if service.bus == nil {
+	if !service.canPublish() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
@@ -213,12 +213,18 @@ func (service *Service) HouseChanged(ctx context.Context, houseID string, refres
 }
 
 func (service *Service) UsersChanged(ctx context.Context, userIDs ...string) {
-	if service.bus == nil || len(userIDs) == 0 {
+	if len(userIDs) == 0 || !service.canPublish() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
 	defer cancel()
 	service.publish(ctx, coordinationAbstract.AppEvent{Type: coordinationAbstract.UserChangedEvent, UserIDs: userIDs})
+}
+
+// canPublish skips the house lookup and the publish timeouts after every
+// command while the bus is known to be down; the events are best effort.
+func (service *Service) canPublish() bool {
+	return service.bus != nil && service.bus.Available()
 }
 
 func (service *Service) publish(ctx context.Context, event coordinationAbstract.AppEvent) {

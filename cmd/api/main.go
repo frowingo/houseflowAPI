@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/gofiber/swagger"
 
 	docs "houseflowApi/external/swagger/docs" // Swagger docs
 	choreApplication "houseflowApi/internal/application/chore"
@@ -98,23 +99,29 @@ func runAPI() error {
 	docs.SwaggerInfo.Schemes = []string{}
 
 	app := fiber.New(fiber.Config{
-		AppName:      "HouseFlow API",
-		ProxyHeader:  fiber.HeaderXForwardedFor,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-		BodyLimit:    requestBodyLimit,
+		AppName: "HouseFlow API",
+		// Fly's proxy overwrites Fly-Client-IP; X-Forwarded-For is client-controlled
+		// and would let anyone pick their own rate-limit key.
+		ProxyHeader:        "Fly-Client-IP",
+		EnableIPValidation: true,
+		ReadTimeout:        15 * time.Second,
+		WriteTimeout:       15 * time.Second,
+		IdleTimeout:        60 * time.Second,
+		BodyLimit:          requestBodyLimit,
 	})
 
 	app.Use(recover.New())
 	app.Use(logger.New())
+	app.Use(compress.New(compress.Config{
+		Level: compress.LevelBestSpeed,
+		Next:  websocket.IsWebSocketUpgrade,
+	}))
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: getAllowedOrigins(),
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
-	app.Get("/swagger/*", swagger.HandlerDefault)
 	app.Get(
 		"/api/v1/base/health/coordination",
 		controllers.ReadinessController(coordinationReadiness(coordinator)),

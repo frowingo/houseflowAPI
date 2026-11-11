@@ -30,6 +30,30 @@ func TestIsResetCodeValidAcceptsCurrentAndPreviousWindows(t *testing.T) {
 	}
 }
 
+func TestMatchResetCodeReportsTheMatchingWindow(t *testing.T) {
+	const (
+		email           = "user@example.com"
+		secret          = "test-secret"
+		validityMinutes = 3
+	)
+
+	currentWindow := helpers.ResetCodeWindow(validityMinutes)
+	previousWindow := currentWindow.Add(-validityMinutes * time.Minute)
+
+	if window, ok := helpers.MatchResetCode(email, helpers.GenerateResetCode(email, secret, currentWindow), secret, currentWindow, validityMinutes); !ok || !window.Equal(currentWindow) {
+		t.Fatalf("current code matched window=%v ok=%v, want %v", window, ok, currentWindow)
+	}
+	if window, ok := helpers.MatchResetCode(email, helpers.GenerateResetCode(email, secret, previousWindow), secret, currentWindow, validityMinutes); !ok || !window.Equal(previousWindow) {
+		t.Fatalf("previous code matched window=%v ok=%v, want %v", window, ok, previousWindow)
+	}
+	olderCode := helpers.GenerateResetCode(email, secret, previousWindow.Add(-validityMinutes*time.Minute))
+	for _, code := range []string{olderCode, "", "INVALID", strings.ToLower(helpers.GenerateResetCode(email, secret, currentWindow))} {
+		if _, ok := helpers.MatchResetCode(email, code, secret, currentWindow, validityMinutes); ok {
+			t.Fatalf("code %q should not match", code)
+		}
+	}
+}
+
 func TestInviteCodeGenerationAndDigestNormalization(t *testing.T) {
 	code, err := helpers.GenerateInviteCode(8)
 	if err != nil {

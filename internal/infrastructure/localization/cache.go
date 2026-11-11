@@ -30,14 +30,15 @@ func NewCache(localizationRepository databaseAbstract.DbRepository[entities.Loca
 }
 
 func (c *Cache) Load(ctx context.Context) error {
+	languages := bson.M{"$in": helpers.SupportedLanguages()}
 	messageItems, err := c.localizationRepository.FindManyByFilter(ctx, bson.M{
-		"type": entities.Message, "language": entities.English,
+		"type": entities.Message, "language": languages,
 	})
 	if err != nil {
 		return err
 	}
 	plaintextItems, err := c.localizationRepository.FindManyByFilter(ctx, bson.M{
-		"type": entities.Plaintext, "language": entities.English,
+		"type": entities.Plaintext, "language": languages,
 	})
 	if err != nil {
 		return err
@@ -109,10 +110,11 @@ func (c *Cache) LocalizeMessage(ctx context.Context, language string, keyOrMessa
 
 	key, args := helpers.SplitLocalizationMessage(keyOrMessage)
 	value, ok := c.cachedMessage(normalizedLanguage, key)
-	if !ok && normalizedLanguage != helpers.DefaultLanguage {
+	if !ok && normalizedLanguage != helpers.DefaultLanguage && helpers.IsSupportedLanguage(normalizedLanguage) {
 		value, ok = c.findMessage(ctx, normalizedLanguage, key)
 	}
-	if !ok {
+	// An empty value is a translation known to be missing; use English.
+	if !ok || value == "" {
 		value, ok = c.cachedMessage(helpers.DefaultLanguage, key)
 	}
 	if !ok || value == "" {
@@ -124,15 +126,28 @@ func (c *Cache) LocalizeMessage(ctx context.Context, language string, keyOrMessa
 	return formatLocalizedMessage(value, args)
 }
 
+// findMessage reads a translation the cache does not hold and caches the
+// answer, an empty value when there is none, so each key is queried once.
+// A value written meanwhile by SetLocalization or Load is kept.
 func (c *Cache) findMessage(ctx context.Context, language string, key string) (string, bool) {
 	items, err := c.localizationRepository.FindManyByFilter(ctx, bson.M{
 		"type": entities.Message, "language": entities.LocalizationLanguage(language), "key": key,
 	})
-	if err != nil || len(items) == 0 {
+	if err != nil {
 		return "", false
 	}
-	c.SetLocalization(items[0])
-	return items[0].Value, true
+	value := ""
+	if len(items) > 0 {
+		value = items[0].Value
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if cached, ok := c.messages[language][key]; ok {
+		return cached, true
+	}
+	setLocalizedValue(c.messages, language, key, value)
+	return value, true
 }
 
 func (c *Cache) cachedMessage(language string, key string) (string, bool) {

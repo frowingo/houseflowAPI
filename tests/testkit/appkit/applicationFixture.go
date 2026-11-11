@@ -13,6 +13,7 @@ import (
 	"time"
 
 	authCommands "houseflowApi/internal/application/auth/commands"
+	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
@@ -253,9 +254,10 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	loginHandler := authCommands.NewLoginHandler(users, jwtService)
 	signUpHandler := authCommands.NewSignUpHandler(users, histories, jwtService)
 	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(users, emailSender, resetSecret, validityMinutes)
-	resetPasswordHandler := authCommands.NewResetPasswordHandler(users, resetSecret, validityMinutes)
+	codeAttempts := authPolicies.NewCodeAttempts(database.NewDbContext[entities.AuthCodeAttempt](client, db.Name()))
+	resetPasswordHandler := authCommands.NewResetPasswordHandler(users, codeAttempts, resetSecret, validityMinutes)
 	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(users, emailSender, resetSecret, validityMinutes)
-	validateEmailHandler := authCommands.NewValidateEmailHandler(users, resetSecret, validityMinutes)
+	validateEmailHandler := authCommands.NewValidateEmailHandler(users, codeAttempts, resetSecret, validityMinutes)
 	validateAuthHandler := authQueries.NewValidateAuthHandler(users, houses, userIdentities, jwtService)
 	sender := cqrs.New()
 	cqrs.MustRegister[string, authCommands.LoginCommand](sender, loginHandler)

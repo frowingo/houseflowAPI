@@ -86,7 +86,7 @@ func SetupRoutes(
 	api := app.Group("/api/v1", middleware.IPRateLimit(localizationCache))
 
 	// - LOCALIZATION -
-	localizationRoutes := api.Group("/localization", middleware.IPRateLimit(localizationCache))
+	localizationRoutes := api.Group("/localization")
 	localizationRoutes.Get("/languages", localizationController.GetLanguages)
 	localizationRoutes.Get("/language/:prefix", middleware.AuthRequired(jwtService, localizationCache), localizationController.GetLanguage)
 	localizationRoutes.Post("/language", middleware.AuthRequired(jwtService, localizationCache), middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), localizationController.InsertLocalizationLanguage)
@@ -108,18 +108,20 @@ func SetupRoutes(
 	userInfoHistoryRepository := database.NewDbContext[entities.UserInfoHistory](client, dbName)
 	notificationService := services.NewNotificationService(cfg.SMTP.Password)
 	loginHandler := authCommands.NewLoginHandler(userRepository, jwtService)
+	registerSwagger(app, loginHandler, jwtService, middleware.IPRateLimit(localizationCache))
 	signUpHandler := authCommands.NewSignUpHandler(userRepository, userInfoHistoryRepository, jwtService)
 	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(
 		userRepository, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
+	codeAttempts := authPolicies.NewCodeAttempts(database.NewDbContext[entities.AuthCodeAttempt](client, dbName))
 	resetPasswordHandler := authCommands.NewResetPasswordHandler(
-		userRepository, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+		userRepository, codeAttempts, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(
 		userRepository, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	validateEmailHandler := authCommands.NewValidateEmailHandler(
-		userRepository, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+		userRepository, codeAttempts, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	userIdentityRepository := database.NewDbContext[entities.UserIdentity](client, dbName)
 	socialAdapters, err := socialAuthAdapters(socialAuthConfig)
@@ -135,7 +137,7 @@ func SetupRoutes(
 		socialAccounts, socialPendingTokens, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	completeSocialSignUpHandler := authCommands.NewCompleteSocialSignUpHandler(
-		socialAccounts, socialPendingTokens, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+		socialAccounts, socialPendingTokens, codeAttempts, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	dataDeletionRepository := database.NewDbContext[entities.DataDeletionRequest](client, dbName)
 	providerDataDeletionHandler := authCommands.NewProviderDataDeletionHandler(
@@ -202,8 +204,10 @@ func SetupRoutes(
 	cqrs.MustRegister[*dtos.AuthUserResultModel, authQueries.ValidateAuthQuery](applicationMediator, validateAuthHandler)
 	authController := controllers.NewAuthController(applicationMediator, localizationCache)
 
+	// isAuth is a read the app repeats on start and on user.changed; registered
+	// before the /auth group so only the api-level IP limit applies to it.
+	api.Get("/auth/isAuth", authController.IsAuth)
 	authRoutes := api.Group("/auth", middleware.StrictRateLimit(localizationCache))
-	authRoutes.Get("/isAuth", authController.IsAuth)
 	authRoutes.Post("/login", authController.Login)
 	authRoutes.Post("/signup", authController.Signup)
 	// Registered before "/social/:provider" so "complete" is not taken as a provider.

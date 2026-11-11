@@ -3,6 +3,7 @@ package helpers
 import (
 	"errors"
 	"houseflowApi/internal/data/entities"
+	"slices"
 	"strings"
 )
 
@@ -26,13 +27,13 @@ func NormalizeLanguage(language string) string {
 	}
 }
 
+// SupportedLanguages lists the normalized languages the API is localized in.
+func SupportedLanguages() []string {
+	return []string{string(entities.English), string(entities.Turkish)}
+}
+
 func IsSupportedLanguage(language string) bool {
-	switch NormalizeLanguage(language) {
-	case string(entities.English), string(entities.Turkish):
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(SupportedLanguages(), NormalizeLanguage(language))
 }
 
 func NormalizeLocalizationType(localizationType string) string {

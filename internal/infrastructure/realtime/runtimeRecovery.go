@@ -46,9 +46,11 @@ func (manager *RoomManager) recoveryLoop(ctx context.Context, scanner gameAbstra
 					break
 				}
 				after = session.Cursor
-				// A running turn game needs an owner to expire turns even when
-				// nobody is connected, so the house's active slot is released.
-				if manager.realtimeGame(session.GameKey) == nil || manager.localRoom(session.SessionID) != nil {
+				// An idle lobby needs no owner until a socket opens it (one that
+				// just left the lobby is seen next pass). A running turn game
+				// does: it expires turns even when nobody is connected, so the
+				// house's active slot is released.
+				if session.State == gameDomain.SessionLobby || manager.realtimeGame(session.GameKey) == nil || manager.localRoom(session.SessionID) != nil {
 					continue
 				}
 				_, exists, err := manager.coordinator.CurrentRoomOwner(workCtx, session.SessionID)

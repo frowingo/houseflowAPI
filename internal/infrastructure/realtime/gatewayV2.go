@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"sync"
 	"time"
 
@@ -401,7 +402,7 @@ func (client *gatewayClient) readV2Loop() {
 		if client.ctx.Err() != nil {
 			return
 		}
-		kind, payload, err := client.socket.ReadMessage()
+		kind, payload, err := client.readMessage()
 		if err != nil {
 			return
 		}
@@ -442,6 +443,23 @@ func (client *gatewayClient) readV2Loop() {
 			}
 		}
 	}
+}
+
+// readMessage also bounds the inflated message: the socket read limit counts
+// compressed wire bytes, so one deflate frame could expand to megabytes. An
+// oversized message closes like one over the wire limit does (1009).
+func (client *gatewayClient) readMessage() (int, []byte, error) {
+	kind, reader, err := client.socket.NextReader()
+	if err != nil {
+		return kind, nil, err
+	}
+	limit := client.gateway.options.MaximumMessageBytes
+	payload, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err == nil && int64(len(payload)) > limit {
+		_ = client.socket.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseMessageTooBig, ""), time.Now().Add(client.gateway.options.WriteTimeout))
+		return kind, nil, websocket.ErrReadLimit
+	}
+	return kind, payload, err
 }
 
 // allow applies the gameplay, clock and command rate limits separately, so

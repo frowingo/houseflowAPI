@@ -132,7 +132,7 @@ type HouseInfosResponseModel struct {
 
 type UpdateHouseProfileModel struct {
 	HouseName                  *string             `json:"houseName,omitempty" validate:"omitempty,required,min=3,max=100"`
-	HouseProfileImage          *string             `json:"houseProfileImage,omitempty" validate:"omitempty,required,url"`
+	HouseProfileImage          *string             `json:"houseProfileImage,omitempty" validate:"omitempty,required,url,max=2048"`
 	HouseMemberCountLimit      *int                `json:"houseMemberCountLimit,omitempty" validate:"omitempty,gte=1,lte=8"`
 	HouseType                  *entities.HouseType `json:"houseType,omitempty" validate:"omitempty,oneof=1 2 3" swaggertype:"integer" enums:"1,2,3"`
 	IsChoreReviewPhotoRequired *bool               `json:"isChoreReviewPhotoRequired,omitempty"`

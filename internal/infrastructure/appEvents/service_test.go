@@ -17,9 +17,10 @@ import (
 
 type recordingBus struct {
 	events []coordinationAbstract.AppEvent
+	down   bool
 }
 
-func (*recordingBus) Available() bool { return true }
+func (bus *recordingBus) Available() bool { return !bus.down }
 
 func (bus *recordingBus) PublishAppEvent(_ context.Context, event coordinationAbstract.AppEvent) error {
 	bus.events = append(bus.events, event)
@@ -61,6 +62,28 @@ func TestHouseChangedTargetsCurrentMembers(t *testing.T) {
 		if !reflect.DeepEqual(event.UserIDs, []string{"member-a", "member-b"}) {
 			t.Fatalf("recipients = %v", event.UserIDs)
 		}
+	}
+}
+
+type unexpectedHouseLookup struct {
+	databaseAbstract.DbRepository[entities.House]
+	t *testing.T
+}
+
+func (lookup unexpectedHouseLookup) FindByID(context.Context, primitive.ObjectID) (*entities.House, error) {
+	lookup.t.Fatal("house looked up while the bus is down")
+	return nil, nil
+}
+
+func TestEventsAreSkippedWhileTheBusIsDown(t *testing.T) {
+	bus := &recordingBus{down: true}
+	service := NewService(bus, unexpectedHouseLookup{t: t}, nil, nil)
+
+	service.HouseChanged(context.Background(), primitive.NewObjectID().Hex(), true)
+	service.UsersChanged(context.Background(), "member-a")
+
+	if len(bus.events) != 0 {
+		t.Fatalf("events=%+v, want none while the bus is down", bus.events)
 	}
 }
 

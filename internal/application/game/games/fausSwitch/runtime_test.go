@@ -297,6 +297,29 @@ func TestRuntimeControl(t *testing.T) {
 	}
 }
 
+// Any socket may request a snapshot; a flood is refused as busy and leaves the
+// mailbox room for simulation events instead of cancelling the race.
+func TestRuntimeRefusesSnapshotFloodWithoutCancelling(t *testing.T) {
+	driver := newDriver(t, 2)
+	request := RuntimeInput{Kind: InputSnapshot, PlayerID: "spectator", ConnectionID: "spectator", RuntimeEpoch: driver.epoch, CreatedAt: driver.now}
+	accepted := 0
+	for range RuntimeQueueSize {
+		err := driver.runtime.Submit(request, driver.now)
+		if err == nil {
+			accepted++
+		} else if !errors.Is(err, ErrRuntimeBusy) {
+			t.Fatal(err)
+		}
+	}
+	if accepted != RuntimeQueueSize/2 || driver.runtime.terminal {
+		t.Fatalf("accepted snapshot requests = %d, terminal = %v", accepted, driver.runtime.terminal)
+	}
+	driver.bind(playerID(0))
+	if driver.runtime.terminal {
+		t.Fatal("snapshot flood ended the race")
+	}
+}
+
 func TestRuntimeFlips(t *testing.T) {
 	driver := newDriver(t, 2)
 	a := playerID(0)

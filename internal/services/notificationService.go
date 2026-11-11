@@ -2,10 +2,15 @@ package services
 
 import (
 	"bytes"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"html/template"
+	"net"
 	"net/smtp"
 	"strings"
+	"sync"
+	"time"
 
 	authAbstract "houseflowApi/internal/application/auth/abstract"
 	"houseflowApi/internal/config"
@@ -15,6 +20,12 @@ const MailSMTPHost = "smtp.gmail.com"
 const MailSMTPPort = 587
 const MailSMTPUsername = "houseflow37@gmail.com"
 const MailFromAddress = "no-reply@houseflow.com"
+
+// Mail is sent inside the request; a stalled SMTP server must not hold it.
+const (
+	smtpDialTimeout = 10 * time.Second
+	smtpSendTimeout = 20 * time.Second
+)
 
 type NotificationService struct {
 	smtpPassword string
@@ -83,18 +94,72 @@ func (r *NotificationService) sendCodeEmail(toEmail, code string, validityMinute
 			htmlBody + "\r\n",
 	)
 
-	return smtp.SendMail(smtpAddress, auth, MailFromAddress, []string{toEmail}, message)
+	return sendMail(smtpAddress, MailSMTPHost, auth, MailFromAddress, toEmail, message)
 }
 
-func renderCodeEmailTemplate(data codeEmailTemplateData) (string, error) {
+// sendMail does what smtp.SendMail does, on a connection with a deadline.
+func sendMail(address, host string, auth smtp.Auth, from, to string, message []byte) error {
+	conn, err := (&net.Dialer{Timeout: smtpDialTimeout}).Dial("tcp", address)
+	if err != nil {
+		return err
+	}
+	if err := conn.SetDeadline(time.Now().Add(smtpSendTimeout)); err != nil {
+		conn.Close()
+		return err
+	}
+	// NewClient closes conn itself when the server greeting fails.
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return err
+		}
+	}
+	if ok, _ := client.Extension("AUTH"); !ok {
+		return errors.New("smtp: server doesn't support AUTH")
+	}
+	if err := client.Auth(auth); err != nil {
+		return err
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to); err != nil {
+		return err
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(message); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+}
+
+var codeEmailTemplate = sync.OnceValues(func() (*template.Template, error) {
 	templateContent, err := config.ReadStaticFile("code-email.html")
 	if err != nil {
-		return "", fmt.Errorf("read code email template: %w", err)
+		return nil, fmt.Errorf("read code email template: %w", err)
 	}
-
 	tmpl, err := template.New("code-email").Parse(string(templateContent))
 	if err != nil {
-		return "", fmt.Errorf("parse code email template: %w", err)
+		return nil, fmt.Errorf("parse code email template: %w", err)
+	}
+	return tmpl, nil
+})
+
+func renderCodeEmailTemplate(data codeEmailTemplateData) (string, error) {
+	tmpl, err := codeEmailTemplate()
+	if err != nil {
+		return "", err
 	}
 
 	var body bytes.Buffer

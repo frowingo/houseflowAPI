@@ -18,8 +18,11 @@ import (
 
 const (
 	deadlineScanInterval = time.Minute
-	deadlineBatchSize    = 100
-	deadlineUpdater      = "system"
+	// deadlinePassTimeout stays below the interval so a slow pass cannot
+	// overlap the next one on the same instance.
+	deadlinePassTimeout = 50 * time.Second
+	deadlineBatchSize   = 100
+	deadlineUpdater     = "system"
 )
 
 type DeadlineService struct {
@@ -56,7 +59,9 @@ func (service *DeadlineService) Start(ctx context.Context) {
 
 func (service *DeadlineService) run(ctx context.Context) {
 	defer close(service.done)
-	service.runOnce(ctx)
+	// Completed-after-due chores only exist in legacy data, so the unindexed
+	// full scan runs once per process and the ticker uses the open-status index.
+	service.runOnce(ctx, service.Reconcile)
 	ticker := time.NewTicker(deadlineScanInterval)
 	defer ticker.Stop()
 	for {
@@ -64,13 +69,18 @@ func (service *DeadlineService) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			service.runOnce(ctx)
+			passCtx, cancel := context.WithTimeout(ctx, deadlinePassTimeout)
+			service.runOnce(passCtx, service.reconcileOpen)
+			cancel()
 		}
 	}
 }
 
-func (service *DeadlineService) runOnce(ctx context.Context) {
-	houseIDs, err := service.Reconcile(ctx, time.Now())
+func (service *DeadlineService) runOnce(
+	ctx context.Context,
+	reconcile func(context.Context, time.Time) ([]string, error),
+) {
+	houseIDs, err := reconcile(ctx, time.Now())
 	if err != nil {
 		if ctx.Err() == nil {
 			log.Printf("chore deadline reconciliation failed: %v", err)
@@ -85,15 +95,30 @@ func (service *DeadlineService) runOnce(ctx context.Context) {
 	}
 }
 
-// Reconcile marks every currently overdue chore as failed and returns the
-// affected house IDs. It is public so the deadline behavior can be tested
-// without waiting for the background ticker.
+// Reconcile marks every currently overdue chore as failed, including legacy
+// chores completed after their due date, and returns the affected house IDs.
+// It is public so the deadline behavior can be tested without waiting for the
+// background ticker.
 func (service *DeadlineService) Reconcile(ctx context.Context, now time.Time) ([]string, error) {
+	return service.reconcile(ctx, now, deadlineCandidateFilter)
+}
+
+// reconcileOpen only looks at chores that are still open, which the
+// {status, dueDate, _id} index serves without a scan or blocking sort.
+func (service *DeadlineService) reconcileOpen(ctx context.Context, now time.Time) ([]string, error) {
+	return service.reconcile(ctx, now, openDeadlineCandidateFilter)
+}
+
+func (service *DeadlineService) reconcile(
+	ctx context.Context,
+	now time.Time,
+	candidateFilter func(time.Time) bson.M,
+) ([]string, error) {
 	affectedHouses := make(map[string]struct{})
 	for {
 		candidates, err := service.chores.FindManyByFilter(
 			ctx,
-			deadlineCandidateFilter(now),
+			candidateFilter(now),
 			options.Find().SetSort(bson.D{{Key: "dueDate", Value: 1}, {Key: "_id", Value: 1}}).SetLimit(deadlineBatchSize),
 		)
 		if err != nil {
@@ -171,6 +196,13 @@ func (service *DeadlineService) failCandidate(
 		return "", false, nil
 	}
 	return failedChore.HouseId, true, nil
+}
+
+func openDeadlineCandidateFilter(now time.Time) bson.M {
+	return bson.M{
+		"status":  bson.M{"$in": bson.A{entities.Draft, entities.Progress, entities.InTest}},
+		"dueDate": bson.M{"$lte": now},
+	}
 }
 
 func deadlineCandidateFilter(now time.Time) bson.M {

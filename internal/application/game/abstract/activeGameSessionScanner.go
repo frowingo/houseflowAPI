@@ -1,10 +1,15 @@
 package abstract
 
-import "context"
+import (
+	"context"
+
+	gameDomain "houseflowApi/internal/application/game/domain"
+)
 
 type ActiveGameSession struct {
 	SessionID string
 	GameKey   string
+	State     gameDomain.SessionState
 	// Cursor is opaque; pass the last item's cursor to read the next page.
 	Cursor string
 }

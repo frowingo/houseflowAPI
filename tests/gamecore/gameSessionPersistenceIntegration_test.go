@@ -223,6 +223,9 @@ func TestGameSessionRepositoryPagesActiveSessionsOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, item := range items {
+			if item.State != gameDomain.SessionLobby {
+				t.Fatalf("scanned state of %s = %q", item.SessionID, item.State)
+			}
 			seen = append(seen, item.SessionID+"/"+item.GameKey)
 			after = item.Cursor
 		}

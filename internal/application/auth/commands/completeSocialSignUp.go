@@ -78,6 +78,7 @@ type CompleteSocialSignUpCommand struct {
 type CompleteSocialSignUpHandler struct {
 	accounts        *authPolicies.SocialAccounts
 	pendingTokens   *helpers.SocialPendingTokenService
+	codeAttempts    *authPolicies.CodeAttempts
 	codeSecret      string
 	validityMinutes int
 }
@@ -85,11 +86,12 @@ type CompleteSocialSignUpHandler struct {
 func NewCompleteSocialSignUpHandler(
 	accounts *authPolicies.SocialAccounts,
 	pendingTokens *helpers.SocialPendingTokenService,
+	codeAttempts *authPolicies.CodeAttempts,
 	codeSecret string,
 	validityMinutes int,
 ) *CompleteSocialSignUpHandler {
 	return &CompleteSocialSignUpHandler{
-		accounts: accounts, pendingTokens: pendingTokens,
+		accounts: accounts, pendingTokens: pendingTokens, codeAttempts: codeAttempts,
 		codeSecret: codeSecret, validityMinutes: validityMinutes,
 	}
 }
@@ -99,7 +101,15 @@ func (h *CompleteSocialSignUpHandler) Handle(ctx context.Context, command Comple
 	if err != nil {
 		return dtos.SocialAuthResponseModel{}, err
 	}
-	if !helpers.IsResetCodeValid(socialSignUpCodeSubject(pending, command.Email), command.Code, h.codeSecret, h.validityMinutes) {
+	valid, err := h.codeAttempts.Verify(ctx, authPolicies.CodeCheck{
+		Purpose: authPolicies.CodePurposeSocialSignUp, Email: command.Email,
+		Subject: socialSignUpCodeSubject(pending, command.Email), Code: command.Code,
+		Secret: h.codeSecret, ValidityMinutes: h.validityMinutes,
+	})
+	if err != nil {
+		return dtos.SocialAuthResponseModel{}, err
+	}
+	if !valid {
 		return dtos.SocialAuthResponseModel{}, helpers.NewLocalizedError("auth.error.invalid_or_expired_email_verification_code")
 	}
 

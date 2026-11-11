@@ -260,6 +260,34 @@ func TestHouseTanksRuntimeControl(t *testing.T) {
 	}
 }
 
+// Any socket may request a snapshot; a flood is refused as busy and leaves the
+// mailbox room for simulation events instead of cancelling the match.
+func TestHouseTanksRuntimeRefusesSnapshotFloodWithoutCancelling(t *testing.T) {
+	driver := newTanksDriver(t, "a", "b")
+	request := houseTanks.RuntimeInput{Kind: houseTanks.InputSnapshot, PlayerID: "spectator", ConnectionID: "spectator", RuntimeEpoch: driver.epoch, CreatedAt: driver.now}
+	accepted := 0
+	for range houseTanks.RuntimeQueueSize {
+		err := driver.runtime.Submit(request, driver.now)
+		if err == nil {
+			accepted++
+		} else if !errors.Is(err, houseTanks.ErrRuntimeBusy) {
+			t.Fatal(err)
+		}
+	}
+	if accepted != houseTanks.RuntimeQueueSize/2 {
+		t.Fatalf("accepted snapshot requests = %d", accepted)
+	}
+	driver.bind("a", "connection-a")
+	request.CreatedAt = driver.now
+	if err := driver.runtime.Submit(request, driver.now); err != nil {
+		t.Fatal(err)
+	}
+	driver.drain()
+	if last := driver.events[len(driver.events)-1]; last.Frame == nil || last.Frame.Phase != houseTanks.PhasePlaying {
+		t.Fatalf("match after flood: %+v", last)
+	}
+}
+
 func TestHouseTanksRuntimeInputs(t *testing.T) {
 	driver := newTanksDriver(t, "a", "b")
 	driver.bind("a", "connection-a")

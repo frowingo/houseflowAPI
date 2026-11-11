@@ -186,9 +186,18 @@ func (runtime *Runtime) Submit(input RuntimeInput, now time.Time) error {
 		return ErrInputExpired
 	}
 	if input.Kind == InputSnapshot {
+		// Any socket may ask, spectators too. Refusing at half a mailbox keeps
+		// room for simulation events, whose overflow would cancel the match.
+		if len(runtime.events) >= cap(runtime.events)/2 {
+			return ErrRuntimeBusy
+		}
 		frame := runtime.buildFrame()
-		runtime.emit(RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Frame: &frame})
-		return nil
+		select {
+		case runtime.events <- RuntimeEvent{ConnectionID: input.ConnectionID, MessageID: input.MessageID, Frame: &frame}:
+			return nil
+		default:
+			return ErrRuntimeBusy
+		}
 	}
 	if runtime.terminal {
 		return ErrSimulationFinished

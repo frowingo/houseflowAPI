@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"math/big"
@@ -75,11 +76,24 @@ func GenerateResetCode(email, secret string, window time.Time) string {
 }
 
 func IsResetCodeValid(email, code, secret string, validityMinutes int) bool {
-	currentWindow := ResetCodeWindow(validityMinutes)
+	_, ok := MatchResetCode(email, code, secret, ResetCodeWindow(validityMinutes), validityMinutes)
+	return ok
+}
+
+// MatchResetCode returns the window whose code equals code: currentWindow or
+// the one before it. Both are always compared in constant time so the answer
+// does not leak through timing.
+func MatchResetCode(email, code, secret string, currentWindow time.Time, validityMinutes int) (time.Time, bool) {
 	previousWindow := currentWindow.Add(-time.Duration(validityMinutes) * time.Minute)
 
-	currentCode := GenerateResetCode(email, secret, currentWindow)
-	previousCode := GenerateResetCode(email, secret, previousWindow)
+	matchesCurrent := subtle.ConstantTimeCompare([]byte(code), []byte(GenerateResetCode(email, secret, currentWindow)))
+	matchesPrevious := subtle.ConstantTimeCompare([]byte(code), []byte(GenerateResetCode(email, secret, previousWindow)))
 
-	return code == currentCode || code == previousCode
+	switch {
+	case matchesCurrent == 1:
+		return currentWindow, true
+	case matchesPrevious == 1:
+		return previousWindow, true
+	}
+	return time.Time{}, false
 }
