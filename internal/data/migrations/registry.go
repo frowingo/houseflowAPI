@@ -104,5 +104,8 @@ func AllMigrations() []Migration {
 		&queryIndexes{},
 		// --- Auth Code Attempts ---
 		&authCodeAttempts{},
+		// --- Chore Catalog ---
+		&choreCatalogCollection{},
+		&choreCatalogLocalizations{},
 	}
 }

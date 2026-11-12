@@ -24,6 +24,7 @@ type CreateChoreCommand struct {
 	Level             entities.ChoreLevel
 	IsRecurring       bool
 	RecurringInterval int
+	Category          entities.ChoreCategory
 	RequesterID       string
 }
 
@@ -74,6 +75,7 @@ func (h *CreateChoreHandler) Handle(ctx context.Context, command CreateChoreComm
 			ReviewPhotoKeys:   map[string]string{},
 			IsRecurring:       command.IsRecurring,
 			RecurringInterval: command.RecurringInterval,
+			Category:          command.Category,
 		})
 		if err != nil {
 			return err

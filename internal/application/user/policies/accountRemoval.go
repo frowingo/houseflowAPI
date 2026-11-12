@@ -89,6 +89,10 @@ func (r *AccountRemoval) Remove(ctx context.Context, userID string) ([]string, e
 		if _, err := database.Collection("UserInfoHistory").DeleteMany(txCtx, bson.M{"userId": userID}); err != nil {
 			return err
 		}
+		// The user's own chore catalog entries; system entries never match a user id.
+		if _, err := database.Collection("ChoreCatalog").DeleteMany(txCtx, bson.M{"userId": userID}); err != nil {
+			return err
+		}
 		if err := deleteHouses(txCtx, database, abandonedHouses); err != nil {
 			return err
 		}

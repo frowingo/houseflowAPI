@@ -9,6 +9,8 @@ import (
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	choreQueries "houseflowApi/internal/application/chore/queries"
+	choreCatalogCommands "houseflowApi/internal/application/choreCatalog/commands"
+	choreCatalogQueries "houseflowApi/internal/application/choreCatalog/queries"
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	gameApplication "houseflowApi/internal/application/game"
 	gameCommands "houseflowApi/internal/application/game/commands"
@@ -481,10 +483,18 @@ func SetupRoutes(
 			appEventService.HouseChanged(ctx, result.HouseId, false)
 		}))
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](applicationMediator, getReviewPhotoURLHandler)
+	choreCatalogRepository := database.NewDbContext[entities.ChoreCatalog](client, dbName)
+	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](applicationMediator,
+		choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogRepository))
+	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](applicationMediator,
+		choreCatalogCommands.NewUpsertChoreCatalogHandler(choreCatalogRepository))
 	choreController := controllers.NewChoreController(applicationMediator, localizationCache)
 
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
 	choreRoutes.Post("", choreController.CreateChore)
+	// Registered before "/:id" so "catalog" is not taken as a chore id.
+	choreRoutes.Get("/catalog", choreController.ListChoreCatalog)
+	choreRoutes.Put("/catalog", choreController.UpsertChoreCatalog)
 	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
 	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Get("/:id/review-photo/:round", choreController.GetReviewPhotoURL)

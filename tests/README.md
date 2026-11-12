@@ -42,7 +42,7 @@ başlatır, iş bitince kapatır (Homebrew `mongodb-community` ve `redis`).
 | `architecture` | CQRS/katman kuralları, kaynak ve deploy dosyası sözleşmeleri, HTTP hataları, güvenlik, rate limit |
 | `account` | auth, sosyal giriş, hesap silme, kullanıcı, lokalizasyon |
 | `house` | ev, davet kodu, profil/çıkış, eşzamanlılık |
-| `chore` | görev akışı, deadline, fotoğraf, bildirim |
+| `chore` | görev akışı, deadline, fotoğraf, bildirim, görev kataloğu |
 | `gamecore` | oturum domain'i, persistence, katalog, config, lobi niyetleri, modül sözleşmeleri |
 | `realtime` | koordinasyon, gateway, oda runtime, kapasite, sıkıştırma |
 | `games/<oyun>` | houseRockets, houseTanks, fausSwitch, ticTacToe |

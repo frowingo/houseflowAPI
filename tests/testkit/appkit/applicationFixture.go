@@ -18,6 +18,8 @@ import (
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	choreQueries "houseflowApi/internal/application/chore/queries"
+	choreCatalogCommands "houseflowApi/internal/application/choreCatalog/commands"
+	choreCatalogQueries "houseflowApi/internal/application/choreCatalog/queries"
 	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
@@ -229,6 +231,9 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy,
 	)
 	getReviewPhotoURLHandler := choreQueries.NewGetReviewPhotoURLHandler(chores, membershipPolicy, photoStore)
+	choreCatalogs := database.NewDbContext[entities.ChoreCatalog](client, db.Name())
+	listChoreCatalogHandler := choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogs)
+	upsertChoreCatalogHandler := choreCatalogCommands.NewUpsertChoreCatalogHandler(choreCatalogs)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(users, histories)
 	createUserHandler := userCommands.NewCreateUserHandler(users, histories)
 	userIdentities := database.NewDbContext[entities.UserIdentity](client, db.Name())
@@ -285,6 +290,8 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](sender, updateChoreStatusHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](sender, reviewChoreHandler)
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](sender, getReviewPhotoURLHandler)
+	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](sender, listChoreCatalogHandler)
+	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](sender, upsertChoreCatalogHandler)
 	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](sender, updateProfileHandler)
 	cqrs.MustRegister[*dtos.NewUserModel, userCommands.CreateUserCommand](sender, createUserHandler)
 	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](sender, deleteUserHandler)
@@ -310,6 +317,7 @@ func CreateChoreCommand(model dtos.CreateChoreModel, requesterID string) choreCo
 		Level:             model.Level,
 		IsRecurring:       model.IsRecurring,
 		RecurringInterval: model.RecurringInterval,
+		Category:          model.CategoryValue(),
 		RequesterID:       requesterID,
 	}
 }
