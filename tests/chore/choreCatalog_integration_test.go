@@ -33,6 +33,23 @@ func catalogItem(title string, category entities.ChoreCategory) dtos.ChoreCatalo
 	}
 }
 
+// systemCatalogItem uses the localization keys of a seeded system entry.
+func systemCatalogItem(key string, category entities.ChoreCategory) dtos.ChoreCatalogModel {
+	item := catalogItem(entities.SystemChoreCatalogKeyPrefix+key+".title", category)
+	item.Description = entities.SystemChoreCatalogKeyPrefix + key + ".description"
+	item.IsSystem = true
+	return item
+}
+
+// clearCatalog removes the seeded system entries so a test controls the whole
+// catalog; their translations stay.
+func clearCatalog(t *testing.T, fixture *appkit.ConcurrencyFixture) {
+	t.Helper()
+	if _, err := fixture.DB.Collection("ChoreCatalog").DeleteMany(fixture.Ctx, bson.M{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func upsertCatalog(
 	fixture *appkit.ConcurrencyFixture, userID string, role int, items ...dtos.ChoreCatalogModel,
 ) ([]dtos.ChoreCatalogModel, error) {
@@ -54,8 +71,15 @@ func mustUpsertCatalog(
 
 func listCatalog(t *testing.T, fixture *appkit.ConcurrencyFixture, userID string) []dtos.ChoreCatalogModel {
 	t.Helper()
+	return listCatalogWithTokenLanguage(t, fixture, userID, "")
+}
+
+func listCatalogWithTokenLanguage(
+	t *testing.T, fixture *appkit.ConcurrencyFixture, userID, tokenLanguage string,
+) []dtos.ChoreCatalogModel {
+	t.Helper()
 	result, err := cqrs.Send[[]dtos.ChoreCatalogModel](fixture.Ctx, fixture.Sender, choreCatalogQueries.ListChoreCatalogQuery{
-		RequesterID: userID,
+		RequesterID: userID, Language: tokenLanguage,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -93,10 +117,10 @@ func TestChoreCatalogUpsertInsertsUpdatesSoftDeletesAndLists(t *testing.T) {
 	admin := fixture.SeedUser(t, "correct-password").Id.Hex()
 	owner := fixture.SeedUser(t, "correct-password").Id.Hex()
 	other := fixture.SeedUser(t, "correct-password").Id.Hex()
+	clearCatalog(t, fixture)
 
-	systemItem := catalogItem("Wash dishes", entities.ChoreCategoryKitchen)
-	systemItem.IsSystem = true
-	system := mustUpsertCatalog(t, fixture, admin, superAdminRole, systemItem)
+	system := mustUpsertCatalog(t, fixture, admin, superAdminRole,
+		systemCatalogItem("kitchen.wash_dishes", entities.ChoreCategoryKitchen))
 	if len(system) != 1 || !system[0].IsSystem || system[0].UserId != entities.SystemUserId {
 		t.Fatalf("system insert = %+v, want a SYSTEM entry", system)
 	}
@@ -130,7 +154,7 @@ func TestChoreCatalogUpsertInsertsUpdatesSoftDeletesAndLists(t *testing.T) {
 	}
 
 	// Sorted by category, then title; other users' entries are not listed.
-	want := []string{"Wash dishes", "Feed the cat", "Take out trash", "Water plants"}
+	want := []string{"Wash the dishes", "Feed the cat", "Take out trash", "Water plants"}
 	if got := catalogTitles(listCatalog(t, fixture, owner)); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("owner list = %v, want %v", got, want)
 	}
@@ -142,11 +166,11 @@ func TestChoreCatalogUpsertInsertsUpdatesSoftDeletesAndLists(t *testing.T) {
 	if len(deleted) != 1 || !deleted[0].IsDeleted || deleted[0].Title != "Water plants" {
 		t.Fatalf("soft delete result = %+v", deleted)
 	}
-	want = []string{"Wash dishes", "Feed the cat", "Take out trash"}
+	want = []string{"Wash the dishes", "Feed the cat", "Take out trash"}
 	if got := catalogTitles(listCatalog(t, fixture, owner)); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("owner list after delete = %v, want %v", got, want)
 	}
-	if got := catalogTitles(listCatalog(t, fixture, other)); strings.Join(got, "|") != "Wash dishes|Other user entry" {
+	if got := catalogTitles(listCatalog(t, fixture, other)); strings.Join(got, "|") != "Wash the dishes|Other user entry" {
 		t.Fatalf("other list = %v", got)
 	}
 }
@@ -155,6 +179,7 @@ func TestChoreCatalogUpsertRejectsMissingDeletedOrForeignEntriesAtomically(t *te
 	fixture := appkit.NewConcurrencyFixture(t)
 	owner := fixture.SeedUser(t, "correct-password").Id.Hex()
 	other := fixture.SeedUser(t, "correct-password").Id.Hex()
+	clearCatalog(t, fixture)
 
 	owned := mustUpsertCatalog(t, fixture, owner, normalRole, catalogItem("Owned", entities.ChoreCategoryRooms))[0]
 	foreign := mustUpsertCatalog(t, fixture, other, normalRole, catalogItem("Foreign", entities.ChoreCategoryRooms))[0]
@@ -193,9 +218,9 @@ func TestChoreCatalogSystemEntriesRequireSuperAdmin(t *testing.T) {
 	fixture := appkit.NewConcurrencyFixture(t)
 	admin := fixture.SeedUser(t, "correct-password").Id.Hex()
 	user := fixture.SeedUser(t, "correct-password").Id.Hex()
+	clearCatalog(t, fixture)
 
-	systemItem := catalogItem("Mop floors", entities.ChoreCategoryFloorsGeneral)
-	systemItem.IsSystem = true
+	systemItem := systemCatalogItem("floors_general.mop_floors", entities.ChoreCategoryFloorsGeneral)
 	for _, role := range []int{normalRole, int(entities.Admin)} {
 		_, err := upsertCatalog(fixture, user, role, systemItem)
 		requireApplicationError(t, err, helpers.ErrorKindForbidden, "choreCatalog.error.system_forbidden")
@@ -204,16 +229,34 @@ func TestChoreCatalogSystemEntriesRequireSuperAdmin(t *testing.T) {
 		t.Fatalf("forbidden system insert stored %d entries", count)
 	}
 
+	// A system entry keeps localization keys; plain text is rejected.
+	plain := systemItem
+	plain.Title = "Mop floors"
+	_, err := upsertCatalog(fixture, admin, superAdminRole, plain)
+	requireApplicationError(t, err, helpers.ErrorKindBadRequest, "choreCatalog.error.system_requires_keys")
+	plain = systemItem
+	plain.Description = "Mop every floor"
+	_, err = upsertCatalog(fixture, admin, superAdminRole, plain)
+	requireApplicationError(t, err, helpers.ErrorKindBadRequest, "choreCatalog.error.system_requires_keys")
+
 	system := mustUpsertCatalog(t, fixture, admin, superAdminRole, systemItem)[0]
+	if system.Title != systemItem.Title || system.Description != systemItem.Description {
+		t.Fatalf("upsert response = %+v, want the stored keys", system)
+	}
+	localizedCopy := system
+	localizedCopy.Title = "Mop the floors"
+	_, err = upsertCatalog(fixture, admin, superAdminRole, localizedCopy)
+	requireApplicationError(t, err, helpers.ErrorKindBadRequest, "choreCatalog.error.system_requires_keys")
+
 	change := system
-	change.Title = "Mop all floors"
+	change.Title = entities.SystemChoreCatalogKeyPrefix + "floors_general.deep_clean.title"
 	for _, role := range []int{normalRole, int(entities.Admin)} {
 		_, err := upsertCatalog(fixture, user, role, change)
 		requireApplicationError(t, err, helpers.ErrorKindForbidden, "choreCatalog.error.system_forbidden")
 	}
 
 	updated := mustUpsertCatalog(t, fixture, admin, superAdminRole, change)[0]
-	if updated.Title != "Mop all floors" || updated.UserId != entities.SystemUserId {
+	if updated.Title != change.Title || updated.UserId != entities.SystemUserId {
 		t.Fatalf("super admin update = %+v", updated)
 	}
 	updated.IsDeleted = true
@@ -227,9 +270,9 @@ func TestChoreCatalogEntriesAreRemovedWithTheAccount(t *testing.T) {
 	fixture := appkit.NewConcurrencyFixture(t)
 	admin := fixture.SeedUser(t, "correct-password").Id.Hex()
 	user := fixture.SeedUser(t, "correct-password").Id.Hex()
-	systemItem := catalogItem("System entry", entities.ChoreCategoryShoppingHome)
-	systemItem.IsSystem = true
-	mustUpsertCatalog(t, fixture, admin, superAdminRole, systemItem)
+	clearCatalog(t, fixture)
+	mustUpsertCatalog(t, fixture, admin, superAdminRole,
+		systemCatalogItem("shopping_home.pay_bills", entities.ChoreCategoryShoppingHome))
 	mustUpsertCatalog(t, fixture, user, normalRole, catalogItem("Personal entry", entities.ChoreCategoryShoppingHome))
 
 	if _, err := cqrs.Send[cqrs.NoResult](fixture.Ctx, fixture.Sender, userCommands.DeleteUserCommand{UserID: user}); err != nil {
@@ -327,5 +370,88 @@ func TestChoreCategoryIsStoredAndKeptWhenAnUpdateOmitsIt(t *testing.T) {
 	model.Category = nil
 	if err := v.Validate(model); err != nil {
 		t.Fatalf("chore without category rejected: %v", err)
+	}
+}
+
+func TestSystemChoreCatalogSeedIsListedInTheUsersLanguage(t *testing.T) {
+	fixture := appkit.NewConcurrencyFixture(t)
+	user := fixture.SeedUser(t, "correct-password") // language "en"
+
+	var system []entities.ChoreCatalog
+	cursor, err := fixture.DB.Collection("ChoreCatalog").Find(fixture.Ctx, bson.M{"userId": entities.SystemUserId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cursor.All(fixture.Ctx, &system); err != nil {
+		t.Fatal(err)
+	}
+	if len(system) != 62 {
+		t.Fatalf("seeded system entries = %d, want 62", len(system))
+	}
+	categories := map[entities.ChoreCategory]int{}
+	for _, entry := range system {
+		categories[entry.Category]++
+		for _, key := range []string{entry.Title, entry.Description} {
+			if !strings.HasPrefix(key, entities.SystemChoreCatalogKeyPrefix) {
+				t.Fatalf("system entry %s stores %q, want a localization key", entry.Id.Hex(), key)
+			}
+			for _, language := range []string{"en", "tr"} {
+				count, err := fixture.DB.Collection("localization").CountDocuments(fixture.Ctx, bson.M{
+					"key": key, "language": language, "type": "message", "value": bson.M{"$ne": ""},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 {
+					t.Fatalf("%s has %d %s translations, want 1", key, count, language)
+				}
+			}
+		}
+	}
+	if len(categories) != 9 {
+		t.Fatalf("seeded categories = %v, want all nine", categories)
+	}
+
+	personal := catalogItem("choreCatalog.system.kitchen.wash_dishes.title", entities.ChoreCategoryKitchen)
+	mustUpsertCatalog(t, fixture, user.Id.Hex(), normalRole, personal)
+
+	findTitle := func(items []dtos.ChoreCatalogModel, title string) *dtos.ChoreCatalogModel {
+		for i := range items {
+			if items[i].Title == title {
+				return &items[i]
+			}
+		}
+		return nil
+	}
+	english := listCatalog(t, fixture, user.Id.Hex())
+	if len(english) != 63 {
+		t.Fatalf("listed entries = %d, want 62 system + 1 personal", len(english))
+	}
+	washDishes := findTitle(english, "Wash the dishes")
+	if washDishes == nil || !washDishes.IsSystem ||
+		washDishes.Description != "Wash the dishes in the sink, rinse them and leave them to dry." {
+		t.Fatalf("english system entry = %+v", washDishes)
+	}
+	// Personal text is never treated as a key, even when it looks like one.
+	if entry := findTitle(english, personal.Title); entry == nil || entry.IsSystem {
+		t.Fatalf("personal entry was localized: %+v", entry)
+	}
+
+	// The user's stored language wins over the token's.
+	if _, err := fixture.DB.Collection("User").UpdateByID(fixture.Ctx, user.Id, bson.M{"$set": bson.M{"language": "tr"}}); err != nil {
+		t.Fatal(err)
+	}
+	turkish := listCatalogWithTokenLanguage(t, fixture, user.Id.Hex(), "en")
+	if entry := findTitle(turkish, "Bulaşıkları yıka"); entry == nil ||
+		entry.Description != "Lavabodaki bulaşıkları yıka, durula ve kurumaya bırak." {
+		t.Fatalf("turkish system entry missing: %v", catalogTitles(turkish))
+	}
+
+	// Without a stored language the token's language is used.
+	if _, err := fixture.DB.Collection("User").UpdateByID(fixture.Ctx, user.Id, bson.M{"$set": bson.M{"language": ""}}); err != nil {
+		t.Fatal(err)
+	}
+	if findTitle(listCatalogWithTokenLanguage(t, fixture, user.Id.Hex(), "tr"), "Bulaşıkları yıka") == nil {
+		t.Fatal("token language was not used as the fallback")
 	}
 }

@@ -1,0 +1,562 @@
+{
+  "records": [
+    {
+      "title": "Bulaşıkları yıka",
+      "description": "Lavabodaki bulaşıkları yıka, durula ve kurumaya bırak.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Bulaşık makinesini doldur",
+      "description": "Kirli tabakları makineye diz, tableti koy ve çalıştır.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Bulaşık makinesini boşalt",
+      "description": "Temiz bulaşıkları dolaplara yerleştir.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Akşam yemeğini hazırla",
+      "description": "Evin akşam yemeğini planla ve pişir.",
+      "recurringInterval": 1,
+      "level": 30,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Kahvaltıyı hazırla",
+      "description": "Kahvaltı sofrasını kur, çay/kahveyi demle.",
+      "recurringInterval": 1,
+      "level": 20,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Tezgahları sil",
+      "description": "Tezgahı, masayı ve ocak üstünü temizle.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Ocağı ve fırını temizle",
+      "description": "Yağ ve yanık lekelerini çıkar, ızgaraları yıka.",
+      "recurringInterval": 14,
+      "level": 30,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Buzdolabını düzenle",
+      "description": "Bozulanları at, rafları sil, yiyecekleri düzenle.",
+      "recurringInterval": 14,
+      "level": 20,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Mikrodalgayı temizle",
+      "description": "İçini ve döner tablayı sil.",
+      "recurringInterval": 14,
+      "level": 10,
+      "category": 1,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Duşu ve küveti temizle",
+      "description": "Kireç ve sabun lekelerini çıkar, camı sil.",
+      "recurringInterval": 7,
+      "level": 30,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Giderleri temizle",
+      "description": "Saç ve tıkanıklıkları temizle, gider açıcı kullan.",
+      "recurringInterval": 14,
+      "level": 20,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Lavaboyu ve bataryayı temizle",
+      "description": "Lavaboyu ovala, musluklardaki kireci al.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Aynaları sil",
+      "description": "Aynalardaki su ve diş macunu lekelerini sil.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Havluları değiştir",
+      "description": "Kullanılmış havluları çamaşıra at, temizlerini as.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Banyo zeminini sil",
+      "description": "Zemini paspasla, köşeleri unutma.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Banyo dolabını düzenle",
+      "description": "Biten ürünleri at, eksikleri not al.",
+      "recurringInterval": 30,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Çamaşırları yıka",
+      "description": "Renkli ve beyazları ayır, makineyi çalıştır.",
+      "recurringInterval": 3,
+      "level": 20,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Çamaşırları as",
+      "description": "Makine bitince çamaşırları kurumaya as.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Kuruları topla ve katla",
+      "description": "Kuruyanları katla, herkesin dolabına bırak.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Ütü yap",
+      "description": "Gömlekleri ve kırışanları ütüle.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Kurutma filtresini temizle",
+      "description": "Hav filtresini ve su haznesini boşalt.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 2,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Klozeti temizle",
+      "description": "İçini fırçala, kapağını ve oturağını dezenfekte et.",
+      "recurringInterval": 3,
+      "level": 20,
+      "category": 3,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Tuvalet lavabosunu temizle",
+      "description": "Lavaboyu ve musluğu sil.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 3,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Tuvalet kağıdını yenile",
+      "description": "Rulo bitmeden yenisini tak, yedeği kontrol et.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 3,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Tuvalet çöpünü boşalt",
+      "description": "Çöpü boşalt ve yeni poşet tak.",
+      "recurringInterval": 2,
+      "level": 10,
+      "category": 3,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Zemini dezenfekte et",
+      "description": "Klozet çevresi dahil zemini sil.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 3,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "El havlusunu değiştir",
+      "description": "Temiz bir el havlusu as.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 3,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Yatakları topla",
+      "description": "Yorganı düzelt, yastıkları yerleştir.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Nevresimleri değiştir",
+      "description": "Çarşaf ve kılıfları değiştir, kirlileri yıkamaya at.",
+      "recurringInterval": 14,
+      "level": 20,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Odayı topla",
+      "description": "Ortada kalanları yerine kaldır.",
+      "recurringInterval": 2,
+      "level": 10,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Salonu topla",
+      "description": "Kanepeyi düzelt, sehpayı boşalt, minderleri yerleştir.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Toz al",
+      "description": "Raflar, sehpalar ve TV ünitesinin tozunu al.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Camları sil",
+      "description": "Camların içini ve pervazları sil.",
+      "recurringInterval": 30,
+      "level": 20,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Gardırobu düzenle",
+      "description": "Kıyafetleri katla, mevsimlikleri ayır.",
+      "recurringInterval": 30,
+      "level": 20,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Lambaları ve prizleri kontrol et",
+      "description": "Yanmayan ampulleri değiştir, kabloları düzenle.",
+      "recurringInterval": 30,
+      "level": 10,
+      "category": 4,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Süpürge yap",
+      "description": "Tüm odaları ve halıları süpür.",
+      "recurringInterval": 3,
+      "level": 20,
+      "category": 5,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Paspas yap",
+      "description": "Süpürdükten sonra zeminleri paspasla.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 5,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Halıları silkele",
+      "description": "Kapı önü ve küçük halıları balkonda silkele.",
+      "recurringInterval": 14,
+      "level": 10,
+      "category": 5,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Kapı kollarını dezenfekte et",
+      "description": "Kapı kolları, anahtarlar ve kumandaları sil.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 5,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Antreyi düzenle",
+      "description": "Ayakkabıları dolaba kaldır, montları as.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 5,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Genel temizlik",
+      "description": "Evin tamamında detaylı temizlik.",
+      "recurringInterval": 30,
+      "level": 30,
+      "category": 5,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Evcil hayvanı besle",
+      "description": "Mama kabını doldur, porsiyonu kontrol et.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Köpeği besle",
+      "description": "Sabah ve akşam mamasını ver.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Kediyi besle",
+      "description": "Mamasını ver, suyunu tazele.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Köpeği yürüyüşe çıkar",
+      "description": "En az 30 dakikalık bir yürüyüş.",
+      "recurringInterval": 1,
+      "level": 20,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Kum kabını temizle",
+      "description": "Kumu elekten geçir, gerekirse tamamen değiştir.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Su kabını tazele",
+      "description": "Kabı yıka ve taze su koy.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Tüylerini tara",
+      "description": "Tüylerini tara, tırnaklarını kontrol et.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Akvaryumu / kafesi temizle",
+      "description": "Suyu değiştir veya kafes altlığını yenile.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 6,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Çöpü çıkar",
+      "description": "Tüm çöpleri topla ve konteynere at.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 7,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Geri dönüşümü ayır",
+      "description": "Plastik, kağıt ve camı ayrı kutulara ayır.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 7,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Çöp kovalarını yıka",
+      "description": "Kovaları yıka, kokuyu gider.",
+      "recurringInterval": 30,
+      "level": 20,
+      "category": 7,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Atık pil ve camı götür",
+      "description": "Biriken atık pil ve camları toplama noktasına götür.",
+      "recurringInterval": 30,
+      "level": 10,
+      "category": 7,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Çiçekleri sula",
+      "description": "Saksıları kontrol et, kuruyanları sula.",
+      "recurringInterval": 3,
+      "level": 10,
+      "category": 8,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Balkonu süpür",
+      "description": "Balkonu süpür, masa ve sandalyeleri sil.",
+      "recurringInterval": 7,
+      "level": 10,
+      "category": 8,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Saksı bakımı yap",
+      "description": "Kuru yaprakları temizle, gübre ver.",
+      "recurringInterval": 30,
+      "level": 10,
+      "category": 8,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Bahçeyi düzenle",
+      "description": "Çimleri biç, yaprakları topla.",
+      "recurringInterval": 14,
+      "level": 30,
+      "category": 8,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Market alışverişi yap",
+      "description": "Ortak listeyi kontrol et ve eksikleri al.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 9,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Ekmek ve süt al",
+      "description": "Günlük ekmek ve süt ihtiyacını karşıla.",
+      "recurringInterval": 1,
+      "level": 10,
+      "category": 9,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Temizlik malzemelerini tamamla",
+      "description": "Deterjan, sünger ve çöp poşetlerini kontrol et.",
+      "recurringInterval": 30,
+      "level": 10,
+      "category": 9,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Faturaları öde",
+      "description": "Elektrik, su, doğalgaz ve internet faturalarını öde.",
+      "recurringInterval": 30,
+      "level": 10,
+      "category": 9,
+      "isDeleted": false,
+      "isSystem": true
+    },
+    {
+      "title": "Haftalık menüyü planla",
+      "description": "Haftanın yemeklerini belirle, listeyi çıkar.",
+      "recurringInterval": 7,
+      "level": 20,
+      "category": 9,
+      "isDeleted": false,
+      "isSystem": true
+    }
+  ]
+}

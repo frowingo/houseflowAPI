@@ -232,7 +232,6 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	)
 	getReviewPhotoURLHandler := choreQueries.NewGetReviewPhotoURLHandler(chores, membershipPolicy, photoStore)
 	choreCatalogs := database.NewDbContext[entities.ChoreCatalog](client, db.Name())
-	listChoreCatalogHandler := choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogs)
 	upsertChoreCatalogHandler := choreCatalogCommands.NewUpsertChoreCatalogHandler(choreCatalogs)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(users, histories)
 	createUserHandler := userCommands.NewCreateUserHandler(users, histories)
@@ -247,6 +246,10 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	getImagesByCategoryHandler := imageAssetQueries.NewGetImagesByCategoryHandler(imageAssets, imageCache)
 	getImageByPublicIDHandler := imageAssetQueries.NewGetImageByPublicIDHandler(imageAssets)
 	localizationCache := infrastructureLocalization.NewCache(localizations)
+	if err := localizationCache.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+	listChoreCatalogHandler := choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogs, users, localizationCache)
 	getPlaintextsHandler := localizationQueries.NewGetPlaintextsHandler(localizations, localizationCache)
 	getLanguagesHandler := localizationQueries.NewGetLanguagesHandler(languages)
 	getLanguageHandler := localizationQueries.NewGetLanguageHandler(languages)

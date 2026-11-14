@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
@@ -74,6 +75,9 @@ func (h *UpsertChoreCatalogHandler) insert(
 		if !isSuperAdmin {
 			return nil, helpers.NewForbiddenError("choreCatalog.error.system_forbidden")
 		}
+		if err := requireSystemKeys(item); err != nil {
+			return nil, err
+		}
 		userID = entities.SystemUserId
 	}
 	return h.catalogRepository.Insert(ctx, entities.ChoreCatalog{
@@ -109,6 +113,11 @@ func (h *UpsertChoreCatalogHandler) update(
 		if !isSuperAdmin {
 			return nil, helpers.NewForbiddenError("choreCatalog.error.system_forbidden")
 		}
+		if !item.IsDeleted {
+			if err := requireSystemKeys(item); err != nil {
+				return nil, err
+			}
+		}
 	} else if current.UserId != requesterID {
 		// Another user's entry is reported as missing so its existence does not leak.
 		return nil, helpers.NewNotFoundError("choreCatalog.error.not_found")
@@ -135,6 +144,16 @@ func (h *UpsertChoreCatalogHandler) update(
 		return nil, err
 	}
 	return &updated, nil
+}
+
+// requireSystemKeys keeps system entries on localization keys, so a localized
+// text read from the catalog list cannot overwrite a key.
+func requireSystemKeys(item dtos.ChoreCatalogModel) error {
+	if !strings.HasPrefix(item.Title, entities.SystemChoreCatalogKeyPrefix) ||
+		(item.Description != "" && !strings.HasPrefix(item.Description, entities.SystemChoreCatalogKeyPrefix)) {
+		return helpers.NewLocalizedError("choreCatalog.error.system_requires_keys")
+	}
+	return nil
 }
 
 var _ cqrs.CommandHandler[UpsertChoreCatalogCommand, []dtos.ChoreCatalogModel] = (*UpsertChoreCatalogHandler)(nil)

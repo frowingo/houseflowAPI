@@ -10,6 +10,10 @@ import (
 // ObjectID, so catalog code never parses UserId as one.
 const SystemUserId = "SYSTEM"
 
+// SystemChoreCatalogKeyPrefix starts the localization keys a system entry
+// stores as its title and description.
+const SystemChoreCatalogKeyPrefix = "choreCatalog.system."
+
 // ChoreCatalog is a reusable chore template. System entries have
 // UserId = SystemUserId; the rest belong to the user who created them.
 type ChoreCatalog struct {

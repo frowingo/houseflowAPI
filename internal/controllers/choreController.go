@@ -310,7 +310,7 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 }
 
 // @Summary List chore catalog
-// @Description Lists the system catalog entries and the requester's own entries that are not deleted.
+// @Description Lists the system catalog entries and the requester's own entries that are not deleted. System entries come with title and description in the user's language.
 // @Tags Chore
 // @Produce json
 // @Security BearerAuth
@@ -324,6 +324,7 @@ func (r *ChoreController) ListChoreCatalog(c *fiber.Ctx) error {
 	defer cancel()
 	result, err := cqrs.Send[[]dtos.ChoreCatalogModel](ctx, r.sender, choreCatalogQueries.ListChoreCatalogQuery{
 		RequesterID: userId,
+		Language:    helpers.RequestLanguage(c),
 	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
@@ -333,7 +334,7 @@ func (r *ChoreController) ListChoreCatalog(c *fiber.Ctx) error {
 }
 
 // @Summary Upsert chore catalog entries
-// @Description Items without an id are inserted; items with an id are updated, or soft-deleted when isDeleted is true. The whole request is one transaction and the response keeps the request order. isSystem on a new item creates a system entry and, like changing a system entry, requires role 2.
+// @Description Items without an id are inserted; items with an id are updated, or soft-deleted when isDeleted is true. The whole request is one transaction and the response keeps the request order. isSystem on a new item creates a system entry and, like changing a system entry, requires role 2; a system entry's title and description must be localization keys starting with choreCatalog.system.
 // @Tags Chore
 // @Accept json
 // @Produce json

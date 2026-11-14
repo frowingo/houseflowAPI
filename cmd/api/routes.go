@@ -485,7 +485,7 @@ func SetupRoutes(
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](applicationMediator, getReviewPhotoURLHandler)
 	choreCatalogRepository := database.NewDbContext[entities.ChoreCatalog](client, dbName)
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](applicationMediator,
-		choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogRepository))
+		choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogRepository, userRepository, localizationCache))
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](applicationMediator,
 		choreCatalogCommands.NewUpsertChoreCatalogHandler(choreCatalogRepository))
 	choreController := controllers.NewChoreController(applicationMediator, localizationCache)
