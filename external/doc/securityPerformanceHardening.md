@@ -1,6 +1,6 @@
 # Güvenlik ve performans sertleştirmesi
 
-Tarih: 11 Kasım 2026. Bu belge backend'de yapılan güvenlik ve performans değişikliklerini anlatır. Değişiklikler `dev` dalında commit edilmeden bekliyor ve henüz deploy edilmedi. Etkilenen testler `scripts/testAffected.sh --base HEAD` ile çalıştırıldı: 20 paket, `-race` ile, hepsi geçti.
+Tarih: 11 Kasım 2026. Bu belge backend'de yapılan güvenlik ve performans değişikliklerini anlatır. Değişiklikler `dev` dalında ve henüz deploy edilmedi. Etkilenen testler `scripts/testAffected.sh --base HEAD` ile çalıştırıldı: 20 paket, `-race` ile, hepsi geçti.
 
 ## Özet
 
@@ -20,7 +20,7 @@ Tarih: 11 Kasım 2026. Bu belge backend'de yapılan güvenlik ve performans değ
 | Performans | Yerelleştirme önbelleği yalnızca İngilizceyi yüklüyor, eksik çeviriler her seferinde Mongo'ya gidiyordu | `en` ve `tr` yükleniyor, eksik çeviri bir kez sorgulanıp önbelleğe alınıyor | [cache.go](../../internal/infrastructure/localization/cache.go) |
 | Performans | SMTP gönderimi zaman aşımsızdı, şablon her gönderimde parse ediliyordu | 10 sn bağlantı, 20 sn toplam süre; şablon bir kez parse ediliyor | [notificationService.go](../../internal/services/notificationService.go) |
 | Performans | Yanıtlar sıkıştırılmıyordu | Fiber `compress` (en hızlı seviye), websocket hariç | [main.go](../../cmd/api/main.go) |
-| Performans | Redis kullanılamazken her komut sonrası 750 ms bekleniyordu | Bus bilinen şekilde kullanılamıyorsa hemen dönülüyor | [service.go](../../internal/infrastructure/appEvents/service.go) |
+| Performans | Redis kullanılamazken her komut sonrası 750 ms bekleniyordu | Bus kullanılamaz görünürken olay 100 ms bütçeyle deneniyor | [service.go](../../internal/infrastructure/appEvents/service.go) |
 | Performans | Görev deadline taraması her dakika geçmişteki tüm görevleri okuyordu | Dakikalık tur yalnızca açık görevlere bakıyor | [deadlineService.go](../../internal/application/chore/deadlineService.go) |
 | Performans | Birkaç sorgu ve silme için uygun indeks yoktu | Migration 0064 ile eklendi | [0064_queryIndexes.go](../../internal/data/migrations/0064_queryIndexes.go) |
 | Performans | Kurtarma tarayıcısı boştaki her lobi için Redis ve Mongo çağrısı yapıyordu | Lobiler çağrılardan önce atlanıyor | [runtimeRecovery.go](../../internal/infrastructure/realtime/runtimeRecovery.go) |
@@ -40,7 +40,9 @@ Dosyalar: [main.go](../../cmd/api/main.go), [routes.go](../../cmd/api/routes.go)
 E-posta ile gönderilen 6 karakterlik kod, e-posta adresi ve zaman penceresinden üretilen deterministik bir HMAC'tir ve mevcut ile önceki pencerede geçerlidir. Eski haliyle deneme sayısı, tek kullanım ve sabit zamanlı olmayan bir karşılaştırma yoktu. Bu da kodun çevrimiçi tahmin edilebilmesi demekti.
 
 - Karşılaştırma `crypto/subtle` ile yapılıyor. `MatchResetCode` her iki pencereyi de sabit sürede karşılaştırır.
-- Yeni `CodeAttempts` politikası her denemeyi tek bir atomik `FindOneAndUpdate` (upsert) ile sayar. Sayaç anahtarı amaç, e-posta ve pencereden oluşur. Pencere başına en fazla 5 deneme vardır; 6. deneme doğru kodla bile reddedilir. Hata, mevcut "invalid or expired" anahtarıyla döner; yeni hata anahtarı eklenmedi.
+- Yeni `CodeAttempts` politikası her denemeyi tek bir atomik `FindOneAndUpdate` (upsert) ile sayar. Sayaç anahtarı amaç, e-posta ve pencereden oluşur. Pencere başına en fazla 5 deneme vardır; 6. deneme doğru kodla bile reddedilir.
+- Sınır aşıldığında ayrı bir mesaj döner: `auth.error.too_many_code_attempts` ("Çok fazla deneme yapıldı. Lütfen birkaç dakika bekleyip yeni bir kod isteyin."). HTTP durumu aynıdır (400). Yanlış tahminlerle tükenmiş bir pencerede kod hiç karşılaştırılmaz, yani yanıt kodun doğru olup olmadığını belli etmez. İstemciler sunucu metnini aynen gösterdiği için uygulama güncellemesi gerekmez. Metinler migration 0068 ile eklenir.
+- Yanıtı kaybolan başarılı bir şifre sıfırlama tekrar denendiğinde başarı döner: kod tüketilmişse, gönderilen kod gerçek kodsa ve gönderilen şifre zaten kayıtlı şifreyse hiçbir şey değiştirilmeden başarı yanıtı verilir. Bu yol yalnızca başarılı bir sıfırlamadan sonra açılır (`consumed` bayrağı), gerçek kodu şart koşar ve pencere başına en fazla 5 kez çalışır (bir kod iki pencerede geçerli olduğundan kod başına en fazla 10); yanlış tahminlerle tükenmiş bir pencerede devreye girmez. Rolling deploy sırasında eski bir instance'ta yapılan sıfırlamanın tekrarı bu kolaylıktan yararlanamaz, reddedilir.
 - Amaçlar ayrı sayılır: `reset-password`, `verify-email`, `social-signup`. Böylece sıfırlama, aynı kodu gönderen doğrulama akışının hakkını tüketmez.
 - Şifre sıfırlama başarılı olduğunda kod tüketilir. Kodun ait olabileceği mevcut ve önceki pencerelerin sayaçları tavana çekilir; kod bu pencerede de bir sonrakinde de tekrar kullanılamaz. Tüketme şifre değişmeden önce yapılır. Bu adımda hata olursa eski şifre kalır ve kod yine kullanılamaz.
 - `AuthCodeAttempt` dokümanları `expiresAt` üzerindeki TTL indeksiyle kendiliğinden silinir (migration 0065).
@@ -107,7 +109,9 @@ Dosya: [main.go](../../cmd/api/main.go)
 
 `HouseChanged` ve `UsersChanged`, Redis bus'ı kullanılamazken bile her mutasyon komutundan sonra bir ev sorgusu yapıyor ve 750 ms publish zaman aşımını bekliyordu.
 
-`canPublish()` bus'ın `Available()` durumuna bakar; kullanılamıyorsa fonksiyon hemen döner. App event'leri en iyi çaba (best effort) olduğu için bu kabul edilebilir bir takas.
+Bus `Available()` değilken olaylar yine denenir, ama 750 ms yerine 100 ms'lik bütçeyle (`publishContext`). Tamamen atlamak yanlıştı: bu bayrak herhangi bir Redis çağrısı başarısız olduğunda düşer ve başka trafik yoksa ancak 5 saniyelik heartbeat ile düzelir; yani tek bir geçici hata, Redis sağlıklıyken bile olayları saniyelerce düşürürdü. Şimdi geçici hatada olay kaybolmaz. Bilinen sınır: 100 ms bütçesi yalnızca bağlantı havuzu beklemesini, yeni bağlantı kurmayı ve yeniden denemeyi sınırlar. Redis istemcisinde `ContextTimeoutEnabled` açık olmadığı için, açık bir bağlantı üzerinde yanıt vermeyen (asılı kalan) bir Redis'te tek bir publish 3 saniyelik okuma zaman aşımına kadar bekleyebilir. Redis bağlantıyı reddediyorsa çağrı hemen döner. Ayrıca bu modda ev sorgusu da aynı 100 ms bütçeyi paylaşır.
+
+App socket'leri de aynı bayrağa bakıyordu: 5 saniyelik kontrolde bayrak bir kez false görülürse instance'taki tüm app socket'leri koparılıyordu. Artık art arda 3 kontrol (`healthFailureThreshold`) gerekir; arada bir başarılı okuma sayacı sıfırlar. Abonelik hatası veya olay kanalının kapanması yine anında koparır.
 
 Dosya: [service.go](../../internal/infrastructure/appEvents/service.go)
 
@@ -155,7 +159,9 @@ Snapshot istekleri izleyiciler de dahil herhangi bir socket'ten gelebilir. Bu is
 
 Artık `houseTanks`, `houseRockets` ve `fausSwitch` runtime'larında kuyruk yarıdan fazla doluyken snapshot isteği `ErrRuntimeBusy` ile reddediliyor. Bu yanıt yeniden denenebilir. Snapshot hiçbir durumda maçı iptal etmez. Simülasyon olayları ve sonuçları değişmedi; `fausSwitch` tarafındaki Swift bit eşleşmesi korunuyor.
 
-Dosyalar: [houseTanks runtime](../../internal/application/game/games/houseTanks/runtime.go), [houseRockets runtime](../../internal/application/game/games/houseRockets/runtime.go), [fausSwitch runtime](../../internal/application/game/games/fausSwitch/runtime.go)
+İstemcinin kendi gönderdiği `<oyun>.resync` isteği bu durumda reddedilmez: gateway, bağlantının zaten elinde olan son frame'i (normalde en fazla bir snapshot periyodu eski) isteğin `messageId`'siyle yanıt olarak gönderir. Sebep, mobil istemcinin reddedilen bir resync'te socket'i kapatıp yeniden bağlanması; yeniden bağlanmanın bind olayı da aynı dolu kuyruğa yük bindirir. Oda başka bir instance'ta çalışıyorsa sahibin reddi olay olarak gelir ve aynı şekilde karşılanır. Bağlantının elinde henüz frame yoksa eski davranış (yeniden denenebilir ret) geçerlidir.
+
+Dosyalar: [gatewayV2.go](../../internal/infrastructure/realtime/gatewayV2.go), [houseTanks runtime](../../internal/application/game/games/houseTanks/runtime.go), [houseRockets runtime](../../internal/application/game/games/houseRockets/runtime.go), [fausSwitch runtime](../../internal/application/game/games/fausSwitch/runtime.go)
 
 ### Kopuk oda hub'ı
 
@@ -193,10 +199,10 @@ Dosyalar: [roomManager.go](../../internal/infrastructure/realtime/roomManager.go
 
 ## Deploy notları
 
-- Migration'lar 0064 ve 0065 mevcut Fly release komutu ile çalışır. İkisi de yalnızca ekleme yapar. Eski instance'lar etkilenmez; geri alınırsa fazla indeksler zararsız olarak kalır.
+- Migration'lar 0064, 0065 ve 0068 mevcut Fly release komutu ile çalışır. Üçü de yalnızca ekleme yapar. Eski instance'lar etkilenmez; geri alınırsa fazla indeksler zararsız olarak kalır.
 - Rolling deploy sırasında eski instance'lar kod deneme sınırını ve yeni kapasite sınırlarını uygulamaz. Bu korumalar tüm instance'lar değiştirilene kadar tam değildir.
 - Staging'de tek doğrulanacak şey: istemcinin gönderdiği `Fly-Client-IP` başlığının Fly proxy'si tarafından üzerine yazıldığı. Sabit bir IP'den her istekte farklı bir sahte `Fly-Client-IP` değeriyle istek atın ve `X-RateLimit-Remaining` değerinin her seferinde düştüğünü izleyin. Değer her istekte yeniden dolu geliyorsa başlık güvenilmiyor demektir.
-- İstek ve yanıt sözleşmesi değişmedi.
+- İstek ve yanıt şemaları değişmedi. İstemcinin görebileceği iki davranış farkı var: yeni hata anahtarı `auth.error.too_many_code_attempts` (aynı 400 durumu) ve meşgul runtime'da resync'in ret yerine snapshot ile yanıtlanması.
 
 ## Bilerek yapılmayanlar ve karar bekleyenler
 
@@ -223,7 +229,7 @@ Yeni eklenen veya genişletilen testler:
 - Realtime testleri: [realtimeCompressionIntegration_test.go](../../tests/realtime/realtimeCompressionIntegration_test.go) (açılmış mesaj sınırı), [realtimeCapacityIntegration_test.go](../../tests/realtime/realtimeCapacityIntegration_test.go) (kullanıcı başına sınır), [roomHub_test.go](../../internal/infrastructure/realtime/roomHub_test.go) (abonelik hatasında hub'ın kaldırılması ve durdurulması).
 - Snapshot taşması testleri: [houseTanksRuntime_test.go](../../tests/games/houseTanks/houseTanksRuntime_test.go), [houseRocketsRuntime_test.go](../../tests/games/houseRockets/houseRocketsRuntime_test.go), [fausSwitch runtime_test.go](../../internal/application/game/games/fausSwitch/runtime_test.go).
 - [swaggerAuth_test.go](../../tests/architecture/swaggerAuth_test.go): Swagger'a yalnızca gerekli rolün girebilmesi.
-- [service_test.go](../../internal/infrastructure/appEvents/service_test.go): bus kullanılamazken hızlı dönüş.
+- [service_test.go](../../internal/infrastructure/appEvents/service_test.go): bus kullanılamaz görünürken olayların yine denenmesi, kesintide kısa bütçe ve app socket'lerinin ancak art arda 3 başarısız kontrolde koparılması.
 - [gameSessionPersistenceIntegration_test.go](../../tests/gamecore/gameSessionPersistenceIntegration_test.go): kurtarma tarayıcısının oturum durumu.
 
 Çalıştırma:

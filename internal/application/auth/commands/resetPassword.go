@@ -47,12 +47,18 @@ func (h *ResetPasswordHandler) Handle(ctx context.Context, command ResetPassword
 		Subject: helpers.NormalizeEmail(command.Email), Code: command.Code,
 		Secret: h.resetSecret, ValidityMinutes: h.validityMinutes,
 	}
-	valid, err := h.codeAttempts.Verify(ctx, codeCheck)
+	result, err := h.codeAttempts.Verify(ctx, codeCheck)
 	if err != nil {
 		return cqrs.NoResult{}, err
 	}
-	if !valid {
-		return cqrs.NoResult{}, helpers.NewLocalizedError("auth.error.invalid_or_expired_reset_code")
+	if !result.Valid {
+		if result.Consumed {
+			applied, err := h.alreadyApplied(ctx, command)
+			if err != nil || applied {
+				return cqrs.NoResult{}, err
+			}
+		}
+		return cqrs.NoResult{}, result.Refusal("auth.error.invalid_or_expired_reset_code")
 	}
 
 	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
@@ -77,6 +83,22 @@ func (h *ResetPasswordHandler) Handle(ctx context.Context, command ResetPassword
 		"failedLoginAttempts": 0, "updatedOn": time.Now(),
 	})
 	return cqrs.NoResult{}, err
+}
+
+// alreadyApplied reports whether command repeats a reset that went through,
+// say one whose response was lost. It needs the genuine code as well as the
+// password now stored, and changes nothing. The cheap code check comes first,
+// so a wrong code costs no user read or bcrypt.
+func (h *ResetPasswordHandler) alreadyApplied(ctx context.Context, command ResetPasswordCommand) (bool, error) {
+	window := helpers.ResetCodeWindow(h.validityMinutes)
+	if _, matched := helpers.MatchResetCode(helpers.NormalizeEmail(command.Email), command.Code, h.resetSecret, window, h.validityMinutes); !matched {
+		return false, nil
+	}
+	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))
+	if err != nil || user == nil {
+		return false, err
+	}
+	return helpers.CheckPasswordHash(command.NewPassword, user.HashPassword), nil
 }
 
 var _ cqrs.CommandHandler[ResetPasswordCommand, cqrs.NoResult] = (*ResetPasswordHandler)(nil)

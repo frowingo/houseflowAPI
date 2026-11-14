@@ -107,5 +107,7 @@ func AllMigrations() []Migration {
 		// --- Chore Catalog ---
 		&choreCatalogCollection{},
 		&choreCatalogLocalizations{},
+		// --- Auth Code Attempt Messages ---
+		&authCodeAttemptLocalizations{},
 	}
 }

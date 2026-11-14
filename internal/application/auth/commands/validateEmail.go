@@ -41,7 +41,7 @@ func NewValidateEmailHandler(
 }
 
 func (h *ValidateEmailHandler) Handle(ctx context.Context, command ValidateEmailCommand) (cqrs.NoResult, error) {
-	valid, err := h.codeAttempts.Verify(ctx, authPolicies.CodeCheck{
+	result, err := h.codeAttempts.Verify(ctx, authPolicies.CodeCheck{
 		Purpose: authPolicies.CodePurposeVerifyEmail, Email: command.Email,
 		Subject: helpers.NormalizeEmail(command.Email), Code: command.Code,
 		Secret: h.resetSecret, ValidityMinutes: h.validityMinutes,
@@ -49,8 +49,8 @@ func (h *ValidateEmailHandler) Handle(ctx context.Context, command ValidateEmail
 	if err != nil {
 		return cqrs.NoResult{}, err
 	}
-	if !valid {
-		return cqrs.NoResult{}, helpers.NewLocalizedError("auth.error.invalid_or_expired_email_verification_code")
+	if !result.Valid {
+		return cqrs.NoResult{}, result.Refusal("auth.error.invalid_or_expired_email_verification_code")
 	}
 
 	user, err := h.userRepository.FindOneByFilter(ctx, helpers.EmailLookupFilter(command.Email))

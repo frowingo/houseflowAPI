@@ -101,7 +101,7 @@ func (h *CompleteSocialSignUpHandler) Handle(ctx context.Context, command Comple
 	if err != nil {
 		return dtos.SocialAuthResponseModel{}, err
 	}
-	valid, err := h.codeAttempts.Verify(ctx, authPolicies.CodeCheck{
+	codeResult, err := h.codeAttempts.Verify(ctx, authPolicies.CodeCheck{
 		Purpose: authPolicies.CodePurposeSocialSignUp, Email: command.Email,
 		Subject: socialSignUpCodeSubject(pending, command.Email), Code: command.Code,
 		Secret: h.codeSecret, ValidityMinutes: h.validityMinutes,
@@ -109,8 +109,8 @@ func (h *CompleteSocialSignUpHandler) Handle(ctx context.Context, command Comple
 	if err != nil {
 		return dtos.SocialAuthResponseModel{}, err
 	}
-	if !valid {
-		return dtos.SocialAuthResponseModel{}, helpers.NewLocalizedError("auth.error.invalid_or_expired_email_verification_code")
+	if !codeResult.Valid {
+		return dtos.SocialAuthResponseModel{}, codeResult.Refusal("auth.error.invalid_or_expired_email_verification_code")
 	}
 
 	identity := authAbstract.VerifiedIdentity{
