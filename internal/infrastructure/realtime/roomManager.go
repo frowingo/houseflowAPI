@@ -586,7 +586,12 @@ func (manager *RoomManager) commandLoop(
 			if !open {
 				return
 			}
-			if err := manager.routeDelivery(ctx, delivery); err != nil {
+			// One slow activation must not stall every room's commands; an
+			// expired route is unacked and redelivered like any failure.
+			routeCtx, cancel := context.WithTimeout(ctx, manager.options.CommandTimeout)
+			err := manager.routeDelivery(routeCtx, delivery)
+			cancel()
+			if err != nil {
 				manager.report(delivery.Envelope().RoomID, err)
 			}
 		}

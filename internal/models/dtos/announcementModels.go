@@ -7,8 +7,8 @@ import (
 
 type CreateAnnouncementModel struct {
 	HouseId     string `json:"houseId" validate:"required,len=24"`
-	Title       string `json:"title" validate:"required"`
-	Description string `json:"description" validate:"required"`
+	Title       string `json:"title" validate:"required,max=200"`
+	Description string `json:"description" validate:"required,max=2000"`
 }
 
 type AnnouncementResponseModel struct {

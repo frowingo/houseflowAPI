@@ -10,6 +10,8 @@ import (
 	"houseflowApi/external/validator"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	choreQueries "houseflowApi/internal/application/chore/queries"
+	choreCatalogCommands "houseflowApi/internal/application/choreCatalog/commands"
+	choreCatalogQueries "houseflowApi/internal/application/choreCatalog/queries"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
@@ -69,6 +71,7 @@ func (r *ChoreController) CreateChore(c *fiber.Ctx) error {
 		Level:             chore.Level,
 		IsRecurring:       chore.IsRecurring,
 		RecurringInterval: chore.RecurringInterval,
+		Category:          chore.CategoryValue(),
 		RequesterID:       userId,
 	})
 	if err != nil {
@@ -296,6 +299,7 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 		Level:             chore.Level,
 		IsRecurring:       chore.IsRecurring,
 		RecurringInterval: chore.RecurringInterval,
+		Category:          chore.Category,
 		RequesterID:       userId,
 	})
 	if err != nil {
@@ -303,4 +307,68 @@ func (r *ChoreController) UpdateChore(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(updatedChore)
+}
+
+// @Summary List chore catalog
+// @Description Lists the system catalog entries and the requester's own entries that are not deleted. System entries come with title and description in the user's language.
+// @Tags Chore
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} dtos.ChoreCatalogModel
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Router /chore/catalog [get]
+func (r *ChoreController) ListChoreCatalog(c *fiber.Ctx) error {
+	userId := c.Locals("userID").(string)
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	result, err := cqrs.Send[[]dtos.ChoreCatalogModel](ctx, r.sender, choreCatalogQueries.ListChoreCatalogQuery{
+		RequesterID: userId,
+		Language:    helpers.RequestLanguage(c),
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+// @Summary Upsert chore catalog entries
+// @Description Items without an id are inserted; items with an id are updated, or soft-deleted when isDeleted is true. The whole request is one transaction and the response keeps the request order. isSystem on a new item creates a system entry and, like changing a system entry, requires role 2; a system entry's title and description must be localization keys starting with choreCatalog.system.
+// @Tags Chore
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param items body []dtos.ChoreCatalogModel true "Catalog entries"
+// @Success 200 {array} dtos.ChoreCatalogModel
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 403 {object} map[string]interface{} "System entry requires role 2"
+// @Failure 404 {object} map[string]interface{} "Entry not found or deleted"
+// @Router /chore/catalog [put]
+func (r *ChoreController) UpsertChoreCatalog(c *fiber.Ctx) error {
+	var request dtos.ChoreCatalogUpsertModel
+	if err := c.BodyParser(&request.Items); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, "common.error.invalid_request_body"))
+	}
+
+	if err := r.validator.Validate(request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedErrorMap(c, r.localizer, err.Error()))
+	}
+
+	userId := c.Locals("userID").(string)
+	userRole, _ := c.Locals("userRole").(int)
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	result, err := cqrs.Send[[]dtos.ChoreCatalogModel](ctx, r.sender, choreCatalogCommands.UpsertChoreCatalogCommand{
+		Items:         request.Items,
+		RequesterID:   userId,
+		RequesterRole: userRole,
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
 }

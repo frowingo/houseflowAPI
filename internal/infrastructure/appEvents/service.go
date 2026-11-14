@@ -25,13 +25,17 @@ const (
 	pongTimeout           = 60 * time.Second
 	pingInterval          = 20 * time.Second
 	publishTimeout        = 750 * time.Millisecond
+	degradedTimeout       = 100 * time.Millisecond
+	// Three 5-second samples tolerate a transient failure and a delayed heartbeat.
+	healthFailureThreshold = 3
 )
 
 type Service struct {
-	bus     coordinationAbstract.AppEventBus
-	houses  databaseAbstract.DbRepository[entities.House]
-	users   databaseAbstract.DbRepository[entities.User]
-	origins []string
+	bus         coordinationAbstract.AppEventBus
+	houses      databaseAbstract.DbRepository[entities.House]
+	users       databaseAbstract.DbRepository[entities.User]
+	origins     []string
+	healthTicks <-chan time.Time
 
 	mutex   sync.RWMutex
 	clients map[string]map[*client]struct{}
@@ -106,6 +110,11 @@ func (service *Service) run(ctx context.Context) {
 func (service *Service) consume(ctx context.Context, subscription coordinationAbstract.AppEventSubscription) {
 	health := time.NewTicker(5 * time.Second)
 	defer health.Stop()
+	healthTicks := service.healthTicks
+	if healthTicks == nil {
+		healthTicks = health.C
+	}
+	unavailableTicks := 0
 	for {
 		select {
 		case event, ok := <-subscription.Events():
@@ -120,9 +129,14 @@ func (service *Service) consume(ctx context.Context, subscription coordinationAb
 			return
 		case <-ctx.Done():
 			return
-		case <-health.C:
-			if !service.bus.Available() {
-				return
+		case <-healthTicks:
+			if service.bus.Available() {
+				unavailableTicks = 0
+			} else {
+				unavailableTicks++
+				if unavailableTicks >= healthFailureThreshold {
+					return
+				}
 			}
 		}
 	}
@@ -191,7 +205,7 @@ func (service *Service) HouseChanged(ctx context.Context, houseID string, refres
 	if service.bus == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
+	ctx, cancel := service.publishContext(ctx)
 	defer cancel()
 	id, err := helpers.ToMongoId(houseID)
 	if err != nil {
@@ -213,12 +227,24 @@ func (service *Service) HouseChanged(ctx context.Context, houseID string, refres
 }
 
 func (service *Service) UsersChanged(ctx context.Context, userIDs ...string) {
-	if service.bus == nil || len(userIDs) == 0 {
+	if len(userIDs) == 0 || service.bus == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
+	ctx, cancel := service.publishContext(ctx)
 	defer cancel()
 	service.publish(ctx, coordinationAbstract.AppEvent{Type: coordinationAbstract.UserChangedEvent, UserIDs: userIDs})
+}
+
+// publishContext still attempts events while the bus reports unavailable,
+// because any failed Redis call clears that flag until the next heartbeat
+// (up to ~5 s), but with a budget short enough that a real outage does not add
+// the full timeout to every mutating command.
+func (service *Service) publishContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := publishTimeout
+	if !service.bus.Available() {
+		timeout = degradedTimeout
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
 }
 
 func (service *Service) publish(ctx context.Context, event coordinationAbstract.AppEvent) {

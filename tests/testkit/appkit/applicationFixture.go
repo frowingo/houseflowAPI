@@ -13,10 +13,13 @@ import (
 	"time"
 
 	authCommands "houseflowApi/internal/application/auth/commands"
+	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	choreQueries "houseflowApi/internal/application/chore/queries"
+	choreCatalogCommands "houseflowApi/internal/application/choreCatalog/commands"
+	choreCatalogQueries "houseflowApi/internal/application/choreCatalog/queries"
 	houseApplication "houseflowApi/internal/application/house"
 	housecommands "houseflowApi/internal/application/house/commands"
 	housePolicies "houseflowApi/internal/application/house/policies"
@@ -228,6 +231,8 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 		chores, choreStatusHistories, choreReviewVotes, membershipPolicy, workflowPolicy,
 	)
 	getReviewPhotoURLHandler := choreQueries.NewGetReviewPhotoURLHandler(chores, membershipPolicy, photoStore)
+	choreCatalogs := database.NewDbContext[entities.ChoreCatalog](client, db.Name())
+	upsertChoreCatalogHandler := choreCatalogCommands.NewUpsertChoreCatalogHandler(choreCatalogs)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(users, histories)
 	createUserHandler := userCommands.NewCreateUserHandler(users, histories)
 	userIdentities := database.NewDbContext[entities.UserIdentity](client, db.Name())
@@ -241,6 +246,10 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	getImagesByCategoryHandler := imageAssetQueries.NewGetImagesByCategoryHandler(imageAssets, imageCache)
 	getImageByPublicIDHandler := imageAssetQueries.NewGetImageByPublicIDHandler(imageAssets)
 	localizationCache := infrastructureLocalization.NewCache(localizations)
+	if err := localizationCache.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+	listChoreCatalogHandler := choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogs, users, localizationCache)
 	getPlaintextsHandler := localizationQueries.NewGetPlaintextsHandler(localizations, localizationCache)
 	getLanguagesHandler := localizationQueries.NewGetLanguagesHandler(languages)
 	getLanguageHandler := localizationQueries.NewGetLanguageHandler(languages)
@@ -253,9 +262,10 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	loginHandler := authCommands.NewLoginHandler(users, jwtService)
 	signUpHandler := authCommands.NewSignUpHandler(users, histories, jwtService)
 	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(users, emailSender, resetSecret, validityMinutes)
-	resetPasswordHandler := authCommands.NewResetPasswordHandler(users, resetSecret, validityMinutes)
+	codeAttempts := authPolicies.NewCodeAttempts(database.NewDbContext[entities.AuthCodeAttempt](client, db.Name()))
+	resetPasswordHandler := authCommands.NewResetPasswordHandler(users, codeAttempts, resetSecret, validityMinutes)
 	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(users, emailSender, resetSecret, validityMinutes)
-	validateEmailHandler := authCommands.NewValidateEmailHandler(users, resetSecret, validityMinutes)
+	validateEmailHandler := authCommands.NewValidateEmailHandler(users, codeAttempts, resetSecret, validityMinutes)
 	validateAuthHandler := authQueries.NewValidateAuthHandler(users, houses, userIdentities, jwtService)
 	sender := cqrs.New()
 	cqrs.MustRegister[string, authCommands.LoginCommand](sender, loginHandler)
@@ -283,6 +293,8 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](sender, updateChoreStatusHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](sender, reviewChoreHandler)
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](sender, getReviewPhotoURLHandler)
+	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](sender, listChoreCatalogHandler)
+	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](sender, upsertChoreCatalogHandler)
 	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](sender, updateProfileHandler)
 	cqrs.MustRegister[*dtos.NewUserModel, userCommands.CreateUserCommand](sender, createUserHandler)
 	cqrs.MustRegister[cqrs.NoResult, userCommands.DeleteUserCommand](sender, deleteUserHandler)
@@ -308,6 +320,7 @@ func CreateChoreCommand(model dtos.CreateChoreModel, requesterID string) choreCo
 		Level:             model.Level,
 		IsRecurring:       model.IsRecurring,
 		RecurringInterval: model.RecurringInterval,
+		Category:          model.CategoryValue(),
 		RequesterID:       requesterID,
 	}
 }

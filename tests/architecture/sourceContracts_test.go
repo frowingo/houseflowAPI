@@ -84,3 +84,19 @@ func readContractFile(t *testing.T, path string) string {
 	}
 	return string(content)
 }
+
+// Fiber matches routes in registration order, so the catalog routes must come
+// before "/:id" or PUT /chore/catalog would reach UpdateChore.
+func TestChoreCatalogRoutesPrecedeChoreIDRoute(t *testing.T) {
+	routes := readContractFile(t, filepath.Join(repositoryRoot(t), "cmd", "api", "routes.go"))
+	idRoute := strings.Index(routes, `choreRoutes.Put("/:id"`)
+	if idRoute < 0 {
+		t.Fatal(`choreRoutes.Put("/:id") not found`)
+	}
+	for _, route := range []string{`choreRoutes.Get("/catalog"`, `choreRoutes.Put("/catalog"`} {
+		index := strings.Index(routes, route)
+		if index < 0 || index > idRoute {
+			t.Errorf("%s must be registered before the chore id route", route)
+		}
+	}
+}

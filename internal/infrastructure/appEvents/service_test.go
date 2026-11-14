@@ -3,6 +3,7 @@ package appEvents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -17,9 +18,10 @@ import (
 
 type recordingBus struct {
 	events []coordinationAbstract.AppEvent
+	down   bool
 }
 
-func (*recordingBus) Available() bool { return true }
+func (bus *recordingBus) Available() bool { return !bus.down }
 
 func (bus *recordingBus) PublishAppEvent(_ context.Context, event coordinationAbstract.AppEvent) error {
 	bus.events = append(bus.events, event)
@@ -61,6 +63,42 @@ func TestHouseChangedTargetsCurrentMembers(t *testing.T) {
 		if !reflect.DeepEqual(event.UserIDs, []string{"member-a", "member-b"}) {
 			t.Fatalf("recipients = %v", event.UserIDs)
 		}
+	}
+}
+
+func TestEventsAreStillPublishedWhileTheBusReportsUnavailable(t *testing.T) {
+	id := primitive.NewObjectID()
+	bus := &recordingBus{down: true}
+	service := NewService(bus, houseLookup{house: &entities.House{Id: id, MemberIds: []string{"member-a"}}}, nil, nil)
+
+	service.HouseChanged(context.Background(), id.Hex(), true)
+	service.UsersChanged(context.Background(), "member-a")
+
+	if len(bus.events) != 3 {
+		t.Fatalf("events=%+v, want all 3 after a transient unavailability", bus.events)
+	}
+}
+
+type stalledBus struct {
+	recordingBus
+}
+
+func (*stalledBus) PublishAppEvent(ctx context.Context, _ coordinationAbstract.AppEvent) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestOutageDoesNotCostEachCommandThePublishTimeout(t *testing.T) {
+	id := primitive.NewObjectID()
+	bus := &stalledBus{recordingBus{down: true}}
+	service := NewService(bus, houseLookup{house: &entities.House{Id: id, MemberIds: []string{"member-a"}}}, nil, nil)
+
+	started := time.Now()
+	service.HouseChanged(context.Background(), id.Hex(), true)
+	service.UsersChanged(context.Background(), "member-a")
+
+	if elapsed := time.Since(started); elapsed >= publishTimeout {
+		t.Fatalf("two commands took %v during an outage, want well under %v", elapsed, publishTimeout)
 	}
 }
 
@@ -131,6 +169,124 @@ func (subscription *fanoutSubscription) Events() <-chan coordinationAbstract.App
 }
 func (subscription *fanoutSubscription) Errors() <-chan error { return subscription.errors }
 func (subscription *fanoutSubscription) Close() error         { return nil }
+
+type healthBus struct {
+	recordingBus
+	ctx          context.Context
+	health       chan bool
+	subscription *fanoutSubscription
+}
+
+func (bus *healthBus) Available() bool {
+	select {
+	case available := <-bus.health:
+		return available
+	case <-bus.ctx.Done():
+		return true
+	}
+}
+
+func (bus *healthBus) SubscribeAppEvents(context.Context) (coordinationAbstract.AppEventSubscription, error) {
+	return bus.subscription, nil
+}
+
+func TestSubscriptionHealth(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		availability []bool
+		lose         func(*fanoutSubscription)
+		disconnect   bool
+	}{
+		{name: "transient unavailability", availability: []bool{false, true, false, true}},
+		{name: "recovery resets failures", availability: []bool{false, false, true, false, false, true}},
+		{name: "sustained outage", availability: []bool{false, false, false}, disconnect: true},
+		{name: "subscription error", lose: func(subscription *fanoutSubscription) {
+			subscription.errors <- errors.New("subscription lost")
+		}, disconnect: true},
+		{name: "events closed", lose: func(subscription *fanoutSubscription) {
+			close(subscription.events)
+		}, disconnect: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			subscription := &fanoutSubscription{
+				events: make(chan coordinationAbstract.AppEvent, 1), errors: make(chan error, 1),
+			}
+			bus := &healthBus{ctx: ctx, health: make(chan bool), subscription: subscription}
+			service := NewService(bus, nil, nil, nil)
+			healthTicks := make(chan time.Time)
+			service.healthTicks = healthTicks
+			connection := &client{outbound: make(chan []byte, 1)}
+			service.clients["member-a"] = map[*client]struct{}{connection: {}}
+			service.Start(ctx)
+			t.Cleanup(func() {
+				cancel()
+				shutdown, stop := context.WithTimeout(context.Background(), time.Second)
+				defer stop()
+				if err := service.Close(shutdown); err != nil {
+					t.Errorf("close service: %v", err)
+				}
+			})
+			deadline := time.Now().Add(time.Second)
+			for !service.Stats().Online && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			if !service.Stats().Online {
+				t.Fatal("service did not subscribe")
+			}
+
+			for index, available := range test.availability {
+				select {
+				case healthTicks <- time.Now():
+				case <-time.After(time.Second):
+					t.Fatalf("health tick %d was not consumed", index)
+				}
+				select {
+				case bus.health <- available:
+				case <-time.After(time.Second):
+					t.Fatalf("health reading %d was not consumed", index)
+				}
+				if test.disconnect && index == len(test.availability)-1 {
+					break
+				}
+				subscription.events <- coordinationAbstract.AppEvent{
+					Type: coordinationAbstract.UserChangedEvent, UserIDs: []string{"member-a"},
+				}
+				select {
+				case <-connection.outbound:
+				case <-time.After(time.Second):
+					t.Fatalf("client stopped receiving events after health reading %d", index)
+				}
+				if !service.Stats().Online {
+					t.Fatalf("service disconnected after health reading %d", index)
+				}
+			}
+			if test.lose != nil {
+				test.lose(subscription)
+			}
+			if test.disconnect {
+				deadline = time.Now().Add(time.Second)
+				for service.Stats().Online && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				if service.Stats().Online {
+					t.Fatal("subscription loss did not disconnect clients")
+				}
+				cancel()
+				select {
+				case <-service.done:
+				case <-time.After(time.Second):
+					t.Fatal("service did not stop")
+				}
+			}
+			closed := true
+			connection.closeOnce.Do(func() { closed = false })
+			if closed != test.disconnect {
+				t.Fatalf("client closed = %v, want %v", closed, test.disconnect)
+			}
+		})
+	}
+}
 
 func TestEventReachesTargetOnAnotherInstance(t *testing.T) {
 	bus := &fanoutBus{}

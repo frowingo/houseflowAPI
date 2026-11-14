@@ -24,6 +24,7 @@ type Chore struct {
 	ReviewPhotoKeys   map[string]string  `bson:"reviewPhotoKeys,omitempty" json:"-"`
 	IsRecurring       bool               `bson:"isRecurring" json:"isRecurring"`
 	RecurringInterval int                `bson:"recurringInterval" json:"recurringInterval"`
+	Category          ChoreCategory      `bson:"category" json:"category"`
 	Version           int64              `bson:"version" json:"-"`
 }
 
@@ -33,6 +34,22 @@ const (
 	Easy   ChoreLevel = 10
 	Medium ChoreLevel = 20
 	Hard   ChoreLevel = 30
+)
+
+// ChoreCategory groups chores and chore catalog entries. Zero means unset:
+// chores created before categories existed decode as zero.
+type ChoreCategory int
+
+const (
+	ChoreCategoryKitchen        ChoreCategory = 1
+	ChoreCategoryBathLaundry    ChoreCategory = 2
+	ChoreCategoryToilet         ChoreCategory = 3
+	ChoreCategoryRooms          ChoreCategory = 4
+	ChoreCategoryFloorsGeneral  ChoreCategory = 5
+	ChoreCategoryPets           ChoreCategory = 6
+	ChoreCategoryTrashRecycling ChoreCategory = 7
+	ChoreCategoryPlantsBalcony  ChoreCategory = 8
+	ChoreCategoryShoppingHome   ChoreCategory = 9
 )
 
 type ChoreStatus int

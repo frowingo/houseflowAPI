@@ -211,7 +211,7 @@ func (gateway *Gateway) UpgradeMiddleware() fiber.Handler {
 		if err := gateway.requireActiveMember(requestCtx, snapshot.HouseID, userID); err != nil {
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, err)
 		}
-		reservation, err := gateway.reserveConnection()
+		reservation, err := gateway.reserveConnection(userID)
 		if err != nil {
 			c.Set(fiber.HeaderRetryAfter, "1")
 			return helpers.RespondLocalizedError(c, gateway.options.Localizer, helpers.NewUnavailableError(roomUnavailableErrorCode, err))
@@ -397,7 +397,7 @@ func (gateway *Gateway) registerClient(client *gatewayClient) bool {
 			return false
 		}
 		reservation.releaseLocked()
-	} else if gateway.options.MaxConnections > 0 && len(gateway.clients)+len(gateway.reservations) >= gateway.options.MaxConnections {
+	} else if !gateway.admitsLocked(client.userID) {
 		gateway.options.Metrics.admissionRejected.Add(1)
 		return false
 	}
@@ -748,7 +748,15 @@ func (hub *roomHub) run() {
 				return
 			}
 			if err != nil {
+				// A reconnecting client must get a fresh hub, not this one
+				// without a reader.
 				hub.gateway.report(hub.roomID, err)
+				hub.gateway.mutex.Lock()
+				if hub.gateway.hubs[hub.roomID] == hub {
+					delete(hub.gateway.hubs, hub.roomID)
+				}
+				hub.gateway.mutex.Unlock()
+				hub.stop()
 				hub.disconnectClients("room event subscription unavailable")
 				return
 			}

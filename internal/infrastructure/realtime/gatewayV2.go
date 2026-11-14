@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"sync"
 	"time"
 
@@ -111,10 +112,12 @@ type v2ClientState struct {
 	pendingSnapshot []byte
 	controlSignal   chan struct{}
 	needSnapshot    bool
-	needBind        bool
-	lastBind        time.Time
-	intentLimit     connectionRateLimit
-	pingLimit       connectionRateLimit
+	// resyncID is the last client resync sent to the runtime; see answerResyncFromCache.
+	resyncID    string
+	needBind    bool
+	lastBind    time.Time
+	intentLimit connectionRateLimit
+	pingLimit   connectionRateLimit
 }
 
 // settings are the session's frozen game settings.
@@ -328,6 +331,10 @@ func (client *gatewayClient) handleV2Event(event coordinationAbstract.MessageEnv
 		if json.Unmarshal(event.Payload, &protocolError) != nil {
 			protocolError = ProtocolError{Code: defaultInternalCommandErrorCode, Retryable: true}
 		}
+		// A remote owner refuses a busy resync through this event.
+		if protocolError.Code == roomUnavailableErrorCode && client.isPendingResync(event.MessageID) && client.answerResyncFromCache(event.MessageID) {
+			return
+		}
 		client.reject(event.MessageID, protocolError)
 	}
 }
@@ -390,6 +397,27 @@ func (client *gatewayClient) enqueueGameFrame(frame *tickFrame, messageID string
 	client.signalControl()
 }
 
+// answerResyncFromCache replies to a resync the busy runtime refused with the
+// last frame this connection received, at most one snapshot period old. A
+// rejection would make clients drop the socket and reconnect, and the rebind
+// that follows loads the same full mailbox. Reports false without a frame.
+func (client *gatewayClient) answerResyncFromCache(messageID string) bool {
+	client.mutex.Lock()
+	frame := client.v2.frame
+	client.mutex.Unlock()
+	if frame == nil {
+		return false
+	}
+	client.enqueueGameFrame(frame, messageID, true, time.Now())
+	return true
+}
+
+func (client *gatewayClient) isPendingResync(messageID string) bool {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	return messageID != "" && messageID == client.v2.resyncID
+}
+
 // projectFrame renders the frame as this connection's public snapshot; only
 // its own control generation is ever included. Called with client.mutex held.
 func (client *gatewayClient) projectFrame(frame *tickFrame, messageID string, sentAt time.Time) ([]byte, error) {
@@ -401,7 +429,7 @@ func (client *gatewayClient) readV2Loop() {
 		if client.ctx.Err() != nil {
 			return
 		}
-		kind, payload, err := client.socket.ReadMessage()
+		kind, payload, err := client.readMessage()
 		if err != nil {
 			return
 		}
@@ -442,6 +470,23 @@ func (client *gatewayClient) readV2Loop() {
 			}
 		}
 	}
+}
+
+// readMessage also bounds the inflated message: the socket read limit counts
+// compressed wire bytes, so one deflate frame could expand to megabytes. An
+// oversized message closes like one over the wire limit does (1009).
+func (client *gatewayClient) readMessage() (int, []byte, error) {
+	kind, reader, err := client.socket.NextReader()
+	if err != nil {
+		return kind, nil, err
+	}
+	limit := client.gateway.options.MaximumMessageBytes
+	payload, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err == nil && int64(len(payload)) > limit {
+		_ = client.socket.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseMessageTooBig, ""), time.Now().Add(client.gateway.options.WriteTimeout))
+		return kind, nil, websocket.ErrReadLimit
+	}
+	return kind, payload, err
 }
 
 // allow applies the gameplay, clock and command rate limits separately, so
@@ -505,8 +550,13 @@ func (client *gatewayClient) handleV2Message(ctx context.Context, decoded Decode
 		client.mutex.Lock()
 		client.v2.needBind = true
 		client.v2.lastBind = time.Time{}
+		client.v2.resyncID = message.MessageID
 		client.mutex.Unlock()
-		return client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(module.InputSnapshot, message.MessageID, epoch), nil)
+		err = client.gateway.manager.DispatchGameplay(ctx, client.roomID, client.controlInput(module.InputSnapshot, message.MessageID, epoch), nil)
+		if errors.Is(err, module.ErrRuntimeBusy) && client.answerResyncFromCache(message.MessageID) {
+			return nil
+		}
+		return err
 	default:
 		if _, err := client.verifyV2Access(ctx); err != nil {
 			return err

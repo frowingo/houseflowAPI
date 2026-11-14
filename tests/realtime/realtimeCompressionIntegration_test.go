@@ -88,6 +88,60 @@ func (socket *measuredSocket) snapshots(duration time.Duration) (int, int64, err
 	}
 }
 
+// The read limit counts compressed wire bytes. A message that is small on the
+// wire but inflates past the limit must close the socket unread (1009), like
+// one that is too big on the wire.
+func TestRealtimeCompressedOversizedMessageClosesConnection(t *testing.T) {
+	fixture := gamekit.NewRocketsGatewayFixture(t, houseRockets.Definition().Rules)
+	session := gamekit.PersistRocketsSession(t, fixture.GameSessionApplicationFixture, false)
+	endpoint := "ws" + fixture.URLs[0][4:] + "/api/v1/game/" + session.SessionID + "/realtime?protocolVersion=2"
+	socket := dialMeasured(t, endpoint, gamekit.GenerateGatewayToken(t, fixture.JWT, fixture.OwnerID), true)
+	if !strings.Contains(socket.extensions, "permessage-deflate") {
+		t.Fatalf("compression not negotiated: %q", socket.extensions)
+	}
+	read := func(predicate func(realtime.ServerMessage) bool) error {
+		for {
+			_, payload, err := socket.connection.ReadMessage()
+			if err != nil {
+				return err
+			}
+			var message realtime.ServerMessage
+			if err := json.Unmarshal(payload, &message); err != nil {
+				t.Fatal(err)
+			}
+			if predicate(message) {
+				return nil
+			}
+		}
+	}
+	_ = socket.connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	// A compressed message within the limit is still served.
+	if err := socket.connection.WriteMessage(fasthttpWebsocket.TextMessage, []byte(`{"protocolVersion":2,"messageId":"small","type":"ping","payload":{"pingId":"small"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := read(func(message realtime.ServerMessage) bool { return message.MessageID == "small" }); err != nil {
+		t.Fatalf("compressed ping: %v", err)
+	}
+	inputBefore := fixture.Services[0].Metrics().InputPayloadBytes
+	// 1 MiB of one byte deflates to about 1 KiB, far under the 16 KiB wire limit.
+	oversized := `{"protocolVersion":2,"messageId":"oversized","type":"ping","payload":{"pingId":"` + strings.Repeat("a", 1<<20) + `"}}`
+	if err := socket.connection.WriteMessage(fasthttpWebsocket.TextMessage, []byte(oversized)); err != nil {
+		t.Fatal(err)
+	}
+	err := read(func(message realtime.ServerMessage) bool {
+		if message.Type == realtime.CommandRejectedMessageType || message.MessageID == "oversized" {
+			t.Fatalf("oversized message was processed: %+v", message)
+		}
+		return false
+	})
+	if !fasthttpWebsocket.IsCloseError(err, fasthttpWebsocket.CloseMessageTooBig) {
+		t.Fatalf("connection not closed as too big: %v", err)
+	}
+	if read := fixture.Services[0].Metrics().InputPayloadBytes - inputBefore; read != 0 {
+		t.Fatalf("server counted %d bytes of the oversized message", read)
+	}
+}
+
 // A client that offers permessage-deflate gets compressed snapshots with the
 // same content; a client that does not is served exactly as before.
 func TestRealtimeCompressionIsNegotiatedPerConnection(t *testing.T) {

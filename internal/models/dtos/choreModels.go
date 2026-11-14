@@ -17,6 +17,17 @@ type CreateChoreModel struct {
 	Level             entities.ChoreLevel `json:"level" validate:"required,oneof=10 20 30"`
 	IsRecurring       bool                `json:"isRecurring"`
 	RecurringInterval int                 `json:"recurringInterval" validate:"omitempty,gte=1,lte=365"`
+	// Category is optional so clients that predate categories keep working;
+	// an update without it leaves the stored category unchanged.
+	Category *entities.ChoreCategory `json:"category,omitempty" validate:"omitempty,oneof=1 2 3 4 5 6 7 8 9" swaggertype:"integer" example:"1"`
+}
+
+// CategoryValue returns the requested category, or zero when it is absent.
+func (m *CreateChoreModel) CategoryValue() entities.ChoreCategory {
+	if m.Category == nil {
+		return 0
+	}
+	return *m.Category
 }
 
 type UpdateChoreStatusModel struct {
@@ -75,6 +86,7 @@ type ChoreResponseModel struct {
 	ReviewPhotoRounds []int                     `json:"reviewPhotoRounds"`
 	IsRecurring       bool                      `json:"isRecurring"`
 	RecurringInterval int                       `json:"recurringInterval"`
+	Category          entities.ChoreCategory    `json:"category"`
 	StatusHistories   []ChoreStatusHistoryModel `json:"statusHistories"`
 	ReviewVotes       []ChoreReviewVoteModel    `json:"reviewVotes"`
 }
@@ -95,6 +107,7 @@ func (m *CreateChoreModel) ToEntity(houseOwnerId string) entities.Chore {
 		ReviewPhotoKeys:   map[string]string{},
 		IsRecurring:       m.IsRecurring,
 		RecurringInterval: m.RecurringInterval,
+		Category:          m.CategoryValue(),
 	}
 }
 
@@ -154,6 +167,7 @@ func ChoreToResponseModelWithReview(chore entities.Chore, histories []entities.C
 		ReviewPhotoRounds: reviewPhotoRounds,
 		IsRecurring:       chore.IsRecurring,
 		RecurringInterval: chore.RecurringInterval,
+		Category:          chore.Category,
 		StatusHistories:   statusHistories,
 		ReviewVotes:       reviewVotes,
 	}

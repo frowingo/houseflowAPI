@@ -28,7 +28,9 @@ type UpdateChoreCommand struct {
 	Level             entities.ChoreLevel
 	IsRecurring       bool
 	RecurringInterval int
-	RequesterID       string
+	// Category nil leaves the stored category unchanged.
+	Category    *entities.ChoreCategory
+	RequesterID string
 }
 
 type UpdateChoreHandler struct {
@@ -93,11 +95,15 @@ func (h *UpdateChoreHandler) Handle(ctx context.Context, command UpdateChoreComm
 			return nil
 		}
 
-		update := bson.M{"$set": bson.M{
+		fields := bson.M{
 			"title": command.Title, "description": command.Description, "assignedTo": command.AssignedTo,
 			"dueDate": command.DueDate, "level": command.Level, "isRecurring": command.IsRecurring,
 			"recurringInterval": command.RecurringInterval,
-		}, "$inc": bson.M{"version": 1}}
+		}
+		if command.Category != nil {
+			fields["category"] = *command.Category
+		}
+		update := bson.M{"$set": fields, "$inc": bson.M{"version": 1}}
 		var result entities.Chore
 		err = h.choreRepository.Collection().FindOneAndUpdate(txCtx, bson.M{
 			"_id": choreObjectID, "version": currentChore.Version,

@@ -5,11 +5,15 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"houseflowApi/external/validator"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/models/dtos"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
@@ -96,6 +100,34 @@ func TestJWTServiceKeepsStartupSecret(t *testing.T) {
 	}
 }
 
+func TestJWTServiceRequiresHS256AndExpiry(t *testing.T) {
+	const secret = "jwt-contract-secret"
+	service := helpers.NewJWTService(secret)
+	sign := func(method jwt.SigningMethod, claims jwt.MapClaims) string {
+		t.Helper()
+		token, err := jwt.NewWithClaims(method, claims).SignedString([]byte(secret))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	expiresAt := time.Now().Add(time.Hour).Unix()
+
+	if _, err := service.ValidateToken(sign(jwt.SigningMethodHS512, jwt.MapClaims{"sub": "user-id", "exp": expiresAt})); err == nil {
+		t.Fatal("HS512 token unexpectedly validated")
+	}
+	if _, err := service.ValidateToken(sign(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "user-id"})); err == nil {
+		t.Fatal("token without exp unexpectedly validated")
+	}
+	claims, err := service.ValidateToken(sign(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "user-id", "exp": expiresAt}))
+	if err != nil {
+		t.Fatalf("token without iat: %v", err)
+	}
+	if claims.Subject != "user-id" || !claims.IssuedAt.IsZero() {
+		t.Fatalf("claims=%+v, want subject and zero issuedAt", claims)
+	}
+}
+
 func TestIsAuthResponseUsesHouseListContract(t *testing.T) {
 	response := dtos.IsAuthResponseModel{
 		Success: true,
@@ -133,6 +165,33 @@ func TestUserJSONDoesNotExposePasswordHash(t *testing.T) {
 	body := string(payload)
 	if strings.Contains(body, "hashed-secret") || strings.Contains(body, "password") {
 		t.Fatalf("user json exposes password data: %s", body)
+	}
+}
+
+func TestFreeTextRequestFieldsAreBounded(t *testing.T) {
+	v := validator.NewValidator()
+	houseID := strings.Repeat("a", 24)
+	longURL := "https://example.test/" + strings.Repeat("a", 2048)
+	empty, oneLetter, longName := "", "J", strings.Repeat("a", 51)
+
+	invalid := map[string]any{
+		"announcement title":       dtos.CreateAnnouncementModel{HouseId: houseID, Title: strings.Repeat("a", 201), Description: "ok"},
+		"announcement description": dtos.CreateAnnouncementModel{HouseId: houseID, Title: "ok", Description: strings.Repeat("a", 2001)},
+		"user first name":          dtos.UpdateUserModel{Firstname: &longName},
+		"user last name":           dtos.UpdateUserModel{Lastname: &longName},
+		"user image url":           dtos.UpdateUserModel{ImageURL: &longURL},
+		"house profile image":      dtos.UpdateHouseProfileModel{HouseProfileImage: &longURL},
+	}
+	for name, model := range invalid {
+		err := v.Validate(model)
+		if err == nil || !strings.Contains(err.Error(), "validation.error.max") {
+			t.Errorf("%s: err=%v, want validation.error.max", name, err)
+		}
+	}
+
+	// Profile names stay optional and keep accepting what social sign-up stores.
+	if err := v.Validate(dtos.UpdateUserModel{Firstname: &oneLetter, Lastname: &empty}); err != nil {
+		t.Errorf("short profile names were rejected: %v", err)
 	}
 }
 

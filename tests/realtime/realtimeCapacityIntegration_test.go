@@ -113,6 +113,46 @@ func TestRealtimeConnectionAdmissionBoundsConcurrentUpgradesAndReleases(t *testi
 	fixture.Connect(t, 0, session.SessionID, fixture.OwnerID)
 }
 
+// One account cannot hold every slot of an instance; others still get in and
+// a closed socket frees the user's slot.
+func TestRealtimeConnectionAdmissionCapsConnectionsPerUser(t *testing.T) {
+	fixture := gamekit.NewConfiguredRocketsGatewayFixture(t, houseRockets.Definition().Rules, 1, 8)
+	session := gamekit.PersistRocketsSession(t, fixture.GameSessionApplicationFixture, false)
+	endpoint := "ws" + fixture.URLs[0][4:] + "/api/v1/game/" + session.SessionID + "/realtime?protocolVersion=2"
+	dial := func(userID string) (*ws.Conn, *http.Response, error) {
+		header := http.Header{"Authorization": []string{"Bearer " + gamekit.GenerateGatewayToken(t, fixture.JWT, userID)}}
+		connection, response, err := ws.DefaultDialer.Dial(endpoint, header)
+		if connection != nil {
+			t.Cleanup(func() { _ = connection.Close() })
+		}
+		return connection, response, err
+	}
+	var owned []*ws.Conn
+	for range 4 {
+		connection, response, err := dial(fixture.OwnerID)
+		if err != nil {
+			t.Fatalf("connection within the user cap: %v status=%v", err, gamekit.ResponseStatus(response))
+		}
+		owned = append(owned, connection)
+	}
+	_, response, err := dial(fixture.OwnerID)
+	if err == nil || response == nil || response.StatusCode != http.StatusServiceUnavailable || response.Header.Get("Retry-After") != "1" {
+		t.Fatalf("fifth connection of one user: %v status=%v", err, gamekit.ResponseStatus(response))
+	}
+	response.Body.Close()
+	if _, response, err := dial(fixture.MemberID); err != nil {
+		t.Fatalf("another user was rejected: %v status=%v", err, gamekit.ResponseStatus(response))
+	}
+	_ = owned[0].Close()
+	gamekit.Eventually(t, 2*time.Second, func() bool {
+		snapshot := fixture.Services[0].Metrics()
+		return snapshot.ActiveConnections == 4 && snapshot.PendingConnections == 0
+	})
+	if _, response, err := dial(fixture.OwnerID); err != nil {
+		t.Fatalf("freed slot was not reusable: %v status=%v", err, gamekit.ResponseStatus(response))
+	}
+}
+
 func TestRealtimeRoomAdmissionRejectsLocalOwnershipButAllowsRemoteRooms(t *testing.T) {
 	fixture := gamekit.NewGameSessionApplicationFixture(t)
 	rockets := gamekit.PersistRocketsSession(t, fixture, false)

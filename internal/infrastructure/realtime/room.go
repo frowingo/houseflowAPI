@@ -317,7 +317,9 @@ func (loop *roomLoop) handleDeadline() bool {
 	updated, err := room.advance(deadline)
 	if err != nil {
 		room.manager.report(room.lease.RoomID, err)
-		stored, loadErr := room.manager.repository.FindByID(room.ctx, room.lease.RoomID)
+		loadCtx, cancel := context.WithTimeout(room.ctx, room.manager.options.CommandTimeout)
+		stored, loadErr := room.manager.repository.FindByID(loadCtx, room.lease.RoomID)
+		cancel()
 		if loadErr != nil {
 			room.manager.report(room.lease.RoomID, loadErr)
 			return false

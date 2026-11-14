@@ -167,6 +167,45 @@ func TestHouseRocketsRuntimeBoundsMailboxesAndInputRate(t *testing.T) {
 	}
 }
 
+// Any socket may request a snapshot; a flood is refused as busy and leaves the
+// mailbox room for simulation events instead of cancelling the match.
+func TestHouseRocketsRuntimeRefusesSnapshotFloodWithoutCancelling(t *testing.T) {
+	runtime, now := gamekit.NewRocketsRuntime(t)
+	request := houseRockets.RuntimeInput{Kind: houseRockets.InputSnapshot, PlayerID: "spectator", ConnectionID: "s", RuntimeEpoch: 7, CreatedAt: now}
+	accepted := 0
+	for range houseRockets.RuntimeQueueSize {
+		err := runtime.Submit(request, now)
+		if err == nil {
+			accepted++
+		} else if !errors.Is(err, houseRockets.ErrRuntimeBusy) {
+			t.Fatal(err)
+		}
+	}
+	if accepted != houseRockets.RuntimeQueueSize/2 {
+		t.Fatalf("accepted snapshot requests = %d", accepted)
+	}
+	if err := runtime.Submit(houseRockets.RuntimeInput{Kind: houseRockets.InputBind, PlayerID: "first", ConnectionID: "a", RuntimeEpoch: 7, CreatedAt: now}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Advance(now); err != nil {
+		t.Fatal(err)
+	}
+	granted := false
+	for len(runtime.Events()) > 0 {
+		event := <-runtime.Events()
+		granted = granted || event.Grant != nil
+	}
+	if !granted {
+		t.Fatal("bind was not granted after the flood")
+	}
+	if err := runtime.Submit(request, now); err != nil {
+		t.Fatal(err)
+	}
+	if event := <-runtime.Events(); event.Frame == nil || event.Frame.Phase != houseRockets.PhasePlaying {
+		t.Fatalf("match after flood: %+v", event)
+	}
+}
+
 func TestHouseRocketsRuntimeStopsOnLeaseLossAndConcurrentInput(t *testing.T) {
 	runtime, now := gamekit.NewRocketsRuntime(t)
 	grant := gamekit.BindRocketsControl(t, runtime, "first", "a", now)

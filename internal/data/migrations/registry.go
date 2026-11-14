@@ -100,5 +100,16 @@ func AllMigrations() []Migration {
 		&houseTanksLobbyLocalizations{},
 		// --- House Rockets lobby colors ---
 		&houseRocketsLobbyLocalizations{},
+		// --- Query Indexes ---
+		&queryIndexes{},
+		// --- Auth Code Attempts ---
+		&authCodeAttempts{},
+		// --- Chore Catalog ---
+		&choreCatalogCollection{},
+		&choreCatalogLocalizations{},
+		// --- Auth Code Attempt Messages ---
+		&authCodeAttemptLocalizations{},
+		// --- System Chore Catalog Seed ---
+		&systemChoreCatalogSeed{},
 	}
 }
