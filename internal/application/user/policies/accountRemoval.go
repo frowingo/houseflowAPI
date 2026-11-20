@@ -93,6 +93,9 @@ func (r *AccountRemoval) Remove(ctx context.Context, userID string) ([]string, e
 		if _, err := database.Collection("ChoreCatalog").DeleteMany(txCtx, bson.M{"userId": userID}); err != nil {
 			return err
 		}
+		if _, err := database.Collection("DeviceToken").DeleteMany(txCtx, bson.M{"userId": userID}); err != nil {
+			return err
+		}
 		if err := deleteHouses(txCtx, database, abandonedHouses); err != nil {
 			return err
 		}

@@ -18,7 +18,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	docs "houseflowApi/external/swagger/docs" // Swagger docs
-	choreApplication "houseflowApi/internal/application/chore"
+	"houseflowApi/internal/adaptors"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -61,10 +61,12 @@ func main() {
 	switch command {
 	case "serve":
 		err = runAPI()
+	case "worker":
+		err = runWorker()
 	case "migrate":
 		err = runMigrations()
 	default:
-		err = fmt.Errorf("unknown command %q; expected serve or migrate", command)
+		err = fmt.Errorf("unknown command %q; expected serve, worker or migrate", command)
 	}
 
 	if err != nil {
@@ -90,8 +92,10 @@ func runAPI() error {
 	}
 	defer disconnectDatabase(mongoClient)
 
-	coordinator := initializeCoordinator(rootCtx, cfg.External.Redis)
-	defer closeCoordinator(coordinator)
+	coordinator := adaptors.NewCoordinator(rootCtx, cfg.External.Redis, cfg.Process)
+	defer adaptors.CloseCoordinator(coordinator)
+
+	jobRuntime := adaptors.NewJobRuntime(cfg.External.Redis, cfg.Process)
 
 	// Host'u boş bırakarak Swagger UI'nin isteğin geldiği host/scheme'i
 	// kullanmasını sağla (localhost, OrbStack domain, vs. ile uyumlu).
@@ -124,10 +128,12 @@ func runAPI() error {
 
 	app.Get(
 		"/api/v1/base/health/coordination",
-		controllers.ReadinessController(coordinationReadiness(coordinator)),
+		controllers.ReadinessController(adaptors.CoordinationReadiness(coordinator)),
 	)
+	// Not part of the Fly check: a Valkey outage must not restart the API.
+	app.Get("/api/v1/base/health/jobs", controllers.ReadinessController(jobRuntime.Ping))
 
-	realtimeService, appEventService, choreDeadlineService, err := SetupRoutes(
+	realtimeService, appEventService, err := SetupRoutes(
 		rootCtx,
 		app,
 		mongoClient,
@@ -135,16 +141,24 @@ func runAPI() error {
 		cfg.Internal,
 		cfg.External.SocialAuth,
 		cfg.External.Tigris,
+		cfg.External.Firebase,
 		coordinator,
+		jobRuntime,
 	)
 	if err != nil {
 		return fmt.Errorf("set up routes: %w", err)
 	}
 	defer closeRealtimeService(realtimeService)
 	defer closeAppEventService(appEventService)
-	choreDeadlineService.Start(rootCtx)
-	defer closeChoreDeadlineService(choreDeadlineService)
-	go observeRealtime(rootCtx, coordinator, realtimeService, appEventService)
+	// Handlers are registered in SetupRoutes; processing starts after them.
+	// Deferred last, so jobs finish before the services they use close.
+	if err := jobRuntime.Start(rootCtx); err != nil {
+		adaptors.CloseJobRuntime(jobRuntime)
+		return fmt.Errorf("start background jobs: %w", err)
+	}
+	defer adaptors.CloseJobRuntime(jobRuntime)
+	go adaptors.ObserveRealtime(rootCtx, coordinator, realtimeService, appEventService)
+	go adaptors.ObserveJobs(rootCtx, jobRuntime, cfg.Process.InstanceID, nil, nil)
 
 	listenError := make(chan error, 1)
 	go func() {
@@ -160,6 +174,8 @@ func runAPI() error {
 	case <-rootCtx.Done():
 		log.Println("shutdown signal received")
 	}
+	// Stop taking new jobs while HTTP drains; running ones finish in CloseJobRuntime.
+	jobRuntime.Stop()
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancelShutdown()
@@ -198,17 +214,6 @@ func closeAppEventService(service *appEvents.Service) {
 	defer cancel()
 	if err := service.Close(ctx); err != nil && err != context.Canceled {
 		log.Printf("app event service shutdown failed: %v", err)
-	}
-}
-
-func closeChoreDeadlineService(service *choreApplication.DeadlineService) {
-	if service == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	if err := service.Close(ctx); err != nil && err != context.Canceled {
-		log.Printf("chore deadline service shutdown failed: %v", err)
 	}
 }
 

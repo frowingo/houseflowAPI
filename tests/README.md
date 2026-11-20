@@ -45,6 +45,8 @@ başlatır, iş bitince kapatır (Homebrew `mongodb-community` ve `redis`).
 | `chore` | görev akışı, deadline, fotoğraf, bildirim, görev kataloğu |
 | `gamecore` | oturum domain'i, persistence, katalog, config, lobi niyetleri, modül sözleşmeleri |
 | `realtime` | koordinasyon, gateway, oda runtime, kapasite, sıkıştırma |
+| `jobs` | arka plan iş kuyruğu (Asynq): işleme, retry, arşiv, TaskID tekrarı, `FAUSCREW_ROLE=api` ayrımı, kapanış |
+| `adaptors` | config'ten adaptör kurulumu (`internal/adaptors`): coordinator, iş kuyruğu (worker runtime'ı dahil), sosyal giriş, yedeğe düşme; süreç config'i (`FAUSCREW_ROLE`, `INSTANCE_ID`) |
 | `games/<oyun>` | houseRockets, houseTanks, fausSwitch, ticTacToe |
 | `testkit` | `TestMain` (`testkit.Main`), Mongo DB havuzu, Redis seçimi, `RepoPath` |
 | `testkit/appkit` | uygulama fixture'ı (`NewConcurrencyFixture`) |

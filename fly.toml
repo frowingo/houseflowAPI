@@ -1,5 +1,8 @@
 app = 'houseflowapi'
 primary_region = 'ams'
+# Shutdown drains HTTP (10s), then waits for running background jobs (8s);
+# the 5s default would kill jobs mid-run and leave them to be redelivered.
+kill_timeout = 30
 
 [build]
 
@@ -26,3 +29,27 @@ primary_region = 'ams'
   memory = '256mb'
   cpu_kind = 'shared'
   cpus = 1
+
+# Separate worker group (J6), prepared but off: today the API machines run the
+# jobs. To enable, follow "Ayrı worker grubu" in
+# external/doc/backgroundJobsRunbook.md (two deploys; FAUSCREW_ROLE=api second).
+#
+# [processes]
+#   app = './houseflowapi serve'
+#   worker = './houseflowapi worker'
+#
+# [[vm]]
+#   processes = ['worker']
+#   memory = '256mb'
+#   cpu_kind = 'shared'
+#   cpus = 1
+#
+# [checks]
+#   [checks.worker_ready]
+#     processes = ['worker']
+#     type = 'http'
+#     port = 3163
+#     path = '/api/v1/base/health/ready'
+#     grace_period = '15s'
+#     interval = '30s'
+#     timeout = '3s'

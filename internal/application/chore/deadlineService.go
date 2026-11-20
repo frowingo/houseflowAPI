@@ -2,12 +2,11 @@ package chore
 
 import (
 	"context"
-	"log"
 	"sort"
-	"sync"
 	"time"
 
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	jobsAbstract "houseflowApi/internal/application/jobs/abstract"
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 
@@ -16,11 +15,21 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// The deadline passes run as scheduled jobs: once a minute over open chores,
+// and once a day over all of them. Each slot runs on one instance only.
+const (
+	DeadlineJobType         = "fauscrew:chore:deadline-reconcile"
+	DeadlineFullScanJobType = "fauscrew:chore:deadline-full-scan"
+)
+
 const (
 	deadlineScanInterval = time.Minute
-	// deadlinePassTimeout stays below the interval so a slow pass cannot
-	// overlap the next one on the same instance.
+	// deadlinePassTimeout stays below the interval; a failed minute is not
+	// retried because the next one covers it.
 	deadlinePassTimeout = 50 * time.Second
+	fullScanInterval    = 24 * time.Hour
+	fullScanTimeout     = 5 * time.Minute
+	fullScanMaxRetry    = 2
 	deadlineBatchSize   = 100
 	deadlineUpdater     = "system"
 )
@@ -30,10 +39,6 @@ type DeadlineService struct {
 	history  databaseAbstract.DbRepository[entities.ChoreStatusHistory]
 	workflow *chorePolicies.WorkflowPolicy
 	notify   func(context.Context, string)
-
-	mutex  sync.Mutex
-	cancel context.CancelFunc
-	done   chan struct{}
 }
 
 func NewDeadlineService(
@@ -45,60 +50,55 @@ func NewDeadlineService(
 	return &DeadlineService{chores: chores, history: history, workflow: workflow, notify: notify}
 }
 
-func (service *DeadlineService) Start(ctx context.Context) {
-	service.mutex.Lock()
-	defer service.mutex.Unlock()
-	if service.done != nil {
-		return
-	}
-	workerCtx, cancel := context.WithCancel(ctx)
-	service.cancel = cancel
-	service.done = make(chan struct{})
-	go service.run(workerCtx)
+// Register binds and schedules the deadline passes; call it before jobs
+// start. The full scan also covers legacy chores completed after their due
+// date, which the open-status index does not reach, so it runs daily (and at
+// the first start of a day) instead of every minute.
+func (service *DeadlineService) Register(registry jobsAbstract.HandlerRegistry, scheduler jobsAbstract.PeriodicScheduler) {
+	registry.Register(DeadlineJobType, service.RunOpenPass)
+	registry.Register(DeadlineFullScanJobType, service.RunFullPass)
+	scheduler.Every(DeadlineJobType, deadlineScanInterval,
+		jobsAbstract.InQueue(jobsAbstract.QueueDefault),
+		jobsAbstract.MaxRetry(0),
+		jobsAbstract.Timeout(deadlinePassTimeout),
+	)
+	scheduler.Every(DeadlineFullScanJobType, fullScanInterval,
+		jobsAbstract.InQueue(jobsAbstract.QueueLow),
+		jobsAbstract.MaxRetry(fullScanMaxRetry),
+		jobsAbstract.Timeout(fullScanTimeout),
+	)
 }
 
-func (service *DeadlineService) run(ctx context.Context) {
-	defer close(service.done)
-	// Completed-after-due chores only exist in legacy data, so the unindexed
-	// full scan runs once per process and the ticker uses the open-status index.
-	service.runOnce(ctx, service.Reconcile)
-	ticker := time.NewTicker(deadlineScanInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			passCtx, cancel := context.WithTimeout(ctx, deadlinePassTimeout)
-			service.runOnce(passCtx, service.reconcileOpen)
-			cancel()
-		}
-	}
+// RunOpenPass is the minute job: it fails open chores past their due date.
+func (service *DeadlineService) RunOpenPass(ctx context.Context, _ []byte) error {
+	return service.runPass(ctx, service.reconcileOpen)
 }
 
-func (service *DeadlineService) runOnce(
+// RunFullPass is the daily job; see Reconcile.
+func (service *DeadlineService) RunFullPass(ctx context.Context, _ []byte) error {
+	return service.runPass(ctx, service.Reconcile)
+}
+
+func (service *DeadlineService) runPass(
 	ctx context.Context,
 	reconcile func(context.Context, time.Time) ([]string, error),
-) {
+) error {
 	houseIDs, err := reconcile(ctx, time.Now())
 	if err != nil {
-		if ctx.Err() == nil {
-			log.Printf("chore deadline reconciliation failed: %v", err)
-		}
-		return
+		return err
 	}
 	if service.notify == nil {
-		return
+		return nil
 	}
 	for _, houseID := range houseIDs {
 		service.notify(ctx, houseID)
 	}
+	return nil
 }
 
 // Reconcile marks every currently overdue chore as failed, including legacy
 // chores completed after their due date, and returns the affected house IDs.
-// It is public so the deadline behavior can be tested without waiting for the
-// background ticker.
+// It is public so the deadline behavior can be tested without the job queue.
 func (service *DeadlineService) Reconcile(ctx context.Context, now time.Time) ([]string, error) {
 	return service.reconcile(ctx, now, deadlineCandidateFilter)
 }
@@ -215,23 +215,5 @@ func deadlineCandidateFilter(now time.Time) bson.M {
 				"$expr":  bson.M{"$gte": bson.A{"$completedAt", "$dueDate"}},
 			},
 		},
-	}
-}
-
-func (service *DeadlineService) Close(ctx context.Context) error {
-	service.mutex.Lock()
-	cancel, done := service.cancel, service.done
-	service.mutex.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	if done == nil {
-		return nil
-	}
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }

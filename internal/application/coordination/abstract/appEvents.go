@@ -3,8 +3,9 @@ package abstract
 import "context"
 
 const (
-	HouseChangedEvent = "house.changed"
-	UserChangedEvent  = "user.changed"
+	HouseChangedEvent        = "house.changed"
+	UserChangedEvent         = "user.changed"
+	NotificationCreatedEvent = "notification.created"
 )
 
 // AppEvent is an invalidation signal. UserIDs are routing metadata and are

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -23,6 +24,33 @@ func ReadStaticFile(name string) ([]byte, error) {
 type ConfigModel struct {
 	External ConfigExternal `json:"external"`
 	Internal ConfigInternal `json:"internal"`
+	// Process describes this running instance; it comes from the
+	// environment only, never from config.json.
+	Process ConfigProcess `json:"-"`
+}
+
+const (
+	// ProcessRoleAll serves HTTP and processes background jobs.
+	ProcessRoleAll = "all"
+	// ProcessRoleAPI serves HTTP and only enqueues jobs; another process
+	// group works them.
+	ProcessRoleAPI = "api"
+	// ProcessRoleWorker only processes background jobs and serves no API.
+	// The worker command sets it; FAUSCREW_ROLE cannot, so one environment
+	// can hold FAUSCREW_ROLE=api for the API group and still run workers.
+	ProcessRoleWorker = "worker"
+)
+
+type ConfigProcess struct {
+	// Role is FAUSCREW_ROLE; empty means ProcessRoleAll.
+	Role string
+	// InstanceID is INSTANCE_ID, else FLY_MACHINE_ID; it names this
+	// instance in coordination.
+	InstanceID string
+}
+
+func (c ConfigProcess) ConsumesJobs() bool {
+	return c.Role == "" || c.Role == ProcessRoleAll || c.Role == ProcessRoleWorker
 }
 
 type ConfigExternal struct {
@@ -30,6 +58,7 @@ type ConfigExternal struct {
 	Tigris     ConfigTigris     `json:"tigris"`
 	Redis      ConfigRedis      `json:"redis"`
 	SocialAuth ConfigSocialAuth `json:"socialAuth"`
+	Firebase   ConfigFirebase   `json:"firebase"`
 }
 
 type ConfigInternal struct {
@@ -76,6 +105,29 @@ type ConfigTigris struct {
 
 func (c ConfigTigris) Configured() bool {
 	return c.Endpoint != "" || c.Region != "" || c.Bucket != "" || c.AccessKeyID != "" || c.SecretAccessKey != ""
+}
+
+// ConfigFirebase holds the service account used for push notifications.
+// Without it push notifications are not sent; in-app notifications still work.
+type ConfigFirebase struct {
+	// CredentialsJSON is the service account JSON, as is or base64 encoded.
+	CredentialsJSON string `json:"credentialsJson"`
+}
+
+func (c ConfigFirebase) Enabled() bool { return c.CredentialsJSON != "" }
+
+// Credentials returns the service account JSON, decoding it when it was
+// stored base64 encoded.
+func (c ConfigFirebase) Credentials() ([]byte, error) {
+	value := strings.TrimSpace(c.CredentialsJSON)
+	if strings.HasPrefix(value, "{") {
+		return []byte(value), nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("firebase credentials must be JSON or base64 encoded JSON")
+	}
+	return decoded, nil
 }
 
 // ConfigSocialAuth holds the third-party sign-in providers. A provider whose
@@ -155,6 +207,15 @@ func applyEnvOverrides(config *ConfigModel) {
 		config.Internal.HouseJoinCode.ValidityMinutes = defaultHouseJoinCodeValidityMinutes
 	}
 
+	config.Process.Role = strings.TrimSpace(os.Getenv("FAUSCREW_ROLE"))
+	if config.Process.Role == "" {
+		config.Process.Role = ProcessRoleAll
+	}
+	config.Process.InstanceID = os.Getenv("INSTANCE_ID")
+	if config.Process.InstanceID == "" {
+		config.Process.InstanceID = os.Getenv("FLY_MACHINE_ID")
+	}
+
 	if uri := os.Getenv("MONGO_URI"); uri != "" {
 		config.External.Mongo.ConnectionString = uri
 	}
@@ -204,6 +265,10 @@ func applyEnvOverrides(config *ConfigModel) {
 
 	if smtpPassword := os.Getenv("SMTP_PASSWORD"); smtpPassword != "" {
 		config.Internal.SMTP.Password = smtpPassword
+	}
+
+	if credentials := os.Getenv("FIREBASE_CREDENTIALS"); credentials != "" {
+		config.External.Firebase.CredentialsJSON = credentials
 	}
 
 	applySocialAuthEnvOverrides(&config.External.SocialAuth)
@@ -278,7 +343,24 @@ func Validate(config *ConfigModel) error {
 	if config.Internal.SMTP.Password == "" {
 		return errors.New("smtp password is required")
 	}
+	if err := ValidateProcess(config.Process); err != nil {
+		return err
+	}
+	if config.External.Firebase.Enabled() {
+		if _, err := config.External.Firebase.Credentials(); err != nil {
+			return err
+		}
+	}
 	return ValidateSocialAuth(config.External.SocialAuth)
+}
+
+func ValidateProcess(config ConfigProcess) error {
+	switch config.Role {
+	case "", ProcessRoleAll, ProcessRoleAPI:
+		return nil
+	default:
+		return fmt.Errorf("FAUSCREW_ROLE=%q is not supported; expected %s or %s (workers run with the worker command)", config.Role, ProcessRoleAll, ProcessRoleAPI)
+	}
 }
 
 // ValidateSocialAuth rejects providers that are only partly configured.

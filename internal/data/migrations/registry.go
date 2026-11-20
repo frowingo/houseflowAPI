@@ -111,5 +111,7 @@ func AllMigrations() []Migration {
 		&authCodeAttemptLocalizations{},
 		// --- System Chore Catalog Seed ---
 		&systemChoreCatalogSeed{},
+		// --- Notification Delivery ---
+		&notificationDelivery{},
 	}
 }

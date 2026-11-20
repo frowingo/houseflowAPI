@@ -189,7 +189,7 @@ if $services && [ -z "${HOUSEFLOW_TEST_MONGO_URI:-}" ] && grep -q "^$module/test
 			sleep 0.5
 		done
 		export HOUSEFLOW_TEST_MONGO_URI="mongodb://127.0.0.1:$mongo_port/?replicaSet=rs0"
-		# Test packages use databases 1..11 of it (tests/testkit/main.go).
+		# Test packages use databases 1..13 of it (tests/testkit/main.go).
 		export HOUSEFLOW_TEST_REDIS_URL="redis://127.0.0.1:$redis_port/1"
 		echo "Started temporary MongoDB :$mongo_port and Redis :$redis_port"
 	else
