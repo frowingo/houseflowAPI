@@ -105,6 +105,9 @@ func TestFCMSendClassifiesFailures(t *testing.T) {
 		{name: "not found", status: http.StatusNotFound, body: `{"error":{"status":"NOT_FOUND"}}`, invalid: true},
 		{name: "other project", status: http.StatusForbidden, body: `{"error":{"status":"PERMISSION_DENIED","details":[{"errorCode":"SENDER_ID_MISMATCH"}]}}`, invalid: true},
 		{name: "bad payload", status: http.StatusBadRequest, body: `{"error":{"status":"INVALID_ARGUMENT","details":[{"errorCode":"INVALID_ARGUMENT"}]}}`, rejected: true},
+		// The bodies below are what FCM returned in a live check (2026-11-21).
+		{name: "not an FCM token", status: http.StatusBadRequest, body: `{"error":{"code":400,"message":"The registration token is not a valid FCM registration token","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.firebase.fcm.v1.FcmError","errorCode":"INVALID_ARGUMENT"},{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"message.token","description":"The registration token is not a valid FCM registration token"}]}]}}`, invalid: true},
+		{name: "bad payload field", status: http.StatusBadRequest, body: `{"error":{"code":400,"message":"Invalid value at 'message.android.ttl'","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"message.android.ttl","description":"Invalid duration format"}]}]}}`, rejected: true},
 		{name: "quota with delay", status: http.StatusTooManyRequests, retryAfter: "30", body: `{"error":{"status":"RESOURCE_EXHAUSTED"}}`, throttle: 30 * time.Second},
 		{name: "unavailable with delay", status: http.StatusServiceUnavailable, retryAfter: "5", body: `{"error":{"status":"UNAVAILABLE"}}`, throttle: 5 * time.Second},
 		{name: "unavailable", status: http.StatusServiceUnavailable, body: `{"error":{"status":"UNAVAILABLE"}}`},

@@ -98,6 +98,11 @@ type fcmErrorResponse struct {
 		Message string `json:"message"`
 		Details []struct {
 			ErrorCode string `json:"errorCode"`
+			// FieldViolations come with a google.rpc.BadRequest detail and
+			// name the request field FCM refused.
+			FieldViolations []struct {
+				Field string `json:"field"`
+			} `json:"fieldViolations"`
 		} `json:"details"`
 	} `json:"error"`
 }
@@ -127,7 +132,7 @@ func (s *FCMSender) Send(ctx context.Context, token string, message notification
 
 	var failure fcmErrorResponse
 	_ = json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&failure)
-	if isUnregistered(response.StatusCode, failure) {
+	if isInvalidToken(response.StatusCode, failure) {
 		return notificationAbstract.ErrInvalidPushToken
 	}
 	err = fmt.Errorf("fcm send failed: %d %s %s", response.StatusCode, failure.Error.Status, failure.Error.Message)
@@ -194,13 +199,21 @@ func retryAfter(header string, now time.Time) (time.Duration, bool) {
 	return 0, false
 }
 
-// isUnregistered never trusts INVALID_ARGUMENT: it can also mean
-// a bad payload, which must not remove every token.
-func isUnregistered(statusCode int, failure fcmErrorResponse) bool {
+// isInvalidToken reports a token that can never receive a push: the device
+// unregistered it, it belongs to another Firebase project, or it is not an
+// FCM token at all (for example an APNs device token the app sent instead).
+// INVALID_ARGUMENT alone is not enough, as a bad payload, which must not
+// remove every token, has it too; only a violation on message.token counts.
+func isInvalidToken(statusCode int, failure fcmErrorResponse) bool {
 	for _, detail := range failure.Error.Details {
 		// SENDER_ID_MISMATCH: the token belongs to another Firebase project.
 		if detail.ErrorCode == "UNREGISTERED" || detail.ErrorCode == "SENDER_ID_MISMATCH" {
 			return true
+		}
+		for _, violation := range detail.FieldViolations {
+			if violation.Field == "message.token" {
+				return true
+			}
 		}
 	}
 	return statusCode == http.StatusNotFound && failure.Error.Status == "NOT_FOUND"
