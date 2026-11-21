@@ -178,7 +178,10 @@ func (service *Service) disconnectAll() {
 }
 
 func (service *Service) deliver(event coordinationAbstract.AppEvent) {
-	if event.Type != coordinationAbstract.HouseChangedEvent && event.Type != coordinationAbstract.UserChangedEvent {
+	switch event.Type {
+	case coordinationAbstract.HouseChangedEvent, coordinationAbstract.UserChangedEvent,
+		coordinationAbstract.NotificationCreatedEvent:
+	default:
 		return
 	}
 	message, err := json.Marshal(struct {
@@ -245,6 +248,18 @@ func (service *Service) publishContext(ctx context.Context) (context.Context, co
 		timeout = degradedTimeout
 	}
 	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
+}
+
+// NotificationCreated tells the recipients to refetch the notification panel.
+func (service *Service) NotificationCreated(ctx context.Context, houseID string, userIDs []string) {
+	if service.bus == nil || len(userIDs) == 0 {
+		return
+	}
+	ctx, cancel := service.publishContext(ctx)
+	defer cancel()
+	service.publish(ctx, coordinationAbstract.AppEvent{
+		Type: coordinationAbstract.NotificationCreatedEvent, HouseID: houseID, UserIDs: userIDs,
+	})
 }
 
 func (service *Service) publish(ctx context.Context, event coordinationAbstract.AppEvent) {

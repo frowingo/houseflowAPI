@@ -1,15 +1,18 @@
 package chore
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	choreApplication "houseflowApi/internal/application/chore"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
+	jobsAbstract "houseflowApi/internal/application/jobs/abstract"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
+	infrastructureJobs "houseflowApi/internal/infrastructure/jobs"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/tests/testkit/appkit"
 
@@ -141,4 +144,81 @@ func assertChoreStatus(
 	if wantStatus == entities.Failed && (chore.CompletedBy != "" || !chore.CompletedAt.IsZero()) {
 		t.Fatalf("failed chore %s retained completion metadata: %+v", id.Hex(), chore)
 	}
+}
+
+// The deadline passes run as scheduled jobs: at start the open pass fails an
+// overdue chore and reports its house; a chore completed late is left to the
+// daily full scan.
+func TestChoreDeadlineJobsRunOnSchedule(t *testing.T) {
+	fixture := appkit.NewConcurrencyFixture(t)
+	now := time.Now().UTC()
+	chores := database.NewDbContext[entities.Chore](fixture.DB.Client(), fixture.DB.Name())
+	histories := database.NewDbContext[entities.ChoreStatusHistory](fixture.DB.Client(), fixture.DB.Name())
+	overdue, err := chores.Insert(fixture.Ctx, entities.Chore{
+		Title: "Overdue", HouseId: "deadline-job-house", DueDate: now.Add(-time.Minute), Status: entities.Draft,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notified := make(chan string, 4)
+	service := choreApplication.NewDeadlineService(chores, histories, chorePolicies.NewWorkflowPolicy(),
+		func(_ context.Context, houseID string) { notified <- houseID })
+	runtime := infrastructureJobs.NewInlineRuntime()
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	service.Register(runtime, runtime)
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case houseID := <-notified:
+		if houseID != "deadline-job-house" {
+			t.Fatalf("notified house %q", houseID)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the deadline job did not run at start")
+	}
+	assertChoreStatus(t, fixture, overdue.Id, entities.Failed, false)
+}
+
+func TestChoreDeadlineJobsAreScheduledWithoutRetryingMinutes(t *testing.T) {
+	scheduler := &recordingScheduler{registry: map[string]bool{}}
+	choreApplication.NewDeadlineService(nil, nil, nil, nil).Register(scheduler, scheduler)
+	want := map[string]time.Duration{
+		choreApplication.DeadlineJobType:         time.Minute,
+		choreApplication.DeadlineFullScanJobType: 24 * time.Hour,
+	}
+	if len(scheduler.schedules) != len(want) {
+		t.Fatalf("schedules = %+v", scheduler.schedules)
+	}
+	for _, schedule := range scheduler.schedules {
+		if want[schedule.jobType] != schedule.interval || !scheduler.registry[schedule.jobType] {
+			t.Fatalf("schedule %+v", schedule)
+		}
+		if schedule.jobType == choreApplication.DeadlineJobType &&
+			(schedule.options.MaxRetry == nil || *schedule.options.MaxRetry != 0 || schedule.options.Timeout >= time.Minute) {
+			t.Fatalf("the minute pass must not retry or outlive its slot: %+v", schedule.options)
+		}
+	}
+}
+
+type recordedSchedule struct {
+	jobType  string
+	interval time.Duration
+	options  jobsAbstract.EnqueueOptions
+}
+
+type recordingScheduler struct {
+	registry  map[string]bool
+	schedules []recordedSchedule
+}
+
+func (r *recordingScheduler) Register(jobType string, _ jobsAbstract.Handler) {
+	r.registry[jobType] = true
+}
+
+func (r *recordingScheduler) Every(jobType string, interval time.Duration, options ...jobsAbstract.Option) {
+	resolved, _ := jobsAbstract.ResolveOptions(options...)
+	r.schedules = append(r.schedules, recordedSchedule{jobType: jobType, interval: interval, options: resolved})
 }

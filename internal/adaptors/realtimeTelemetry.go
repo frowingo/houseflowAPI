@@ -1,4 +1,4 @@
-package main
+package adaptors
 
 import (
 	"context"
@@ -14,7 +14,9 @@ import (
 	"houseflowApi/internal/infrastructure/realtime"
 )
 
-func observeRealtime(ctx context.Context, coordinator coordinationAbstract.Coordinator, service *realtime.Service, appEvents *appEvents.Service) {
+// ObserveRealtime logs realtime errors as they happen and realtime, Redis and
+// runtime metrics every 30 seconds until ctx ends.
+func ObserveRealtime(ctx context.Context, coordinator coordinationAbstract.Coordinator, service *realtime.Service, appEvents *appEvents.Service) {
 	if service == nil {
 		return
 	}

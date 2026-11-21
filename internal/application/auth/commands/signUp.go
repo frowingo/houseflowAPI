@@ -18,6 +18,9 @@ type SignUpCommand struct {
 	Password  string
 	Firstname string
 	Lastname  string
+	// Language is the account's language (push texts use it). The API
+	// fills it from Accept-Language; an unsupported one becomes English.
+	Language string
 }
 
 type SignUpHandler struct {
@@ -52,11 +55,16 @@ func (h *SignUpHandler) Handle(ctx context.Context, command SignUpCommand) (stri
 		return "", err
 	}
 
+	language := helpers.NormalizeLanguage(command.Language)
+	if !helpers.IsSupportedLanguage(language) {
+		language = helpers.DefaultLanguage
+	}
+
 	now := time.Now()
 	newUser := entities.User{
 		Email: helpers.NormalizeEmail(command.Email), HashPassword: hashedPassword,
 		Firstname: command.Firstname, Lastname: command.Lastname,
-		Language: "en", CreatedOn: now, UpdatedOn: now, LastLogin: now,
+		Language: language, CreatedOn: now, UpdatedOn: now, LastLogin: now,
 		IsActive: true, HouseIds: []string{}, Role: entities.Normal,
 		SignUpProvider: entities.ProviderHouseflow,
 	}

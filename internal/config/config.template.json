@@ -33,6 +33,9 @@
                 "clientId": ""
             },
             "tokenEncryptionKey": ""
+        },
+        "firebase": {
+            "credentialsJson": ""
         }
     },
     "internal": {

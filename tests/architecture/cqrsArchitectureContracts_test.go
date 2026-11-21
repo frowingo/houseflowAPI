@@ -43,6 +43,9 @@ func TestApplicationLayerHasNoTransportOrLegacyServiceDependencies(t *testing.T)
 		"github.com/gofiber/fiber",
 		"houseflowApi/internal/controllers",
 		"houseflowApi/internal/services",
+		// Jobs go through internal/application/jobs/abstract; the queue
+		// library stays in infrastructure.
+		"github.com/hibiken/asynq",
 	}
 
 	err := filepath.WalkDir(applicationDirectory, func(path string, entry os.DirEntry, walkErr error) error {

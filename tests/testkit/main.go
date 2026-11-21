@@ -30,7 +30,7 @@ const (
 // tests flush their database, so each package gets its own:
 // HOUSEFLOW_TEST_REDIS_URL names the first test database N, and a package
 // uses N + its slot. The Redis server needs N + len(redisSlots) databases
-// (16 by default, so N <= 5); the database the app uses must lie outside.
+// (16 by default, so N <= 3); the database the app uses must lie outside.
 var redisSlots = map[string]int{
 	"testkit":      0,
 	"architecture": 1,
@@ -43,6 +43,8 @@ var redisSlots = map[string]int{
 	"houseTanks":   8,
 	"fausSwitch":   9,
 	"ticTacToe":    10,
+	"jobs":         11,
+	"adaptors":     12,
 }
 
 // Main is every test package's TestMain: it selects the package's Redis

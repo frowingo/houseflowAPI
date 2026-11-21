@@ -2,10 +2,12 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net"
 	"net/smtp"
 	"strings"
@@ -13,7 +15,13 @@ import (
 	"time"
 
 	authAbstract "houseflowApi/internal/application/auth/abstract"
+	jobsAbstract "houseflowApi/internal/application/jobs/abstract"
+	"houseflowApi/internal/application/notification"
+	notificationAbstract "houseflowApi/internal/application/notification/abstract"
 	"houseflowApi/internal/config"
+	databaseAbstract "houseflowApi/internal/data/database/abstract"
+	"houseflowApi/internal/data/entities"
+	"houseflowApi/internal/helpers"
 )
 
 const MailSMTPHost = "smtp.gmail.com"
@@ -21,14 +29,32 @@ const MailSMTPPort = 587
 const MailSMTPUsername = "houseflow37@gmail.com"
 const MailFromAddress = "no-reply@houseflow.com"
 
-// Mail is sent inside the request; a stalled SMTP server must not hold it.
+// A stalled SMTP server must not hold the request or the mail job.
 const (
 	smtpDialTimeout = 10 * time.Second
 	smtpSendTimeout = 20 * time.Second
 )
 
+const notificationRetention = 30 * 24 * time.Hour
+
+// NotificationEvents tells the recipients' open app sessions that a
+// notification arrived.
+type NotificationEvents interface {
+	NotificationCreated(ctx context.Context, houseID string, userIDs []string)
+}
+
+// NotificationDelivery holds what Notify needs. Push delivery itself runs in
+// background jobs (notification.Delivery).
+type NotificationDelivery struct {
+	Notifications databaseAbstract.DbRepository[entities.Notification]
+	Houses        databaseAbstract.DbRepository[entities.House]
+	Events        NotificationEvents
+	Jobs          jobsAbstract.JobQueue
+}
+
 type NotificationService struct {
 	smtpPassword string
+	delivery     NotificationDelivery
 }
 
 type codeEmailTemplateData struct {
@@ -39,8 +65,76 @@ type codeEmailTemplateData struct {
 	IgnoreMessage   string
 }
 
-func NewNotificationService(smtpPassword string) *NotificationService {
-	return &NotificationService{smtpPassword: smtpPassword}
+func NewNotificationService(smtpPassword string, delivery NotificationDelivery) *NotificationService {
+	return &NotificationService{smtpPassword: smtpPassword, delivery: delivery}
+}
+
+// Notify stores a house notification, signals the recipients' open app
+// sessions, and queues the push notifications to their devices. Only the
+// storage can fail the call; the signal and the push are best effort.
+func (r *NotificationService) Notify(ctx context.Context, request notificationAbstract.NotificationRequest) (*entities.Notification, error) {
+	if r.delivery.Notifications == nil {
+		return nil, errors.New("notification delivery is not configured")
+	}
+	recipients := request.RecipientUserIDs
+	if len(recipients) == 0 {
+		houseID, err := helpers.ToMongoId(request.HouseID)
+		if err != nil {
+			return nil, helpers.NewLocalizedError("house.error.invalid_house_id")
+		}
+		house, err := r.delivery.Houses.FindByID(ctx, houseID)
+		if err != nil {
+			return nil, err
+		}
+		recipients = house.MemberIds
+	}
+	recipients = withoutUser(recipients, request.SenderUserID)
+
+	now := time.Now().UTC()
+	entity := entities.Notification{
+		Type:             request.Type,
+		HouseId:          request.HouseID,
+		SenderUserId:     request.SenderUserID,
+		RecipientUserIds: request.RecipientUserIDs,
+		Title:            request.Title,
+		Message:          request.Message,
+		Localized:        request.Localized,
+		Args:             notification.SanitizeArgs(request.Args),
+		CreatedAt:        now,
+		ExpireAt:         now.Add(notificationRetention),
+	}
+	if request.ChoreID != "" {
+		choreID := request.ChoreID
+		entity.ChoreId = &choreID
+	}
+	created, err := r.delivery.Notifications.Insert(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	if len(recipients) == 0 {
+		return created, nil
+	}
+
+	if r.delivery.Events != nil {
+		r.delivery.Events.NotificationCreated(ctx, created.HouseId, recipients)
+	}
+	if r.delivery.Jobs != nil {
+		// The request may end right after this; the job must still be queued.
+		if err := notification.EnqueueFanout(context.WithoutCancel(ctx), r.delivery.Jobs, created.Id.Hex(), recipients); err != nil {
+			log.Printf("push notifications for %s were not queued: %v", created.Id.Hex(), err)
+		}
+	}
+	return created, nil
+}
+
+func withoutUser(userIDs []string, excludedUserID string) []string {
+	result := make([]string, 0, len(userIDs))
+	for _, userID := range userIDs {
+		if userID != "" && userID != excludedUserID {
+			result = append(result, userID)
+		}
+	}
+	return result
 }
 
 func (r *NotificationService) SendResetCodeEmail(toEmail, code string, validityMinutes int) error {
@@ -170,4 +264,7 @@ func renderCodeEmailTemplate(data codeEmailTemplateData) (string, error) {
 	return body.String(), nil
 }
 
-var _ authAbstract.EmailSender = (*NotificationService)(nil)
+var (
+	_ authAbstract.EmailSender      = (*NotificationService)(nil)
+	_ notificationAbstract.Notifier = (*NotificationService)(nil)
+)

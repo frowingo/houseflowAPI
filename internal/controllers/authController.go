@@ -97,10 +97,11 @@ func (r *AuthController) Login(c *fiber.Ctx) error {
 }
 
 // @Summary User Signup
-// @Description Signup with email, password, firstname, and lastname to receive JWT token
+// @Description Signup with email, password, firstname, and lastname to receive JWT token. The account language (tr or en, used for push notifications) comes from Accept-Language; anything else is stored as en.
 // @Tags Auth
 // @Accept json
 // @Produce json
+// @Param Accept-Language header string false "Account language: tr or en (default en)"
 // @Param signup body dtos.SignUpUserModel true "Signup request"
 // @Success 201 {object} map[string]string "Returns JWT token"
 // @Failure 400 {object} map[string]interface{} "Bad request"
@@ -123,6 +124,7 @@ func (r *AuthController) Signup(c *fiber.Ctx) error {
 	token, err := cqrs.Send[string](ctx, r.sender, authCommands.SignUpCommand{
 		Email: model.Email, Password: model.Password,
 		Firstname: model.Firstname, Lastname: model.Lastname,
+		Language: helpers.RequestLanguage(c),
 	})
 	if err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)

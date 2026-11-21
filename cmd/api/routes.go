@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"houseflowApi/internal/adaptors"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
-	choreApplication "houseflowApi/internal/application/chore"
 	choreCommands "houseflowApi/internal/application/chore/commands"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	choreQueries "houseflowApi/internal/application/chore/queries"
@@ -25,6 +25,9 @@ import (
 	imageAssetQueries "houseflowApi/internal/application/imageAsset/queries"
 	localizationCommands "houseflowApi/internal/application/localization/commands"
 	localizationQueries "houseflowApi/internal/application/localization/queries"
+	notificationAbstract "houseflowApi/internal/application/notification/abstract"
+	notificationCommands "houseflowApi/internal/application/notification/commands"
+	notificationQueries "houseflowApi/internal/application/notification/queries"
 	userCommands "houseflowApi/internal/application/user/commands"
 	userPolicies "houseflowApi/internal/application/user/policies"
 	userQueries "houseflowApi/internal/application/user/queries"
@@ -35,11 +38,10 @@ import (
 	"houseflowApi/internal/helpers"
 	infrastructureAppEvents "houseflowApi/internal/infrastructure/appEvents"
 	"houseflowApi/internal/infrastructure/cqrs"
-	infrastructureLocalization "houseflowApi/internal/infrastructure/localization"
+	infrastructureJobs "houseflowApi/internal/infrastructure/jobs"
 	"houseflowApi/internal/infrastructure/middleware"
 	"houseflowApi/internal/infrastructure/realtime"
 	"houseflowApi/internal/models/dtos"
-	"houseflowApi/internal/services"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -55,17 +57,23 @@ func SetupRoutes(
 	cfg config.ConfigInternal,
 	socialAuthConfig config.ConfigSocialAuth,
 	tigrisConfig config.ConfigTigris,
+	firebaseConfig config.ConfigFirebase,
 	coordinator coordinationAbstract.Coordinator,
-) (*realtime.Service, *infrastructureAppEvents.Service, *choreApplication.DeadlineService, error) {
+	jobRuntime infrastructureJobs.Runtime,
+) (*realtime.Service, *infrastructureAppEvents.Service, error) {
 	applicationMediator := cqrs.New()
 	jwtService := helpers.NewJWTService(cfg.JWT.ApiSecret)
 
+	// Job handlers are registered first, with the services the routes share.
+	backgroundJobs, err := setupBackgroundJobs(
+		ctx, client, dbName, cfg, firebaseConfig, coordinator, jobRuntime, webSocketAllowedOrigins(),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	localizationCache := backgroundJobs.localization
 	localizationRepository := database.NewDbContext[entities.Localization](client, dbName)
 	languageRepository := database.NewDbContext[entities.LocalizationLanguageOption](client, dbName)
-	localizationCache := infrastructureLocalization.NewCache(localizationRepository)
-	if err := localizationCache.Load(ctx); err != nil {
-		log.Println("localization cache warmup failed:", err)
-	}
 	getPlaintextsHandler := localizationQueries.NewGetPlaintextsHandler(localizationRepository, localizationCache)
 	getLanguagesHandler := localizationQueries.NewGetLanguagesHandler(languageRepository)
 	getLanguageHandler := localizationQueries.NewGetLanguageHandler(languageRepository)
@@ -102,41 +110,43 @@ func SetupRoutes(
 	// - AUTH -
 	userRepository := database.NewDbContext[entities.User](client, dbName)
 	houseRepository := database.NewDbContext[entities.House](client, dbName)
-	appEventBus, _ := coordinator.(coordinationAbstract.AppEventBus)
-	appEventService := infrastructureAppEvents.NewService(appEventBus, houseRepository, userRepository, webSocketAllowedOrigins())
+	appEventService := backgroundJobs.appEvents
 	// The socket sends ready, house.changed and user.changed; clients refetch over HTTP.
 	appEventRoutes := api.Group("/events", middleware.AuthRequired(jwtService, localizationCache))
 	appEventRoutes.Get("", appEventService.UpgradeMiddleware(), appEventService.Handler())
 	userInfoHistoryRepository := database.NewDbContext[entities.UserInfoHistory](client, dbName)
-	notificationService := services.NewNotificationService(cfg.SMTP.Password)
+	notificationRepository := database.NewDbContext[entities.Notification](client, dbName)
+	deviceTokenRepository := database.NewDbContext[entities.DeviceToken](client, dbName)
+	notificationService := backgroundJobs.notifications
+	emailSender := backgroundJobs.emailSender
 	loginHandler := authCommands.NewLoginHandler(userRepository, jwtService)
 	registerSwagger(app, loginHandler, jwtService, middleware.IPRateLimit(localizationCache))
 	signUpHandler := authCommands.NewSignUpHandler(userRepository, userInfoHistoryRepository, jwtService)
 	forgotPasswordHandler := authCommands.NewForgotPasswordHandler(
-		userRepository, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+		userRepository, emailSender, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	codeAttempts := authPolicies.NewCodeAttempts(database.NewDbContext[entities.AuthCodeAttempt](client, dbName))
 	resetPasswordHandler := authCommands.NewResetPasswordHandler(
 		userRepository, codeAttempts, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	sendEmailVerificationCodeHandler := authCommands.NewSendEmailVerificationCodeHandler(
-		userRepository, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+		userRepository, emailSender, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	validateEmailHandler := authCommands.NewValidateEmailHandler(
 		userRepository, codeAttempts, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	userIdentityRepository := database.NewDbContext[entities.UserIdentity](client, dbName)
-	socialAdapters, err := socialAuthAdapters(socialAuthConfig)
+	socialAdapters, err := adaptors.NewSocialAuthAdapters(socialAuthConfig)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	socialAccounts := authPolicies.NewSocialAccounts(userRepository, userIdentityRepository, userInfoHistoryRepository, jwtService)
 	socialPendingTokens := helpers.NewSocialPendingTokenService(cfg.JWT.ApiSecret)
 	socialAuthHandler := authCommands.NewSocialAuthHandler(
-		socialAccounts, socialPendingTokens, socialAdapters.verifiers, socialAdapters.keepers,
+		socialAccounts, socialPendingTokens, socialAdapters.Verifiers, socialAdapters.Keepers,
 	)
 	sendSocialSignUpCodeHandler := authCommands.NewSendSocialSignUpCodeHandler(
-		socialAccounts, socialPendingTokens, notificationService, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
+		socialAccounts, socialPendingTokens, emailSender, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
 	)
 	completeSocialSignUpHandler := authCommands.NewCompleteSocialSignUpHandler(
 		socialAccounts, socialPendingTokens, codeAttempts, cfg.PasswordReset.Secret, cfg.PasswordReset.ValidityMinutes,
@@ -144,20 +154,20 @@ func SetupRoutes(
 	dataDeletionRepository := database.NewDbContext[entities.DataDeletionRequest](client, dbName)
 	providerDataDeletionHandler := authCommands.NewProviderDataDeletionHandler(
 		userIdentityRepository, dataDeletionRepository,
-		userPolicies.NewAccountRemoval(userRepository, houseRepository, userIdentityRepository, socialAdapters.keepers),
-		socialAdapters.deletionVerifiers,
+		userPolicies.NewAccountRemoval(userRepository, houseRepository, userIdentityRepository, socialAdapters.Keepers),
+		socialAdapters.DeletionVerifiers,
 	)
 	getDataDeletionStatusHandler := authQueries.NewGetDataDeletionStatusHandler(dataDeletionRepository)
 	providerAccountEventHandler := authCommands.NewProviderAccountEventHandler(
 		userIdentityRepository,
-		userPolicies.NewAccountRemoval(userRepository, houseRepository, userIdentityRepository, socialAdapters.keepers),
-		socialAdapters.notifications,
+		userPolicies.NewAccountRemoval(userRepository, houseRepository, userIdentityRepository, socialAdapters.Keepers),
+		socialAdapters.Notifications,
 	)
 	linkSocialProviderHandler := authCommands.NewLinkSocialProviderHandler(
-		userRepository, userIdentityRepository, socialAdapters.verifiers, socialAdapters.keepers,
+		userRepository, userIdentityRepository, socialAdapters.Verifiers, socialAdapters.Keepers,
 	)
 	unlinkSocialProviderHandler := authCommands.NewUnlinkSocialProviderHandler(
-		userRepository, userIdentityRepository, socialAdapters.keepers,
+		userRepository, userIdentityRepository, socialAdapters.Keepers,
 	)
 	validateAuthHandler := authQueries.NewValidateAuthHandler(userRepository, houseRepository, userIdentityRepository, jwtService)
 	cqrs.MustRegister[string, authCommands.LoginCommand](applicationMediator, loginHandler)
@@ -236,7 +246,7 @@ func SetupRoutes(
 	// Realtime games need the coordinator; without it no game module is registered.
 	gameRegistry, err := games.NewRegistry(games.Options{Realtime: coordinator != nil})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	gameConfigRepository := database.NewGameConfigRepository(client, dbName)
 	gameConfigBus, _ := coordinator.(coordinationAbstract.GameConfigBus)
@@ -273,7 +283,7 @@ func SetupRoutes(
 	)
 
 	createUserHandler := userCommands.NewCreateUserHandler(userRepository, userInfoHistoryRepository)
-	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository, userIdentityRepository, socialAdapters.keepers)
+	deleteUserHandler := userCommands.NewDeleteUserHandler(userRepository, houseRepository, userIdentityRepository, socialAdapters.Keepers)
 	updateProfileHandler := userCommands.NewUpdateProfileHandler(userRepository, userInfoHistoryRepository)
 	getUserByEmailHandler := userQueries.NewGetUserByEmailHandler(userRepository)
 	listUsersHandler := userQueries.NewListUsersHandler(userRepository)
@@ -387,6 +397,15 @@ func SetupRoutes(
 	cqrs.MustRegister[*dtos.AnnouncementResponseModel, housecommands.CreateAnnouncementCommand](applicationMediator,
 		infrastructureAppEvents.NotifyAfter(createAnnouncementHandler, func(ctx context.Context, command housecommands.CreateAnnouncementCommand, _ *dtos.AnnouncementResponseModel) {
 			appEventService.HouseChanged(ctx, command.HouseID, false)
+			if _, err := notificationService.Notify(ctx, notificationAbstract.NotificationRequest{
+				Type:         entities.AnnouncementNotification,
+				HouseID:      command.HouseID,
+				SenderUserID: command.UserID,
+				Title:        command.Title,
+				Message:      command.Description,
+			}); err != nil {
+				log.Printf("announcement notification failed: %v", err)
+			}
 		}))
 	cqrs.MustRegister[*dtos.HouseInfosResponseModel, housecommands.UpdateHouseProfileCommand](applicationMediator,
 		infrastructureAppEvents.NotifyAfter(updateHouseProfileHandler, func(ctx context.Context, command housecommands.UpdateHouseProfileCommand, _ *dtos.HouseInfosResponseModel) {
@@ -418,17 +437,9 @@ func SetupRoutes(
 	// - CHORE -
 	choreAssignmentPolicy := chorePolicies.NewAssignmentPolicy(userRepository)
 	choreWorkflowPolicy := chorePolicies.NewWorkflowPolicy()
-	choreDeadlineService := choreApplication.NewDeadlineService(
-		houseChoreRepository,
-		houseChoreStatusHistoryRepository,
-		choreWorkflowPolicy,
-		func(ctx context.Context, houseID string) {
-			appEventService.HouseChanged(ctx, houseID, false)
-		},
-	)
 	chorePhotoStorage, err := database.NewTigrisContext(ctx, tigrisConfig)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	createChoreHandler := choreCommands.NewCreateChoreHandler(
 		houseChoreRepository,
@@ -488,6 +499,12 @@ func SetupRoutes(
 		choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogRepository, userRepository, localizationCache))
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](applicationMediator,
 		choreCatalogCommands.NewUpsertChoreCatalogHandler(choreCatalogRepository))
+	cqrs.MustRegister[cqrs.NoResult, choreCommands.RemindChoreCommand](applicationMediator, choreCommands.NewRemindChoreHandler(
+		houseChoreRepository,
+		userRepository,
+		houseMembershipPolicy,
+		notificationService,
+	))
 	choreController := controllers.NewChoreController(applicationMediator, localizationCache)
 
 	choreRoutes := api.Group("/chore", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
@@ -498,7 +515,23 @@ func SetupRoutes(
 	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
 	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Get("/:id/review-photo/:round", choreController.GetReviewPhotoURL)
+	choreRoutes.Post("/:id/remind", choreController.RemindChore)
 	choreRoutes.Put("/:id", choreController.UpdateChore)
+	// ----------
+
+	// - NOTIFICATION -
+	cqrs.MustRegister[*dtos.NotificationPageModel, notificationQueries.GetNotificationsQuery](applicationMediator,
+		notificationQueries.NewGetNotificationsHandler(notificationRepository, houseMembershipPolicy, localizationCache))
+	cqrs.MustRegister[cqrs.NoResult, notificationCommands.RegisterDeviceCommand](applicationMediator,
+		notificationCommands.NewRegisterDeviceHandler(deviceTokenRepository))
+	cqrs.MustRegister[cqrs.NoResult, notificationCommands.DeleteDeviceCommand](applicationMediator,
+		notificationCommands.NewDeleteDeviceHandler(deviceTokenRepository))
+	notificationController := controllers.NewNotificationController(applicationMediator, localizationCache)
+
+	notificationRoutes := api.Group("/notification", middleware.AuthRequired(jwtService, localizationCache), middleware.UserRateLimit(localizationCache))
+	notificationRoutes.Get("", notificationController.GetNotifications)
+	notificationRoutes.Post("/devices", notificationController.RegisterDevice)
+	notificationRoutes.Delete("/devices", notificationController.DeleteDevice)
 	// ----------
 	gameController := controllers.NewGameController(applicationMediator, localizationCache)
 	gameRoutes := api.Group(
@@ -534,11 +567,11 @@ func SetupRoutes(
 				)
 			})
 		}
-		return nil, appEventService, choreDeadlineService, nil
+		return nil, appEventService, nil
 	}
 	limits, err := config.LoadRealtimeLimits()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	realtimeService, err := realtime.NewService(
 		coordinator,
@@ -552,14 +585,14 @@ func SetupRoutes(
 		},
 	)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if err := realtimeService.Start(ctx); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	for _, path := range realtimePaths {
 		gameRoutes.Get(path, realtimeService.UpgradeMiddleware(), realtimeService.Handler())
 	}
 	appEventService.Start(ctx)
-	return realtimeService, appEventService, choreDeadlineService, nil
+	return realtimeService, appEventService, nil
 }

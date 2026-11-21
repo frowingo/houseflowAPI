@@ -372,3 +372,28 @@ func (r *ChoreController) UpsertChoreCatalog(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(result)
 }
+
+// @Summary Remind the assignee of a chore
+// @Description Sends the assignee an in-app and push notification. Other house members can send it once per chore, during the last 12 hours before the due date, while the chore is in Draft or Progress.
+// @Tags Chore
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Chore ID"
+// @Success 200 {object} dtos.SuccessResponseModel
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 403 {object} map[string]interface{} "Not a house member"
+// @Failure 404 {object} map[string]interface{} "Chore not found"
+// @Failure 409 {object} map[string]interface{} "Reminder already sent"
+// @Router /chore/{id}/remind [post]
+func (r *ChoreController) RemindChore(c *fiber.Ctx) error {
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, choreCommands.RemindChoreCommand{
+		ChoreID:  c.Params("id"),
+		SenderID: c.Locals("userID").(string),
+	}); err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(dtos.SuccessResponseModel{Success: true})
+}

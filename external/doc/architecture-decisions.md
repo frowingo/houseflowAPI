@@ -1323,3 +1323,129 @@ referans motoruyla aynı olduğu için geri sarma sonucu istemcinin yerel tahmin
   `player_eliminated` eşlemesine düşmez.
 - Rolling deploy'a etkisi yok: geri sarma tamamen oda sahibinin süreç içi durumudur, wire formatı
   ve checkpoint şeması bundan bağımsızdır.
+
+## ADR-032 — Arka plan işleri Asynq ile mevcut Valkey üzerinde
+
+**Durum:** Kabul edildi — 20 Kasım 2026.
+
+**Bağlam.** Mail gönderimi isteğin içinde SMTP'yi bekliyordu. Push bildirimleri bir goroutine'de
+gidiyordu ve süreç kapanınca kayboluyordu. Deadline kontrolü her makinede kendi ticker'ıyla
+çalışıyordu. Bu üç işin ortak ihtiyaçları şunlar:
+
+- Kalıcı bir kuyruk.
+- Tekrar deneme.
+- Gecikmeli ve periyodik çalışma.
+
+RabbitMQ değerlendirildi. Ayrı bir servis ve maliyet getirdiği için seçilmedi. Coordination için
+zaten çalışan Valkey yeterlidir.
+
+**Karar.**
+
+**Asynq (v0.26) aynı Valkey üzerinde.** Uygulama katmanı yalnız `jobs/abstract` portunu görür:
+
+- `JobQueue`, `HandlerRegistry`, `PeriodicScheduler`.
+- `ErrPermanent` ve `RetryAfter`.
+- `Attempt`.
+
+Asynq `internal/infrastructure/jobs` içinde kalır. Mimari testi, uygulama katmanının asynq import
+etmesini yasaklar. `REDIS_URL` yoksa süreç içi runtime çalışır; tekrar deneme ve kalıcılık yoktur.
+
+**Adlar `fauscrew:` önekini taşır.**
+
+| Öğe | Biçim |
+|---|---|
+| İş tipi | `fauscrew:<alan>:<eylem>` |
+| Kuyruk | `fauscrew-critical`, `fauscrew-default`, `fauscrew-low` (ağırlık 6/3/1, katı öncelik yok) |
+| TaskID | `fauscrew:` ile başlar |
+
+**İşler varsayılan olarak tekrar denenir.**
+
+- Bekleme 5 sn'den başlayıp ikiye katlanır, en fazla 30 dk olur, üstüne %20'ye kadar rastgele
+  sapma eklenir.
+- Varsayılan 8 tekrar ve deneme başına 30 sn süre vardır.
+- `ErrPermanent` işi doğrudan arşive gönderir.
+- `RetryAfter` sağlayıcının istediği gecikmeyi uygular.
+- İş yarıda kesilirse başka makineye yeniden verilebilir. Bu yüzden handler'lar idempotenttir.
+
+**Payload'larda kişisel veri tutulmaz.**
+
+- Push işleri yalnız id taşır; metin ve token iş çalışınca veritabanından okunur.
+- Mail işi adres ve kod taşımak zorundadır. Bu yüzden saklanmaz (Retention 0) ve hiç
+  arşivlenmez: süresi geçen ya da son denemede başarısız olan iş loglanıp düşürülür.
+
+**Kuyruk erişilemezse:**
+
+| İş | Davranış |
+|---|---|
+| Mail | Doğrudan SMTP ile gider. Kod e-postası kaybolmaz. |
+| Push | Kaybolur (best effort). Bildirim kaydı panelde yine de görünür. |
+
+**Push teslimi.**
+
+- Bildirim kaydedilince bir `notification:fanout` işi kuyruğa girer.
+- Bu iş her cihaz için bir `push:send` açar. TaskID bildirim ve token id'sinden oluşur ve 1 saat
+  saklanır. Böylece fanout yeniden denendiğinde aynı push ikinci kez gitmez.
+- FCM'nin yanıtları şöyle ele alınır:
+
+| FCM yanıtı | Davranış |
+|---|---|
+| `UNREGISTERED`, `SENDER_ID_MISMATCH` | Token silinir. |
+| Diğer 4xx | Kalıcı hata sayılır. |
+| 429/503 + `Retry-After` | O kadar beklenir. |
+
+- 24 saatten eski push düşürülür. Aynı bildirim iki kez giderse cihaz tek bildirim gösterir
+  (collapse id / tag).
+
+**Periyodik işler.**
+
+- Her makine her işi aralık başında kuyruğa ekler. Aralıklar interval'e hizalıdır ve ilk aralık
+  açılışta çalışır.
+- TaskID aralığa özgüdür ve en az bir aralık saklanır. Böylece her aralık cluster'da bir kez
+  çalışır.
+- Asynq'in kendi scheduler'ı kullanılmadı: her tetikte aynı TaskID'yi kullanır, aralığa göre
+  tekilleştirme yapamaz.
+- Deadline kontrolü dakikada bir açık görevlere bakar ve tekrar denenmez.
+- Teslim tarihinden sonra tamamlanmış eski görevleri de tarayan tam tarama günde bir çalışır.
+  Önceden süreç başına bir kez çalışıyordu.
+
+**Bayat cihaz token'ları için iş yazılmadı.** `DeviceToken.updatedOn` üzerinde 270 günlük bir TTL
+index bunları siler. İstemci token'ını her açılışta yeniden kaydeder.
+
+**Roller.**
+
+- `FAUSCREW_ROLE=all` (varsayılan) olan makine hem üretir hem tüketir.
+- `api` olan makine yalnız üretir ve zamanlar.
+- `houseflowapi worker` komutu yalnız iş işler; API sunmaz, sadece `:3163` portunda health
+  endpoint'leri açar. Rolü `worker`'dır. Bu rol `FAUSCREW_ROLE` ile seçilemez. Böylece aynı
+  ortamda API grubu `FAUSCREW_ROLE=api` ile çalışırken worker'lar da çalışabilir.
+- Worker, `NewJobRuntime` gibi süreç içi çalışmaya düşmez. Valkey yoksa hata verir ve makine
+  yeniden başlar.
+- Handler'lar ve periyodik işler `cmd/api/backgroundJobs.go` içindeki `setupBackgroundJobs`
+  fonksiyonunda bağlanır. `serve` ve `worker` aynı fonksiyonu çağırır. Bir mimari test, `cmd/api`
+  içinde başka bir yerde iş bağlanmasını engeller.
+- Worker grubu hazırdır ama `fly.toml` içinde açık değildir. Açma ve geri alma adımları
+  runbook'taki "Ayrı worker grubu" bölümündedir.
+- `kill_timeout = 30`.
+
+**Gözlem.**
+
+- Dakikada bir JSON log satırları yazılır:
+  - `jobMetrics`: kuyruk sayıları ve gecikmesi, makine başına iş sonuçları, Valkey belleği.
+  - `jobAlert`: arşiv büyümesi, kuyruk gecikmesi, duraklatılmış kuyruk, Valkey belleğinin %80'i
+    geçmesi, Valkey'e ulaşılamaması.
+- Asynqmon deploy edilmez, `fly proxy` ile yerelde açılır.
+- İşletim adımları `backgroundJobsRunbook.md` içindedir.
+
+**Gerekçe.** Yeni bir altyapı gerekmez. Valkey zaten AOF ile kalıcıdır ve coordination için
+çalışıyordu. Asynq; tekrar deneme, gecikme, tekilleştirme ve arşivi Go içinde hazır verir.
+Port sayesinde ileride başka bir kuyruğa geçmek yalnız altyapı katmanını değiştirir.
+
+**Sonuçları.**
+
+- Valkey tek node'dur ve AOF `everysec` ile yazar. Çökmede son ~1 sn içinde kuyruğa eklenen işler
+  kaybolabilir.
+- `noeviction` ayarında bellek dolarsa kuyruğa ekleme hata verir. Mail için doğrudan gönderim
+  yedeği, diğer işler için `valkeyMemory` uyarısı vardır.
+- Mail artık isteğin içinde gönderilmez. SMTP hatası API yanıtına yansımaz; istemci yeniden
+  gönderime güvenir.
+- Asynq 0.x sürümündedir ve sürümü sabittir. API değişirse etkisi altyapı katmanıyla sınırlıdır.
