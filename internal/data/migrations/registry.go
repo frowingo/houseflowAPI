@@ -115,5 +115,7 @@ func AllMigrations() []Migration {
 		&notificationDelivery{},
 		// --- Chore Archive ---
 		&choreArchive{},
+		// --- Code Email Localizations ---
+		&codeEmailLocalizations{},
 	}
 }

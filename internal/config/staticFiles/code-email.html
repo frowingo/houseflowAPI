@@ -1,28 +1,146 @@
 <!doctype html>
-<html>
-	<body style="margin:0;padding:0;background:#e6f7f2;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-		<div style="max-width:640px;margin:0 auto;padding:24px 12px;">
-			<div style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 16px 48px rgba(12,74,110,0.14);border:1px solid #dbeafe;">
-				<div style="padding:24px 20px;background:linear-gradient(135deg,#e0f2fe 0%,#dcfce7 100%);color:#0f172a;border-bottom:1px solid #bae6fd;">
-					<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#0c4a6e;font-weight:700;">HouseFlow</div>
-					<h1 style="margin:10px 0 0;font-size:26px;line-height:1.25;color:#0f172a;">{{.Heading}}</h1>
-        </div>
-				<div style="padding:24px 20px;">
-					<p style="margin:0 0 16px;font-size:16px;line-height:1.7;color:#334155;">{{.Intro}}</p>
-					<table role="presentation" cellpadding="0" cellspacing="5" border="0" style="margin:22px 0 18px;border-collapse:separate;table-layout:fixed;">
+<html lang="{{.Language}}">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
+		<meta name="color-scheme" content="light dark">
+		<meta name="supported-color-schemes" content="light dark">
+		<title>{{.Heading}}</title>
+		<!--
+			Light tokens follow the app's Faus Light theme (houseflowApp FausTheme.swift, FausBrand),
+			dark tokens its Faus Dark theme. Clients that report dark mode (Apple Mail, iOS Mail,
+			Outlook) get the dark theme below; Gmail's apps recolor on their own, so the hero text
+			carries the gmail-screen/gmail-difference blend fix to stay white there.
+		-->
+		<style>
+			:root { color-scheme: light dark; supported-color-schemes: light dark; }
+			a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font: inherit !important; }
+			u + .body .gmail-screen { background: #000000; mix-blend-mode: screen; }
+			u + .body .gmail-difference { background: #000000; mix-blend-mode: difference; }
+			@media screen and (min-width: 520px) {
+				.fc-box { width: 46px !important; height: 58px !important; font-size: 24px !important; }
+				.fc-box-gap { width: 8px !important; }
+			}
+			@media (prefers-color-scheme: dark) {
+				.fc-page { background: #14060c !important; }
+				.fc-card { background: #261019 !important; border-color: #3e1a2a !important; box-shadow: 0 18px 40px rgba(4,1,2,0.6) !important; }
+				.fc-hero { background-color: #5a1a33 !important; background-image: radial-gradient(circle at 100% 0%, rgba(255,122,38,0.46) 0%, rgba(255,122,38,0) 55%), linear-gradient(135deg, #8a2a48 0%, #5a1a33 34%, #2c0d1a 70%, #14060c 100%) !important; }
+				.fc-wordmark { color: #fff1e8 !important; }
+				.fc-wordmark-accent { color: #ffb27a !important; opacity: 1 !important; }
+				.fc-motto { color: #f2d3c8 !important; opacity: 1 !important; }
+				.fc-title { color: #fff1e8 !important; }
+				.fc-text { color: #d9b8b2 !important; }
+				.fc-box { background: #321522 !important; border-color: #8e5435 !important; color: #fff1e8 !important; }
+				.fc-pill { background: #4a2024 !important; color: #ffb27a !important; }
+				.fc-rule { border-top-color: #43222a !important; }
+				.fc-foot-mark { color: #fff1e8 !important; }
+				.fc-foot-accent { color: #ffb27a !important; }
+				.fc-foot-text { color: #a88a90 !important; }
+			}
+		</style>
+		<style>
+			/* Outlook.com and the Outlook apps mark the elements they recolor in dark mode. */
+			[data-ogsb] .fc-page { background: #14060c !important; }
+			[data-ogsb] .fc-card { background: #261019 !important; }
+			[data-ogsb] .fc-box { background: #321522 !important; }
+			[data-ogsb] .fc-pill { background: #4a2024 !important; }
+			[data-ogsc] .fc-wordmark, [data-ogsc] .fc-title, [data-ogsc] .fc-box, [data-ogsc] .fc-foot-mark { color: #fff1e8 !important; }
+			[data-ogsc] .fc-wordmark-accent, [data-ogsc] .fc-pill, [data-ogsc] .fc-foot-accent { color: #ffb27a !important; }
+			[data-ogsc] .fc-motto { color: #f2d3c8 !important; }
+			[data-ogsc] .fc-text { color: #d9b8b2 !important; }
+			[data-ogsc] .fc-foot-text { color: #a88a90 !important; }
+		</style>
+	</head>
+	<body class="body fc-page" style="margin:0;padding:0;background:#fbf8f5;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#2b2326;-webkit-font-smoothing:antialiased;">
+		<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Intro}}</div>
+		<table role="presentation" class="fc-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf8f5" style="background:#fbf8f5;">
+			<tr>
+				<td align="center" style="padding:32px 12px 40px;">
+					<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
 						<tr>
-							{{range .CodeChars}}<td align="center" valign="middle" width="40" style="width:40px;height:52px;border-radius:10px;background:#0f766e;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:2px;">{{.}}</td>{{end}}
+							<td class="fc-card" bgcolor="#ffffff" style="background:#ffffff;border-radius:24px;border:1px solid #ece3dc;box-shadow:0 18px 40px rgba(97,26,56,0.14);">
+								<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-radius:24px;overflow:hidden;">
+									<tr>
+										<td class="fc-hero" align="center" bgcolor="#ff7a26" style="background:#ff7a26;background-image:linear-gradient(135deg,#ff9138 0%,#ff7a26 40%,#611a38 100%);padding:28px 16px;">
+											<!-- The app's FausBadge: two white halos and a white disc around the gradient roof-F mark. -->
+											<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+												<tr>
+													<td align="center" valign="middle" style="padding:8px;border-radius:60px;background:rgba(255,255,255,0.07);">
+														<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+															<tr>
+																<td align="center" valign="middle" style="padding:8px;border-radius:52px;background:rgba(255,255,255,0.16);">
+																	<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+																		<tr>
+																			<td align="center" valign="middle" width="88" height="88" bgcolor="#ffffff" style="width:88px;height:88px;border-radius:44px;background:#ffffff;box-shadow:0 10px 24px rgba(97,26,56,0.35);"><img src="cid:fauscrew-logo" width="88" height="88" alt="FausCrew" style="display:block;width:88px;height:88px;border:0;outline:none;text-decoration:none;"></td>
+																		</tr>
+																	</table>
+																</td>
+															</tr>
+														</table>
+													</td>
+												</tr>
+											</table>
+											<div class="gmail-screen" style="margin-top:16px;">
+												<div class="gmail-difference">
+													<div class="fc-wordmark" style="font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:30px;line-height:34px;color:#ffffff;letter-spacing:-0.2px;"><span style="font-weight:800;">Faus</span><span class="fc-wordmark-accent" style="font-weight:400;opacity:0.9;">Crew</span></div>
+													<div class="fc-motto" style="padding-top:6px;font-size:15px;line-height:18px;color:#ffffff;opacity:0.82;">Make living together fun</div>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td style="padding:32px 32px 4px;">
+											<h1 class="fc-title" style="margin:0;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;line-height:1.25;font-weight:700;color:#2b2326;">{{.Heading}}</h1>
+											<p class="fc-text" style="margin:10px 0 0;font-size:15px;line-height:1.6;color:#6d6366;">{{.Intro}}</p>
+										</td>
+									</tr>
+									<tr>
+										<td align="center" style="padding:24px 8px 4px;">
+											<!-- One table per character, so every character keeps its own box in every client. -->
+											<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0">
+												<tr>
+													{{range $index, $char := .CodeChars}}{{if $index}}<td class="fc-box-gap" width="6" style="width:6px;font-size:0;line-height:0;">&nbsp;</td>{{end}}<td valign="middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;"><tr><td class="fc-box" align="center" valign="middle" width="40" height="52" bgcolor="#fff8f2" style="width:40px;height:52px;border-radius:12px;background:#fff8f2;border:1px solid #ffc39d;color:#2b2326;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Courier New',monospace;font-size:22px;line-height:1;font-weight:700;text-align:center;">{{$char}}</td></tr></table></td>{{end}}
+												</tr>
+											</table>
+										</td>
+									</tr>
+									<tr>
+										<td align="center" style="padding:16px 16px 4px;">
+											<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+												<tr>
+													<td class="fc-pill" bgcolor="#fff1e6" style="padding:9px 16px;border-radius:999px;background:#fff1e6;color:#ba400b;font-size:13px;line-height:1.4;">
+														{{.ExpiresBefore}}<strong style="font-weight:700;white-space:nowrap;">{{.ExpiresValue}}</strong>{{.ExpiresAfter}}
+													</td>
+												</tr>
+											</table>
+										</td>
+									</tr>
+									<tr>
+										<td style="padding:28px 32px 32px;">
+											<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+												<tr>
+													<td class="fc-rule fc-text" style="border-top:1px solid #ece3dc;padding-top:20px;font-size:13px;line-height:1.7;color:#6d6366;">
+														{{.IgnoreMessage}}<br>
+														{{.SecurityNote}}
+													</td>
+												</tr>
+											</table>
+										</td>
+									</tr>
+								</table>
+							</td>
+						</tr>
+						<tr>
+							<td align="center" style="padding:28px 16px 0;">
+								<div class="fc-foot-mark" style="font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:17px;line-height:1.2;color:#611a38;"><span style="font-weight:800;">Faus</span><span class="fc-foot-accent" style="font-weight:400;color:#611a38;">Crew</span></div>
+								<div class="fc-text" style="margin-top:4px;font-size:12px;line-height:1.6;color:#6d6366;">Make living together fun</div>
+								<div class="fc-foot-text" style="margin-top:10px;font-size:11px;line-height:1.6;color:#a39a9c;">{{.AutomatedNote}}</div>
+							</td>
 						</tr>
 					</table>
-					<div style="padding:14px 16px;border-radius:14px;background:#ecfeff;border:1px solid #99f6e4;color:#0f766e;font-size:14px;line-height:1.6;">
-            This code expires in <strong>{{.ValidityMinutes}} minutes</strong>.
-          </div>
-					<p style="margin:20px 0 0;font-size:13px;line-height:1.7;color:#64748b;">{{.IgnoreMessage}}</p>
-        </div>
-				<div style="padding:16px 20px;background:#f0fdfa;border-top:1px solid #ccfbf1;font-size:12px;line-height:1.6;color:#0f766e;">
-          HouseFlow Security Team
-        </div>
-      </div>
-    </div>
-  </body>
+				</td>
+			</tr>
+		</table>
+	</body>
 </html>

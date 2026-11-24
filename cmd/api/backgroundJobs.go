@@ -62,12 +62,12 @@ func setupBackgroundJobs(
 	if err != nil {
 		return nil, err
 	}
-	notificationService := services.NewNotificationService(cfg.SMTP.Password, services.NotificationDelivery{
+	notificationService := services.NewNotificationService(cfg.SMTP, services.NotificationDelivery{
 		Notifications: notificationRepository,
 		Houses:        houseRepository,
 		Events:        appEventService,
 		Jobs:          jobRuntime,
-	})
+	}, services.WithEmailLocalizer(localizationCache))
 	// Push notifications are fanned out to one job per device.
 	notification.NewDelivery(
 		notificationRepository, deviceTokenRepository, userRepository,

@@ -12,6 +12,7 @@ import (
 	jobsAbstract "houseflowApi/internal/application/jobs/abstract"
 	"houseflowApi/internal/application/notification"
 	notificationAbstract "houseflowApi/internal/application/notification/abstract"
+	"houseflowApi/internal/config"
 	databaseAbstract "houseflowApi/internal/data/database/abstract"
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
@@ -240,7 +241,7 @@ func TestNotifyStoresOnceAndPushesToHouseMembersButSender(t *testing.T) {
 		return notification.NewDelivery(notifications, deviceTokens, users, push, notifyFakeLocalizer{}, queue)
 	})
 	events := notifyFakeEvents{userIDs: make(chan []string, 1)}
-	service := services.NewNotificationService("", services.NotificationDelivery{
+	service := services.NewNotificationService(config.ConfigSMTP{}, services.NotificationDelivery{
 		Notifications: notifications,
 		Houses:        notifyFakeHouses{house: entities.House{MemberIds: []string{notifySenderID, notifyMemberID, notifyOtherID}}},
 		Events:        events,
@@ -303,7 +304,7 @@ func TestNotifyRendersLocalizedPushInRecipientLanguage(t *testing.T) {
 	runtime := startNotifyRuntime(t, func(queue jobsAbstract.JobQueue) *notification.Delivery {
 		return notification.NewDelivery(notifications, deviceTokens, users, push, notifyFakeLocalizer{}, queue)
 	})
-	service := services.NewNotificationService("", services.NotificationDelivery{Notifications: notifications, Jobs: runtime})
+	service := services.NewNotificationService(config.ConfigSMTP{}, services.NotificationDelivery{Notifications: notifications, Jobs: runtime})
 
 	created, err := service.Notify(context.Background(), notificationAbstract.NotificationRequest{
 		Type: entities.ChoreReminderNotification, HouseID: notifyHouseID, SenderUserID: notifySenderID,
@@ -333,7 +334,7 @@ func TestNotifyRendersLocalizedPushInRecipientLanguage(t *testing.T) {
 func TestNotifyStillStoresWhenPushCannotBeQueued(t *testing.T) {
 	notifications := newNotifyFakeNotifications()
 	queue := &notifyFakeQueue{err: func(jobsAbstract.EnqueueOptions) error { return errors.New("redis down") }}
-	service := services.NewNotificationService("", services.NotificationDelivery{Notifications: notifications, Jobs: queue})
+	service := services.NewNotificationService(config.ConfigSMTP{}, services.NotificationDelivery{Notifications: notifications, Jobs: queue})
 	_, err := service.Notify(context.Background(), notificationAbstract.NotificationRequest{
 		Type: entities.AnnouncementNotification, HouseID: notifyHouseID, SenderUserID: notifySenderID,
 		RecipientUserIDs: []string{notifyMemberID}, Title: "t", Message: "m",

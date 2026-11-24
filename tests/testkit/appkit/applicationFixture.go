@@ -150,16 +150,22 @@ func (s *RecordingObjectStorage) Object(objectKey string) []byte {
 
 type RecordingEmailSender struct {
 	ResetCode        string
+	ResetLanguage    string
 	VerificationCode string
+	// VerificationLanguage is the language the last verification code was
+	// mailed in.
+	VerificationLanguage string
 }
 
-func (s *RecordingEmailSender) SendResetCodeEmail(_ string, code string, _ int) error {
+func (s *RecordingEmailSender) SendResetCodeEmail(_ string, code string, _ int, language string) error {
 	s.ResetCode = code
+	s.ResetLanguage = language
 	return nil
 }
 
-func (s *RecordingEmailSender) SendEmailVerificationCode(_ string, code string, _ int) error {
+func (s *RecordingEmailSender) SendEmailVerificationCode(_ string, code string, _ int, language string) error {
 	s.VerificationCode = code
+	s.VerificationLanguage = language
 	return nil
 }
 

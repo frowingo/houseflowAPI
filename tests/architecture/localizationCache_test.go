@@ -100,3 +100,36 @@ func TestLocalizationCacheQueriesAMissingTranslationOnce(t *testing.T) {
 		t.Fatalf("message after write=%q", got)
 	}
 }
+
+func TestLocalizationCacheFormatsMessageArguments(t *testing.T) {
+	store := &localizationStore{items: []entities.Localization{
+		{Type: entities.Message, Language: entities.English, Key: "notification.chore_reminder.title", Value: "Reminder: {1}"},
+		{Type: entities.Message, Language: entities.Turkish, Key: "notification.chore_reminder.message", Value: "{0}, \"{1}\" işini süresi dolmadan yapmanı hatırlatıyor."},
+		{Type: entities.Message, Language: entities.English, Key: "email.code.minutes", Value: "%s minutes"},
+		{Type: entities.Message, Language: entities.English, Key: "user.error.invalid_field", Value: "Invalid field"},
+		{Type: entities.Message, Language: entities.English, Key: "user.error.invalid_fields", Value: "Invalid fields:"},
+		{Type: entities.Message, Language: entities.English, Key: "user.error.detail", Value: "Check {detail} again"},
+	}}
+	cache := infrastructureLocalization.NewCache(store)
+	ctx := context.Background()
+	if err := cache.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct{ language, message, want string }{
+		// Positional placeholders place the arguments; nothing is appended.
+		{"en", "notification.chore_reminder.title||Ayşe||Dishes", "Reminder: Dishes"},
+		{"tr", "notification.chore_reminder.message||Ayşe||Bulaşık", "Ayşe, \"Bulaşık\" işini süresi dolmadan yapmanı hatırlatıyor."},
+		// A placeholder inside an argument is user text and stays as typed.
+		{"en", "notification.chore_reminder.title||{1}||Fix {0} and {1}", "Reminder: Fix {0} and {1}"},
+		{"en", "email.code.minutes||10", "10 minutes"},
+		// Messages without placeholders keep getting their arguments appended.
+		{"en", "user.error.invalid_field||email", "Invalid field: email"},
+		{"en", "user.error.invalid_fields||email||name", "Invalid fields: email, name"},
+		{"en", "user.error.detail||email||name", "Check email, name again"},
+	} {
+		if got := cache.LocalizeMessage(ctx, test.language, test.message); got != test.want {
+			t.Errorf("LocalizeMessage(%q, %q) = %q, want %q", test.language, test.message, got, test.want)
+		}
+	}
+}

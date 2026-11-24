@@ -176,8 +176,18 @@ func formatLocalizedMessage(value string, args []string) string {
 		}
 		return fmt.Sprintf(value, values...)
 	}
+	// A message with positional placeholders ("Reminder: {1}") places its
+	// arguments itself; only messages without any get them appended. One
+	// replacer pass keeps a "{1}" inside an argument (user text) as typed.
+	var pairs []string
 	for index, arg := range args {
-		value = strings.ReplaceAll(value, fmt.Sprintf("{%d}", index), arg)
+		placeholder := fmt.Sprintf("{%d}", index)
+		if strings.Contains(value, placeholder) {
+			pairs = append(pairs, placeholder, arg)
+		}
+	}
+	if len(pairs) > 0 {
+		return strings.NewReplacer(pairs...).Replace(value)
 	}
 	if strings.Contains(value, "{detail}") {
 		return strings.ReplaceAll(value, "{detail}", strings.Join(args, ", "))
