@@ -3,6 +3,8 @@ package validator
 import (
 	"fmt"
 	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/models/dtos"
+	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -13,9 +15,17 @@ type CustomValidator struct {
 }
 
 func NewValidator() *CustomValidator {
-	return &CustomValidator{
-		validator: validator.New(),
-	}
+	v := validator.New()
+	// UTCDateTime wraps time.Time in a struct, and the validator skips tags
+	// such as required on struct fields; validating the inner time makes a
+	// missing or null date fail required.
+	v.RegisterCustomTypeFunc(func(field reflect.Value) interface{} {
+		if value, ok := field.Interface().(dtos.UTCDateTime); ok {
+			return value.Time
+		}
+		return nil
+	}, dtos.UTCDateTime{})
+	return &CustomValidator{validator: v}
 }
 
 func (cv *CustomValidator) Validate(data interface{}) error {

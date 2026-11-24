@@ -77,7 +77,7 @@ func (p *WorkflowPolicy) ApplyReview(
 		chore.CompletedAt = time.Time{}
 		updater := reviewerID
 		if chore.ReviewRound >= maxReviewRounds {
-			markFailed(chore)
+			markFailed(chore, now)
 			updater = systemUpdater
 		}
 		return ReviewOutcome{
@@ -103,7 +103,8 @@ func (p *WorkflowPolicy) ApplyReview(
 }
 
 // ApplyDeadline marks a chore as failed once its due date is reached. A chore
-// completed strictly before its due date remains completed permanently.
+// completed strictly before its due date remains completed permanently. The
+// chore closes at its due date, however late the deadline pass runs.
 func (p *WorkflowPolicy) ApplyDeadline(chore *entities.Chore, now time.Time) bool {
 	if chore.Status == entities.Failed || chore.DueDate.IsZero() || now.Before(chore.DueDate) {
 		return false
@@ -111,15 +112,18 @@ func (p *WorkflowPolicy) ApplyDeadline(chore *entities.Chore, now time.Time) boo
 	if chore.Status == entities.Completed && !chore.CompletedAt.IsZero() && chore.CompletedAt.Before(chore.DueDate) {
 		return false
 	}
-	markFailed(chore)
+	markFailed(chore, chore.DueDate)
 	return true
 }
 
-func markFailed(chore *entities.Chore) {
+// markFailed closes the chore as failed. A failed chore stays not completed,
+// but completedAt still records when it closed, so closed chores of both
+// outcomes order and filter by one field.
+func markFailed(chore *entities.Chore, closedAt time.Time) {
 	chore.Status = entities.Failed
 	chore.IsCompleted = false
-	chore.CompletedBy = ""
-	chore.CompletedAt = time.Time{}
+	chore.CompletedBy = entities.ChoreSystemActor
+	chore.CompletedAt = closedAt
 }
 
 func nextStatus(current entities.ChoreStatus) (entities.ChoreStatus, bool) {

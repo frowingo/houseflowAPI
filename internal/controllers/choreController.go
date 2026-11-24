@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"mime/multipart"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"houseflowApi/external/validator"
 	choreCommands "houseflowApi/internal/application/chore/commands"
@@ -15,6 +17,7 @@ import (
 	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
+	"houseflowApi/internal/models/core"
 	"houseflowApi/internal/models/dtos"
 
 	"github.com/gofiber/fiber/v2"
@@ -181,6 +184,61 @@ func choreReviewPhoto(file multipart.File, header *multipart.FileHeader) *choreC
 		return nil
 	}
 	return &choreCommands.ChoreReviewPhoto{Reader: file, Size: header.Size}
+}
+
+// @Summary List archived chores
+// @Description Lists the completed and failed chores of a house whose completedAt is in [from, to), newest first, at most 10 per page. A failed chore's completedAt is when it failed. nextUrl is the path of the next page of the same range (without host); it is null on the last page.
+// @Tags Chore
+// @Produce json
+// @Security BearerAuth
+// @Param houseId query string true "House ID"
+// @Param from query string true "Range start, RFC 3339, inclusive" example(2026-11-01T00:00:00Z)
+// @Param to query string true "Range end, RFC 3339, exclusive" example(2026-12-01T00:00:00Z)
+// @Param cursor query string false "Page cursor; nextUrl already carries it"
+// @Success 200 {object} core.ApiResponse[dtos.ChoreArchivePageModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Requester is not a house member"
+// @Router /chore/archive [get]
+func (r *ChoreController) GetChoreArchive(c *fiber.Ctx) error {
+	houseID := c.Query("houseId")
+	if houseID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(helpers.LocalizedCoreError(c, r.localizer, "house.error.house_id_query_required"))
+	}
+	from, fromErr := parseArchiveTime(c.Query("from"))
+	to, toErr := parseArchiveTime(c.Query("to"))
+	if fromErr != nil || toErr != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, helpers.NewLocalizedError("chore.error.archive_invalid_range"))
+	}
+
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	page, err := cqrs.Send[*dtos.ChoreArchivePageModel](ctx, r.sender, choreQueries.GetChoreArchiveQuery{
+		HouseID:     houseID,
+		RequesterID: c.Locals("userID").(string),
+		From:        from,
+		To:          to,
+		Cursor:      c.Query("cursor"),
+	})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, r.localizer, err)
+	}
+	if page.NextCursor != "" {
+		next := url.Values{}
+		next.Set("houseId", houseID)
+		next.Set("from", from.UTC().Format(time.RFC3339Nano))
+		next.Set("to", to.UTC().Format(time.RFC3339Nano))
+		next.Set("cursor", page.NextCursor)
+		nextURL := c.Path() + "?" + next.Encode()
+		page.NextUrl = &nextURL
+	}
+	return c.Status(fiber.StatusOK).JSON(core.Success(page))
+}
+
+// parseArchiveTime reads an RFC 3339 query value. An unencoded "+" offset
+// arrives as a space, so it is put back.
+func parseArchiveTime(value string) (time.Time, error) {
+	return time.Parse(time.RFC3339Nano, strings.ReplaceAll(value, " ", "+"))
 }
 
 // @Summary Get a temporary chore review photo URL

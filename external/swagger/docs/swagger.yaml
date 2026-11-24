@@ -14,6 +14,28 @@ definitions:
     - ProviderApple
     - ProviderFacebook
     - ProviderSnapchat
+  houseflowApi_internal_data_entities.ChoreCategory:
+    enum:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    type: integer
+    x-enum-varnames:
+    - ChoreCategoryKitchen
+    - ChoreCategoryBathLaundry
+    - ChoreCategoryToilet
+    - ChoreCategoryRooms
+    - ChoreCategoryFloorsGeneral
+    - ChoreCategoryPets
+    - ChoreCategoryTrashRecycling
+    - ChoreCategoryPlantsBalcony
+    - ChoreCategoryShoppingHome
   houseflowApi_internal_data_entities.ChoreLevel:
     enum:
     - 10
@@ -90,6 +112,13 @@ definitions:
       success:
         type: boolean
     type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_ChoreArchivePageModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreArchivePageModel'
+      success:
+        type: boolean
+    type: object
   houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_GameConfigModel:
     properties:
       data:
@@ -129,6 +158,13 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.HouseResponseModel'
+      success:
+        type: boolean
+    type: object
+  houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_NotificationPageModel:
+    properties:
+      data:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.NotificationPageModel'
       success:
         type: boolean
     type: object
@@ -235,10 +271,74 @@ definitions:
     - chores
     - houseId
     type: object
+  houseflowApi_internal_models_dtos.ChoreArchivePageModel:
+    properties:
+      chores:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreResponseModel'
+        type: array
+      nextUrl:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.ChoreCatalogModel:
+    properties:
+      category:
+        allOf:
+        - $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreCategory'
+        enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+      createdOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      description:
+        maxLength: 1000
+        type: string
+      id:
+        type: string
+      isDeleted:
+        description: IsDeleted true on an existing entry soft-deletes it.
+        type: boolean
+      isSystem:
+        description: IsSystem true on a new entry creates a system entry (SuperAdmin
+          only).
+        type: boolean
+      level:
+        allOf:
+        - $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreLevel'
+        enum:
+        - 10
+        - 20
+        - 30
+      recurringInterval:
+        maximum: 365
+        minimum: 0
+        type: integer
+      title:
+        maxLength: 200
+        minLength: 3
+        type: string
+      updatedOn:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      userId:
+        type: string
+    required:
+    - category
+    - level
+    - title
+    type: object
   houseflowApi_internal_models_dtos.ChoreResponseModel:
     properties:
       assignedTo:
         type: string
+      category:
+        $ref: '#/definitions/houseflowApi_internal_data_entities.ChoreCategory'
       completedAt:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       completedBy:
@@ -348,10 +448,12 @@ definitions:
   houseflowApi_internal_models_dtos.CreateAnnouncementModel:
     properties:
       description:
+        maxLength: 2000
         type: string
       houseId:
         type: string
       title:
+        maxLength: 200
         type: string
     required:
     - description
@@ -362,6 +464,22 @@ definitions:
     properties:
       assignedTo:
         type: string
+      category:
+        description: |-
+          Category is optional so clients that predate categories keep working;
+          an update without it leaves the stored category unchanged.
+        enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        example: 1
+        type: integer
       description:
         maxLength: 1000
         minLength: 5
@@ -443,6 +561,14 @@ definitions:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       status:
         type: string
+    type: object
+  houseflowApi_internal_models_dtos.DeleteDeviceModel:
+    properties:
+      token:
+        maxLength: 4096
+        type: string
+    required:
+    - token
     type: object
   houseflowApi_internal_models_dtos.EnsureGameSessionModel:
     properties:
@@ -540,6 +666,12 @@ definitions:
         type: string
       houseId:
         type: string
+      lobbyState:
+        description: |-
+          LobbyState is the game's lobby choices (Faus Switch: robot colors). It
+          is written only when the game keeps one, so other games' snapshots stay
+          as they were.
+        type: object
       mode:
         type: string
       players:
@@ -821,6 +953,48 @@ definitions:
     - lastName
     - password
     type: object
+  houseflowApi_internal_models_dtos.NotificationPageModel:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.NotificationResponseModel'
+        type: array
+      nextCursor:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.NotificationResponseModel:
+    properties:
+      choreId:
+        type: string
+      createdAt:
+        $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
+      houseId:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      senderUserId:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+    type: object
+  houseflowApi_internal_models_dtos.RegisterDeviceModel:
+    properties:
+      platform:
+        enum:
+        - ios
+        - android
+        type: string
+      token:
+        maxLength: 4096
+        type: string
+    required:
+    - platform
+    - token
+    type: object
   houseflowApi_internal_models_dtos.ResetPasswordRequest:
     properties:
       code:
@@ -937,6 +1111,7 @@ definitions:
         - 1
         - 2
         - 3
+        - 4
     required:
     - choreId
     - status
@@ -968,6 +1143,7 @@ definitions:
         minLength: 3
         type: string
       houseProfileImage:
+        maxLength: 2048
         type: string
       houseType:
         enum:
@@ -997,8 +1173,10 @@ definitions:
       birthDay:
         $ref: '#/definitions/houseflowApi_internal_models_dtos.UTCDateTime'
       firstName:
+        maxLength: 50
         type: string
       imageUrl:
+        maxLength: 2048
         type: string
       language:
         enum:
@@ -1006,6 +1184,7 @@ definitions:
         - tr
         type: string
       lastName:
+        maxLength: 50
         type: string
       phoneNumber:
         maxLength: 15
@@ -1275,8 +1454,13 @@ paths:
       consumes:
       - application/json
       description: Signup with email, password, firstname, and lastname to receive
-        JWT token
+        JWT token. The account language (tr or en, used for push notifications) comes
+        from Accept-Language; anything else is stored as en.
       parameters:
+      - description: 'Account language: tr or en (default en)'
+        in: header
+        name: Accept-Language
+        type: string
       - description: Signup request
         in: body
         name: signup
@@ -1695,6 +1879,54 @@ paths:
       summary: Update chore
       tags:
       - Chore
+  /chore/{id}/remind:
+    post:
+      description: Sends the assignee an in-app and push notification. Other house
+        members can send it once per chore, during the last 12 hours before the due
+        date, while the chore is in Draft or Progress.
+      parameters:
+      - description: Chore ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Not a house member
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Chore not found
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Reminder already sent
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remind the assignee of a chore
+      tags:
+      - Chore
   /chore/{id}/review-photo/{round}:
     get:
       description: Returns a five-minute presigned URL after verifying house membership.
@@ -1739,6 +1971,133 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a temporary chore review photo URL
+      tags:
+      - Chore
+  /chore/archive:
+    get:
+      description: Lists the completed and failed chores of a house whose completedAt
+        is in [from, to), newest first, at most 10 per page. A failed chore's completedAt
+        is when it failed. nextUrl is the path of the next page of the same range
+        (without host); it is null on the last page.
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      - description: Range start, RFC 3339, inclusive
+        example: "2026-11-01T00:00:00Z"
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Range end, RFC 3339, exclusive
+        example: "2026-12-01T00:00:00Z"
+        in: query
+        name: to
+        required: true
+        type: string
+      - description: Page cursor; nextUrl already carries it
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_ChoreArchivePageModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Requester is not a house member
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List archived chores
+      tags:
+      - Chore
+  /chore/catalog:
+    get:
+      description: Lists the system catalog entries and the requester's own entries
+        that are not deleted. System entries come with title and description in the
+        user's language.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreCatalogModel'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List chore catalog
+      tags:
+      - Chore
+    put:
+      consumes:
+      - application/json
+      description: Items without an id are inserted; items with an id are updated,
+        or soft-deleted when isDeleted is true. The whole request is one transaction
+        and the response keeps the request order. isSystem on a new item creates a
+        system entry and, like changing a system entry, requires role 2; a system
+        entry's title and description must be localization keys starting with choreCatalog.system.
+      parameters:
+      - description: Catalog entries
+        in: body
+        name: items
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreCatalogModel'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/houseflowApi_internal_models_dtos.ChoreCatalogModel'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: System entry requires role 2
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Entry not found or deleted
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upsert chore catalog entries
       tags:
       - Chore
   /chore/review:
@@ -2496,6 +2855,114 @@ paths:
       summary: Get plaintext localization values
       tags:
       - Localization
+  /notification:
+    get:
+      description: Lists the notifications of a house the requester can see, newest
+        first, in the request language. Pass nextCursor as before to load older ones.
+        Read state is kept by the client.
+      parameters:
+      - description: House ID
+        in: query
+        name: houseId
+        required: true
+        type: string
+      - description: Cursor from the previous page
+        in: query
+        name: before
+        type: string
+      - description: Page size, at most 50 (default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ApiResponse-houseflowApi_internal_models_dtos_NotificationPageModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "403":
+          description: Requester is not a house member
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List house notifications
+      tags:
+      - Notification
+  /notification/devices:
+    delete:
+      consumes:
+      - application/json
+      description: Removes the FCM registration token of the signed-in device. Call
+        it on sign-out.
+      parameters:
+      - description: Device
+        in: body
+        name: device
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.DeleteDeviceModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a device from push notifications
+      tags:
+      - Notification
+    post:
+      consumes:
+      - application/json
+      description: Stores the FCM registration token of the signed-in device. Call
+        it after sign-in and whenever the token changes.
+      parameters:
+      - description: Device
+        in: body
+        name: device
+        required: true
+        schema:
+          $ref: '#/definitions/houseflowApi_internal_models_dtos.RegisterDeviceModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_dtos.SuccessResponseModel'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/houseflowApi_internal_models_core.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Register a device for push notifications
+      tags:
+      - Notification
   /user:
     post:
       consumes:

@@ -11,6 +11,7 @@ import (
 	"houseflowApi/internal/data/entities"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -98,9 +99,82 @@ func (service *DeadlineService) runPass(
 
 // Reconcile marks every currently overdue chore as failed, including legacy
 // chores completed after their due date, and returns the affected house IDs.
-// It is public so the deadline behavior can be tested without the job queue.
+// It also dates failed chores that have no close time. It is public so the
+// deadline behavior can be tested without the job queue.
 func (service *DeadlineService) Reconcile(ctx context.Context, now time.Time) ([]string, error) {
-	return service.reconcile(ctx, now, deadlineCandidateFilter)
+	houseIDs, err := service.reconcile(ctx, now, deadlineCandidateFilter)
+	if err != nil {
+		return nil, err
+	}
+	if err := service.closeUndatedFailures(ctx); err != nil {
+		return nil, err
+	}
+	return houseIDs, nil
+}
+
+// closeUndatedFailures sets completedAt on failed chores that lack it. Releases
+// before failed chores kept a close time wrote them; migration 0071 dates the
+// existing ones, and this pass catches those an older instance writes during a
+// rolling deploy or after a rollback. Without it they would never show up in
+// house details or the archive.
+func (service *DeadlineService) closeUndatedFailures(ctx context.Context) error {
+	lastID := primitive.NilObjectID
+	for {
+		filter := undatedFailureFilter()
+		filter["_id"] = bson.M{"$gt": lastID}
+		failed, err := service.chores.FindManyByFilter(ctx, filter,
+			options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}).SetLimit(deadlineBatchSize))
+		if err != nil {
+			return err
+		}
+		for _, chore := range failed {
+			lastID = chore.Id
+			histories, err := service.history.FindManyByFilter(ctx,
+				bson.M{"choreId": chore.Id.Hex(), "status": entities.Failed},
+				options.Find().SetSort(bson.D{{Key: "dateTime", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(1))
+			if err != nil {
+				return err
+			}
+			var failedAt time.Time
+			if len(histories) == 1 {
+				failedAt = histories[0].DateTime
+			}
+			update := undatedFailureFilter()
+			update["_id"] = chore.Id
+			if _, err := service.chores.Collection().UpdateOne(ctx, update, bson.M{
+				"$set": bson.M{
+					"completedAt": FailedChoreCloseTime(chore, failedAt),
+					"completedBy": entities.ChoreSystemActor,
+				},
+				"$inc": bson.M{"version": 1},
+			}); err != nil {
+				return err
+			}
+		}
+		if len(failed) < deadlineBatchSize {
+			return nil
+		}
+	}
+}
+
+func undatedFailureFilter() bson.M {
+	return bson.M{"status": entities.Failed, "completedAt": bson.M{"$in": bson.A{nil, time.Time{}}}}
+}
+
+// FailedChoreCloseTime dates a failed chore that has no close time. failedAt
+// is its last failed status history, zero when there is none. A deadline
+// failure closes at the due date, however late it was recorded; a review
+// failure before the due date closes when it was recorded. The ObjectID time
+// is the last resort, so the result is never zero.
+func FailedChoreCloseTime(chore entities.Chore, failedAt time.Time) time.Time {
+	switch {
+	case !failedAt.IsZero() && (chore.DueDate.IsZero() || failedAt.Before(chore.DueDate)):
+		return failedAt
+	case !chore.DueDate.IsZero():
+		return chore.DueDate
+	default:
+		return chore.Id.Timestamp()
+	}
 }
 
 // reconcileOpen only looks at chores that are still open, which the
@@ -170,7 +244,7 @@ func (service *DeadlineService) failCandidate(
 		err := service.chores.Collection().FindOneAndUpdate(txCtx, filter, bson.M{
 			"$set": bson.M{
 				"status": entities.Failed, "isCompleted": false,
-				"completedBy": "", "completedAt": time.Time{},
+				"completedBy": candidate.CompletedBy, "completedAt": candidate.CompletedAt,
 			},
 			"$inc": bson.M{"version": 1},
 		}, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&failedChore)

@@ -67,7 +67,8 @@ func TestChoreWorkflowFailsAfterFinalRejectedRound(t *testing.T) {
 	if !outcome.StatusChanged || outcome.HistoryUpdater != "system" {
 		t.Fatalf("unexpected rejection outcome: %+v", outcome)
 	}
-	if chore.Status != entities.Failed || chore.IsCompleted || chore.CompletedBy != "" || !chore.CompletedAt.IsZero() {
+	// A failed chore is not completed, but it records when and by whom it closed.
+	if chore.Status != entities.Failed || chore.IsCompleted || chore.CompletedBy != entities.ChoreSystemActor || !chore.CompletedAt.Equal(now) {
 		t.Fatalf("final rejected chore was not failed: %+v", chore)
 	}
 }
@@ -97,8 +98,9 @@ func TestChoreWorkflowDeadlineFailsIncompleteAndLateCompletion(t *testing.T) {
 		if !policy.ApplyDeadline(&chores[index], dueDate) {
 			t.Fatalf("chore %d was not failed: %+v", index, chores[index])
 		}
+		// A deadline failure closes at the due date, by the system.
 		if chores[index].Status != entities.Failed || chores[index].IsCompleted ||
-			chores[index].CompletedBy != "" || !chores[index].CompletedAt.IsZero() {
+			chores[index].CompletedBy != entities.ChoreSystemActor || !chores[index].CompletedAt.Equal(dueDate) {
 			t.Fatalf("unexpected failed state for chore %d: %+v", index, chores[index])
 		}
 	}

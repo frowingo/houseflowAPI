@@ -293,6 +293,8 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](sender, updateChoreStatusHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](sender, reviewChoreHandler)
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](sender, getReviewPhotoURLHandler)
+	cqrs.MustRegister[*dtos.ChoreArchivePageModel, choreQueries.GetChoreArchiveQuery](sender,
+		choreQueries.NewGetChoreArchiveHandler(chores, choreStatusHistories, choreReviewVotes, membershipPolicy))
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](sender, listChoreCatalogHandler)
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](sender, upsertChoreCatalogHandler)
 	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](sender, updateProfileHandler)
