@@ -33,7 +33,7 @@ func failChoreIfDue(
 	}, bson.M{
 		"$set": bson.M{
 			"status": entities.Failed, "isCompleted": false,
-			"completedBy": "", "completedAt": time.Time{},
+			"completedBy": chore.CompletedBy, "completedAt": chore.CompletedAt,
 		},
 		"$inc": bson.M{"version": 1},
 	}, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&failedChore)

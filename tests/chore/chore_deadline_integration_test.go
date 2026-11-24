@@ -141,8 +141,9 @@ func assertChoreStatus(
 	if chore.Status != wantStatus || chore.IsCompleted != wantCompleted {
 		t.Fatalf("chore %s status/completed = %d/%t, want %d/%t", id.Hex(), chore.Status, chore.IsCompleted, wantStatus, wantCompleted)
 	}
-	if wantStatus == entities.Failed && (chore.CompletedBy != "" || !chore.CompletedAt.IsZero()) {
-		t.Fatalf("failed chore %s retained completion metadata: %+v", id.Hex(), chore)
+	// A deadline failure closes at the due date, by the system.
+	if wantStatus == entities.Failed && (chore.CompletedBy != entities.ChoreSystemActor || !chore.CompletedAt.Equal(chore.DueDate)) {
+		t.Fatalf("failed chore %s close metadata = %q/%v, want system/%v", id.Hex(), chore.CompletedBy, chore.CompletedAt, chore.DueDate)
 	}
 }
 

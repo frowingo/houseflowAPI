@@ -3,13 +3,23 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
+	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
+	"net/textproto"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,10 +34,7 @@ import (
 	"houseflowApi/internal/helpers"
 )
 
-const MailSMTPHost = "smtp.gmail.com"
-const MailSMTPPort = 587
-const MailSMTPUsername = "houseflow37@gmail.com"
-const MailFromAddress = "no-reply@houseflow.com"
+const MailFromName = "FausCrew"
 
 // A stalled SMTP server must not hold the request or the mail job.
 const (
@@ -53,20 +60,26 @@ type NotificationDelivery struct {
 }
 
 type NotificationService struct {
-	smtpPassword string
-	delivery     NotificationDelivery
+	smtp     config.ConfigSMTP
+	delivery NotificationDelivery
+	// localizer renders the code emails in the recipient's language; without
+	// one they are sent in English.
+	localizer helpers.MessageLocalizer
 }
 
-type codeEmailTemplateData struct {
-	Heading         string
-	Intro           string
-	CodeChars       []string
-	ValidityMinutes int
-	IgnoreMessage   string
+type NotificationServiceOption func(*NotificationService)
+
+// WithEmailLocalizer renders the code emails with the localization messages.
+func WithEmailLocalizer(localizer helpers.MessageLocalizer) NotificationServiceOption {
+	return func(service *NotificationService) { service.localizer = localizer }
 }
 
-func NewNotificationService(smtpPassword string, delivery NotificationDelivery) *NotificationService {
-	return &NotificationService{smtpPassword: smtpPassword, delivery: delivery}
+func NewNotificationService(smtpConfig config.ConfigSMTP, delivery NotificationDelivery, options ...NotificationServiceOption) *NotificationService {
+	service := &NotificationService{smtp: smtpConfig, delivery: delivery}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 // Notify stores a house notification, signals the recipients' open app
@@ -137,60 +150,6 @@ func withoutUser(userIDs []string, excludedUserID string) []string {
 	return result
 }
 
-func (r *NotificationService) SendResetCodeEmail(toEmail, code string, validityMinutes int) error {
-	return r.sendCodeEmail(
-		toEmail,
-		code,
-		validityMinutes,
-		"Password Reset Code",
-		"We received a request to reset your password. Use the code below to continue.",
-		"If you did not request this password reset, you can safely ignore this email.",
-	)
-}
-
-func (r *NotificationService) SendEmailVerificationCode(toEmail, code string, validityMinutes int) error {
-	return r.sendCodeEmail(
-		toEmail,
-		code,
-		validityMinutes,
-		"Email Verification Code",
-		"Use the code below to verify your email address and complete your HouseFlow registration.",
-		"If you did not create a HouseFlow account, you can safely ignore this email.",
-	)
-}
-
-func (r *NotificationService) sendCodeEmail(toEmail, code string, validityMinutes int, subject, intro, ignoreMessage string) error {
-	if r.smtpPassword == "" {
-		return fmt.Errorf("smtp password is missing")
-	}
-
-	smtpAddress := fmt.Sprintf("%s:%d", MailSMTPHost, MailSMTPPort)
-	auth := smtp.PlainAuth("", MailSMTPUsername, r.smtpPassword, MailSMTPHost)
-
-	htmlBody, err := renderCodeEmailTemplate(codeEmailTemplateData{
-		Heading:         subject,
-		Intro:           intro,
-		CodeChars:       strings.Split(code, ""),
-		ValidityMinutes: validityMinutes,
-		IgnoreMessage:   ignoreMessage,
-	})
-	if err != nil {
-		return err
-	}
-
-	message := []byte(
-		"From: " + MailFromAddress + "\r\n" +
-			"To: " + toEmail + "\r\n" +
-			"Subject: " + subject + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: text/html; charset=UTF-8\r\n" +
-			"Content-Transfer-Encoding: 8bit\r\n\r\n" +
-			htmlBody + "\r\n",
-	)
-
-	return sendMail(smtpAddress, MailSMTPHost, auth, MailFromAddress, toEmail, message)
-}
-
 // sendMail does what smtp.SendMail does, on a connection with a deadline.
 func sendMail(address, host string, auth smtp.Auth, from, to string, message []byte) error {
 	conn, err := (&net.Dialer{Timeout: smtpDialTimeout}).Dial("tcp", address)
@@ -238,6 +197,114 @@ func sendMail(address, host string, auth smtp.Auth, from, to string, message []b
 	return client.Quit()
 }
 
+// Code emails carry the password reset and email verification codes. They
+// are rendered from code-email.html in the recipient's language, with texts
+// from the localization messages (keys below), and sent with their images
+// inline.
+
+// CodeEmailKind selects the texts of a code email.
+type CodeEmailKind string
+
+const (
+	CodeEmailResetCode        CodeEmailKind = "reset_code"
+	CodeEmailVerificationCode CodeEmailKind = "verification_code"
+)
+
+// codeEmailFallbacks is the English copy. It is used when there is no
+// localizer or a message is missing in every language, so an email never
+// shows a raw key. Migration 0072 stores the same texts with their Turkish
+// translations. Arguments are marked "%s", which the localization cache
+// fills with fmt.Sprintf.
+var codeEmailFallbacks = map[string]string{
+	"email.reset_code.subject":        "Password Reset Code",
+	"email.reset_code.intro":          "We received a request to reset your password. Use the code below to continue.",
+	"email.reset_code.ignore":         "If you did not request this password reset, you can safely ignore this email.",
+	"email.verification_code.subject": "Email Verification Code",
+	"email.verification_code.intro":   "Use the code below to verify your email address and complete your FausCrew registration.",
+	"email.verification_code.ignore":  "If you did not create a FausCrew account, you can safely ignore this email.",
+	"email.code.expires":              "This code expires in %s.",
+	"email.code.minute":               "%s minute",
+	"email.code.minutes":              "%s minutes",
+	"email.code.security_note":        "Never share this code with anyone. The FausCrew team will never ask for it.",
+	"email.footer.automated":          "This is an automated message, please do not reply.",
+}
+
+// CodeEmailLocalizationKeys lists the messages the code emails read.
+func CodeEmailLocalizationKeys() []string {
+	keys := make([]string, 0, len(codeEmailFallbacks))
+	for key := range codeEmailFallbacks {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// CodeEmailTemplateData is what code-email.html renders.
+type CodeEmailTemplateData struct {
+	// Language is the email's language, supported and normalized.
+	Language  string
+	Heading   string
+	Intro     string
+	CodeChars []string
+	// The expiry line is ExpiresBefore + bold ExpiresValue + ExpiresAfter,
+	// so each language can put the duration where its grammar wants it.
+	ExpiresBefore string
+	ExpiresValue  string
+	ExpiresAfter  string
+	IgnoreMessage string
+	SecurityNote  string
+	AutomatedNote string
+}
+
+// LocalizeCodeEmail builds a code email's content in a language. An empty or
+// unsupported language, and a message the language lacks, fall back to
+// English.
+func LocalizeCodeEmail(ctx context.Context, localizer helpers.MessageLocalizer, kind CodeEmailKind, language, code string, validityMinutes int) CodeEmailTemplateData {
+	language = helpers.NormalizeLanguage(language)
+	if !helpers.IsSupportedLanguage(language) {
+		language = helpers.DefaultLanguage
+	}
+	text := func(key string, args ...string) string {
+		if localizer != nil {
+			value := localizer.LocalizeMessage(ctx, language, helpers.LocalizationMessage(key, args...))
+			// A localizer without the message hands back its key, alone or
+			// with the arguments ("key: 10", "key||10"); no text starts so.
+			if value != "" && !strings.HasPrefix(value, key) {
+				return value
+			}
+		}
+		value := codeEmailFallbacks[key]
+		for _, arg := range args {
+			value = strings.Replace(value, "%s", arg, 1)
+		}
+		return value
+	}
+
+	// Read without an argument, so the "%s" marking the duration stays.
+	expiresBefore, expiresAfter, found := strings.Cut(text("email.code.expires"), "%s")
+	if !found {
+		expiresBefore, expiresAfter, _ = strings.Cut(codeEmailFallbacks["email.code.expires"], "%s")
+	}
+	minutesKey := "email.code.minutes"
+	if validityMinutes == 1 {
+		minutesKey = "email.code.minute"
+	}
+
+	prefix := "email." + string(kind) + "."
+	return CodeEmailTemplateData{
+		Language:      language,
+		Heading:       text(prefix + "subject"),
+		Intro:         text(prefix + "intro"),
+		CodeChars:     strings.Split(code, ""),
+		ExpiresBefore: expiresBefore,
+		ExpiresValue:  text(minutesKey, strconv.Itoa(validityMinutes)),
+		ExpiresAfter:  expiresAfter,
+		IgnoreMessage: text(prefix + "ignore"),
+		SecurityNote:  text("email.code.security_note"),
+		AutomatedNote: text("email.footer.automated"),
+	}
+}
+
 var codeEmailTemplate = sync.OnceValues(func() (*template.Template, error) {
 	templateContent, err := config.ReadStaticFile("code-email.html")
 	if err != nil {
@@ -250,18 +317,211 @@ var codeEmailTemplate = sync.OnceValues(func() (*template.Template, error) {
 	return tmpl, nil
 })
 
-func renderCodeEmailTemplate(data codeEmailTemplateData) (string, error) {
+// RenderCodeEmail renders code-email.html.
+func RenderCodeEmail(data CodeEmailTemplateData) (string, error) {
 	tmpl, err := codeEmailTemplate()
 	if err != nil {
 		return "", err
 	}
-
 	var body bytes.Buffer
 	if err := tmpl.Execute(&body, data); err != nil {
 		return "", fmt.Errorf("render code email template: %w", err)
 	}
-
 	return body.String(), nil
+}
+
+func (r *NotificationService) SendResetCodeEmail(toEmail, code string, validityMinutes int, language string) error {
+	return r.sendCodeEmail(CodeEmailResetCode, toEmail, code, validityMinutes, language)
+}
+
+func (r *NotificationService) SendEmailVerificationCode(toEmail, code string, validityMinutes int, language string) error {
+	return r.sendCodeEmail(CodeEmailVerificationCode, toEmail, code, validityMinutes, language)
+}
+
+// codeEmailLocalizeTimeout bounds the localization lookup; a translation the
+// cache lacks is read from the database once.
+const codeEmailLocalizeTimeout = 5 * time.Second
+
+func (r *NotificationService) sendCodeEmail(kind CodeEmailKind, toEmail, code string, validityMinutes int, language string) error {
+	if r.smtp.Password == "" {
+		return fmt.Errorf("smtp password is missing")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), codeEmailLocalizeTimeout)
+	content := LocalizeCodeEmail(ctx, r.localizer, kind, language, code, validityMinutes)
+	cancel()
+	htmlBody, err := RenderCodeEmail(content)
+	if err != nil {
+		return err
+	}
+	images, err := codeEmailImages()
+	if err != nil {
+		return err
+	}
+	message, err := BuildCodeEmailMessage(CodeEmailMessage{
+		FromAddress: r.smtp.FromAddress,
+		To:          toEmail,
+		Subject:     MailFromName + " - " + content.Heading,
+		HTMLBody:    htmlBody,
+		TextBody:    RenderCodeEmailText(content),
+		Images:      images,
+	})
+	if err != nil {
+		return err
+	}
+
+	smtpAddress := net.JoinHostPort(r.smtp.Host, strconv.Itoa(r.smtp.Port))
+	auth := smtp.PlainAuth("", r.smtp.Username, r.smtp.Password, r.smtp.Host)
+	return sendMail(smtpAddress, r.smtp.Host, auth, r.smtp.FromAddress, toEmail, message)
+}
+
+// RenderCodeEmailText is the plain-text copy sent beside the HTML; mail
+// filters score an HTML-only message as more likely spam, and some clients
+// show only text.
+func RenderCodeEmailText(data CodeEmailTemplateData) string {
+	var text strings.Builder
+	text.WriteString(data.Heading + "\n\n")
+	text.WriteString(data.Intro + "\n\n")
+	text.WriteString(strings.Join(data.CodeChars, "") + "\n\n")
+	text.WriteString(data.ExpiresBefore + data.ExpiresValue + data.ExpiresAfter + "\n\n")
+	text.WriteString(data.IgnoreMessage + "\n")
+	text.WriteString(data.SecurityNote + "\n\n")
+	text.WriteString("-- \n" + MailFromName + " - Make living together fun\n")
+	text.WriteString(data.AutomatedNote + "\n")
+	return text.String()
+}
+
+// InlineImage is a PNG an email's HTML loads with src="cid:<ContentID>".
+type InlineImage struct {
+	ContentID string
+	FileName  string
+	Data      []byte
+}
+
+// CodeEmailImageFiles maps the Content-IDs code-email.html loads images from
+// to the static files that hold them. The hero is HTML; only the roof-F mark
+// in its badge is an image, since Gmail draws no SVG.
+var CodeEmailImageFiles = []struct{ ContentID, File string }{
+	{ContentID: "fauscrew-logo", File: "email-logo.png"},
+}
+
+var codeEmailImages = sync.OnceValues(func() ([]InlineImage, error) {
+	images := make([]InlineImage, 0, len(CodeEmailImageFiles))
+	for _, file := range CodeEmailImageFiles {
+		data, err := config.ReadStaticFile(file.File)
+		if err != nil {
+			return nil, fmt.Errorf("read code email image %s: %w", file.File, err)
+		}
+		images = append(images, InlineImage{ContentID: file.ContentID, FileName: file.File, Data: data})
+	}
+	return images, nil
+})
+
+// CodeEmailMessage is what BuildCodeEmailMessage puts in a code email.
+type CodeEmailMessage struct {
+	FromAddress string
+	To          string
+	Subject     string
+	HTMLBody    string
+	TextBody    string
+	Images      []InlineImage
+}
+
+// BuildCodeEmailMessage builds a multipart/alternative message: the plain
+// text first, then the HTML with its images in a multipart/related part. The
+// images travel inline because mail clients block or drop remote and SVG
+// images. Text parts are quoted-printable so no line passes the SMTP line
+// length limit, and the subject is RFC 2047 encoded so non-ASCII text
+// (Turkish) survives. Date and Message-ID are set here, since a message
+// without them scores as spam.
+func BuildCodeEmailMessage(message CodeEmailMessage) ([]byte, error) {
+	var body bytes.Buffer
+	alternative := multipart.NewWriter(&body)
+
+	textHeader := textproto.MIMEHeader{}
+	textHeader.Set("Content-Type", "text/plain; charset=UTF-8")
+	textHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	if err := writeQuotedPrintablePart(alternative, textHeader, message.TextBody); err != nil {
+		return nil, err
+	}
+
+	var related bytes.Buffer
+	relatedWriter := multipart.NewWriter(&related)
+	htmlHeader := textproto.MIMEHeader{}
+	htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
+	htmlHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	if err := writeQuotedPrintablePart(relatedWriter, htmlHeader, message.HTMLBody); err != nil {
+		return nil, err
+	}
+	for _, image := range message.Images {
+		imageHeader := textproto.MIMEHeader{}
+		imageHeader.Set("Content-Type", "image/png")
+		imageHeader.Set("Content-Transfer-Encoding", "base64")
+		imageHeader.Set("Content-ID", "<"+image.ContentID+">")
+		imageHeader.Set("Content-Disposition", `inline; filename="`+image.FileName+`"`)
+		imagePart, err := relatedWriter.CreatePart(imageHeader)
+		if err != nil {
+			return nil, err
+		}
+		encoded := base64.StdEncoding.EncodeToString(image.Data)
+		for len(encoded) > 0 {
+			line := encoded[:min(76, len(encoded))]
+			encoded = encoded[len(line):]
+			if _, err := io.WriteString(imagePart, line+"\r\n"); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := relatedWriter.Close(); err != nil {
+		return nil, err
+	}
+	relatedHeader := textproto.MIMEHeader{}
+	relatedHeader.Set("Content-Type", `multipart/related; type="text/html"; boundary="`+relatedWriter.Boundary()+`"`)
+	relatedPart, err := alternative.CreatePart(relatedHeader)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := relatedPart.Write(related.Bytes()); err != nil {
+		return nil, err
+	}
+	if err := alternative.Close(); err != nil {
+		return nil, err
+	}
+
+	messageID, err := newMessageID(message.FromAddress)
+	if err != nil {
+		return nil, err
+	}
+	header := "From: " + MailFromName + " <" + message.FromAddress + ">\r\n" +
+		"To: " + message.To + "\r\n" +
+		"Subject: " + mime.QEncoding.Encode("utf-8", message.Subject) + "\r\n" +
+		"Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n" +
+		"Message-ID: " + messageID + "\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		`Content-Type: multipart/alternative; boundary="` + alternative.Boundary() + "\"\r\n\r\n"
+	return append([]byte(header), body.Bytes()...), nil
+}
+
+func writeQuotedPrintablePart(writer *multipart.Writer, header textproto.MIMEHeader, content string) error {
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	encoder := quotedprintable.NewWriter(part)
+	if _, err := encoder.Write([]byte(content)); err != nil {
+		return err
+	}
+	return encoder.Close()
+}
+
+// newMessageID returns a unique Message-ID on the sender's domain.
+func newMessageID(fromAddress string) (string, error) {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	domain := fromAddress[strings.LastIndex(fromAddress, "@")+1:]
+	return "<" + hex.EncodeToString(random) + "@" + domain + ">", nil
 }
 
 var (

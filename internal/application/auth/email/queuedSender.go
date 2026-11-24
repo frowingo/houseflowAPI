@@ -28,6 +28,9 @@ type SendJobPayload struct {
 	Code            string    `json:"code"`
 	ValidityMinutes int       `json:"validityMinutes"`
 	ExpiresAt       time.Time `json:"expiresAt"`
+	// Language was added later: a job without it, or one run by a version
+	// that does not read it, is sent in English.
+	Language string `json:"language,omitempty"`
 }
 
 const (
@@ -59,18 +62,19 @@ func (s *QueuedSender) Register(registry jobsAbstract.HandlerRegistry) {
 	registry.Register(SendJobType, s.RunJob)
 }
 
-func (s *QueuedSender) SendResetCodeEmail(toEmail, code string, validityMinutes int) error {
-	return s.enqueue(TemplateResetCode, toEmail, code, validityMinutes)
+func (s *QueuedSender) SendResetCodeEmail(toEmail, code string, validityMinutes int, language string) error {
+	return s.enqueue(TemplateResetCode, toEmail, code, validityMinutes, language)
 }
 
-func (s *QueuedSender) SendEmailVerificationCode(toEmail, code string, validityMinutes int) error {
-	return s.enqueue(TemplateVerificationCode, toEmail, code, validityMinutes)
+func (s *QueuedSender) SendEmailVerificationCode(toEmail, code string, validityMinutes int, language string) error {
+	return s.enqueue(TemplateVerificationCode, toEmail, code, validityMinutes, language)
 }
 
-func (s *QueuedSender) enqueue(template, toEmail, code string, validityMinutes int) error {
+func (s *QueuedSender) enqueue(template, toEmail, code string, validityMinutes int, language string) error {
 	payload := SendJobPayload{
 		Template: template, To: toEmail, Code: code, ValidityMinutes: validityMinutes,
 		ExpiresAt: time.Now().Add(time.Duration(validityMinutes) * time.Minute).UTC(),
+		Language:  language,
 	}
 	job, err := jobsAbstract.NewJSONJob(SendJobType, payload)
 	if err == nil {
@@ -119,9 +123,9 @@ var errUnknownTemplate = errors.New("unknown email template")
 func send(sender authAbstract.EmailSender, job SendJobPayload) error {
 	switch job.Template {
 	case TemplateResetCode:
-		return sender.SendResetCodeEmail(job.To, job.Code, job.ValidityMinutes)
+		return sender.SendResetCodeEmail(job.To, job.Code, job.ValidityMinutes, job.Language)
 	case TemplateVerificationCode:
-		return sender.SendEmailVerificationCode(job.To, job.Code, job.ValidityMinutes)
+		return sender.SendEmailVerificationCode(job.To, job.Code, job.ValidityMinutes, job.Language)
 	default:
 		return fmt.Errorf("%w %q", errUnknownTemplate, job.Template)
 	}

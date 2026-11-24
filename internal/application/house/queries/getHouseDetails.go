@@ -65,7 +65,7 @@ func (h *GetHouseDetailsHandler) Handle(ctx context.Context, query GetHouseDetai
 			return err
 		}
 
-		choreEntities, err := h.choreRepository.FindManyByFilter(txCtx, bson.M{"houseId": query.HouseID})
+		choreEntities, err := h.choreRepository.FindManyByFilter(txCtx, houseDetailsChoreFilter(query.HouseID, time.Now()))
 		if err != nil {
 			return err
 		}
@@ -168,6 +168,25 @@ func (h *GetHouseDetailsHandler) Handle(ctx context.Context, query GetHouseDetai
 	}
 
 	return details, nil
+}
+
+// RecentlyClosedChoreWindow is how long a completed or failed chore stays in
+// house details after it closes; older ones are listed by the chore archive.
+const RecentlyClosedChoreWindow = 48 * time.Hour
+
+// houseDetailsChoreFilter selects every open chore of the house, however old,
+// and the closed ones whose completedAt falls in the recent window.
+func houseDetailsChoreFilter(houseID string, now time.Time) bson.M {
+	return bson.M{
+		"houseId": houseID,
+		"$or": bson.A{
+			bson.M{"status": bson.M{"$in": bson.A{entities.Draft, entities.Progress, entities.InTest}}},
+			bson.M{
+				"status":      bson.M{"$in": bson.A{entities.Completed, entities.Failed}},
+				"completedAt": bson.M{"$gte": now.Add(-RecentlyClosedChoreWindow)},
+			},
+		},
+	}
 }
 
 func activeAnnouncementFilter(houseID string, now time.Time) bson.M {

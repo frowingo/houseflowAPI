@@ -27,6 +27,9 @@ type SendSocialSignUpCodeCommand struct {
 	cqrs.Request[cqrs.NoResult]
 	PendingToken string
 	Email        string
+	// Language is the request's language; there is no account to read it
+	// from yet. The API fills it from Accept-Language.
+	Language string
 }
 
 type SendSocialSignUpCodeHandler struct {
@@ -60,7 +63,7 @@ func (h *SendSocialSignUpCodeHandler) Handle(ctx context.Context, command SendSo
 	}
 	window := helpers.ResetCodeWindow(h.validityMinutes)
 	code := helpers.GenerateResetCode(socialSignUpCodeSubject(pending, command.Email), h.codeSecret, window)
-	return cqrs.NoResult{}, h.emailSender.SendEmailVerificationCode(helpers.NormalizeEmail(command.Email), code, h.validityMinutes)
+	return cqrs.NoResult{}, h.emailSender.SendEmailVerificationCode(helpers.NormalizeEmail(command.Email), code, h.validityMinutes, helpers.NormalizeLanguage(command.Language))
 }
 
 var _ cqrs.CommandHandler[SendSocialSignUpCodeCommand, cqrs.NoResult] = (*SendSocialSignUpCodeHandler)(nil)

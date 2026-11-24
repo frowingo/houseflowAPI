@@ -172,3 +172,11 @@ func ChoreToResponseModelWithReview(chore entities.Chore, histories []entities.C
 		ReviewVotes:       reviewVotes,
 	}
 }
+
+// ChoreArchivePageModel is one page of closed chores, newest first. NextUrl
+// is the path of the next page with the same range, null on the last page.
+type ChoreArchivePageModel struct {
+	Chores     []ChoreResponseModel `json:"chores"`
+	NextUrl    *string              `json:"nextUrl"`
+	NextCursor string               `json:"-"`
+}

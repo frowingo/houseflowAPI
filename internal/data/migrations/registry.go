@@ -113,5 +113,9 @@ func AllMigrations() []Migration {
 		&systemChoreCatalogSeed{},
 		// --- Notification Delivery ---
 		&notificationDelivery{},
+		// --- Chore Archive ---
+		&choreArchive{},
+		// --- Code Email Localizations ---
+		&codeEmailLocalizations{},
 	}
 }

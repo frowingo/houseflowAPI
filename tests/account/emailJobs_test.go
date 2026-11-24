@@ -20,6 +20,7 @@ import (
 type sentEmail struct {
 	Kind, To, Code  string
 	ValidityMinutes int
+	Language        string
 }
 
 // emailRecorder is a concurrency-safe EmailSender that can be made to fail.
@@ -34,10 +35,10 @@ func newEmailRecorder() *emailRecorder {
 	return &emailRecorder{calls: make(chan sentEmail, 16)}
 }
 
-func (r *emailRecorder) record(kind, to, code string, validityMinutes int) error {
+func (r *emailRecorder) record(kind, to, code string, validityMinutes int, language string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	email := sentEmail{Kind: kind, To: to, Code: code, ValidityMinutes: validityMinutes}
+	email := sentEmail{Kind: kind, To: to, Code: code, ValidityMinutes: validityMinutes, Language: language}
 	r.calls <- email
 	if r.err != nil {
 		return r.err
@@ -46,12 +47,12 @@ func (r *emailRecorder) record(kind, to, code string, validityMinutes int) error
 	return nil
 }
 
-func (r *emailRecorder) SendResetCodeEmail(to, code string, validityMinutes int) error {
-	return r.record("reset", to, code, validityMinutes)
+func (r *emailRecorder) SendResetCodeEmail(to, code string, validityMinutes int, language string) error {
+	return r.record("reset", to, code, validityMinutes, language)
 }
 
-func (r *emailRecorder) SendEmailVerificationCode(to, code string, validityMinutes int) error {
-	return r.record("verification", to, code, validityMinutes)
+func (r *emailRecorder) SendEmailVerificationCode(to, code string, validityMinutes int, language string) error {
+	return r.record("verification", to, code, validityMinutes, language)
 }
 
 func (r *emailRecorder) Sent() []sentEmail {
@@ -88,10 +89,10 @@ func TestQueuedEmailSenderEnqueuesCodeEmails(t *testing.T) {
 	sender := authEmail.NewQueuedSender(queue, direct)
 
 	before := time.Now()
-	if err := sender.SendResetCodeEmail("a@example.com", "ABCD12", 10); err != nil {
+	if err := sender.SendResetCodeEmail("a@example.com", "ABCD12", 10, "tr"); err != nil {
 		t.Fatal(err)
 	}
-	if err := sender.SendEmailVerificationCode("b@example.com", "EFGH34", 15); err != nil {
+	if err := sender.SendEmailVerificationCode("b@example.com", "EFGH34", 15, "en"); err != nil {
 		t.Fatal(err)
 	}
 	if len(direct.Sent()) != 0 {
@@ -102,8 +103,8 @@ func TestQueuedEmailSenderEnqueuesCodeEmails(t *testing.T) {
 	}
 
 	want := []authEmail.SendJobPayload{
-		{Template: authEmail.TemplateResetCode, To: "a@example.com", Code: "ABCD12", ValidityMinutes: 10},
-		{Template: authEmail.TemplateVerificationCode, To: "b@example.com", Code: "EFGH34", ValidityMinutes: 15},
+		{Template: authEmail.TemplateResetCode, To: "a@example.com", Code: "ABCD12", ValidityMinutes: 10, Language: "tr"},
+		{Template: authEmail.TemplateVerificationCode, To: "b@example.com", Code: "EFGH34", ValidityMinutes: 15, Language: "en"},
 	}
 	for index, enqueued := range queue.jobs {
 		if enqueued.job.Type != authEmail.SendJobType {
@@ -135,15 +136,15 @@ func TestQueuedEmailSenderSendsDirectlyWhenQueueIsUnavailable(t *testing.T) {
 	direct := newEmailRecorder()
 	sender := authEmail.NewQueuedSender(queue, direct)
 
-	if err := sender.SendResetCodeEmail("a@example.com", "ABCD12", 10); err != nil {
+	if err := sender.SendResetCodeEmail("a@example.com", "ABCD12", 10, "tr"); err != nil {
 		t.Fatal(err)
 	}
-	if sent := direct.Sent(); len(sent) != 1 || sent[0] != (sentEmail{"reset", "a@example.com", "ABCD12", 10}) {
+	if sent := direct.Sent(); len(sent) != 1 || sent[0] != (sentEmail{"reset", "a@example.com", "ABCD12", 10, "tr"}) {
 		t.Fatalf("direct sends = %+v", sent)
 	}
 
 	direct.err = errors.New("smtp down")
-	if err := sender.SendEmailVerificationCode("a@example.com", "EFGH34", 10); !errors.Is(err, direct.err) {
+	if err := sender.SendEmailVerificationCode("a@example.com", "EFGH34", 10, "tr"); !errors.Is(err, direct.err) {
 		t.Fatalf("fallback error = %v, want the SMTP error", err)
 	}
 }
@@ -172,8 +173,25 @@ func TestEmailJobSendsWithDirectSender(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := []sentEmail{{"reset", "a@example.com", "ABCD12", 10}, {"verification", "a@example.com", "ABCD12", 10}}
+	// A job queued before the language field existed is sent in English (the
+	// sender reads an empty language as English).
+	want := []sentEmail{{"reset", "a@example.com", "ABCD12", 10, ""}, {"verification", "a@example.com", "ABCD12", 10, ""}}
 	if sent := direct.Sent(); len(sent) != 2 || sent[0] != want[0] || sent[1] != want[1] {
+		t.Fatalf("sent = %+v", sent)
+	}
+}
+
+func TestEmailJobSendsInTheQueuedLanguage(t *testing.T) {
+	direct := newEmailRecorder()
+	sender := authEmail.NewQueuedSender(&capturingQueue{}, direct)
+	payload := emailJobPayload(t, map[string]any{
+		"template": "resetCode", "to": "a@example.com", "code": "ABCD12", "validityMinutes": 10,
+		"expiresAt": time.Now().Add(time.Minute), "language": "tr",
+	})
+	if err := sender.RunJob(context.Background(), payload); err != nil {
+		t.Fatal(err)
+	}
+	if sent := direct.Sent(); len(sent) != 1 || sent[0] != (sentEmail{"reset", "a@example.com", "ABCD12", 10, "tr"}) {
 		t.Fatalf("sent = %+v", sent)
 	}
 }
@@ -243,10 +261,10 @@ func TestQueuedEmailSenderRunsThroughInProcessRuntime(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 
-	if err := sender.SendResetCodeEmail("a@example.com", "ABCD12", 10); err != nil {
+	if err := sender.SendResetCodeEmail("a@example.com", "ABCD12", 10, "tr"); err != nil {
 		t.Fatal(err)
 	}
-	if email := waitForEmail(t, direct); email != (sentEmail{"reset", "a@example.com", "ABCD12", 10}) {
+	if email := waitForEmail(t, direct); email != (sentEmail{"reset", "a@example.com", "ABCD12", 10, "tr"}) {
 		t.Fatalf("sent = %+v", email)
 	}
 }
@@ -271,10 +289,10 @@ func TestQueuedEmailSenderRunsThroughValkeyAndKeepsNothing(t *testing.T) {
 		_ = runtime.Close(ctx)
 	})
 
-	if err := sender.SendEmailVerificationCode("a@example.com", "EFGH34", 10); err != nil {
+	if err := sender.SendEmailVerificationCode("a@example.com", "EFGH34", 10, "tr"); err != nil {
 		t.Fatal(err)
 	}
-	if email := waitForEmail(t, direct); email != (sentEmail{"verification", "a@example.com", "EFGH34", 10}) {
+	if email := waitForEmail(t, direct); email != (sentEmail{"verification", "a@example.com", "EFGH34", 10, "tr"}) {
 		t.Fatalf("sent = %+v", email)
 	}
 

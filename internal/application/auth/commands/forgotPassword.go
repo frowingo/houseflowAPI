@@ -47,7 +47,7 @@ func (h *ForgotPasswordHandler) Handle(ctx context.Context, command ForgotPasswo
 
 	window := helpers.ResetCodeWindow(h.validityMinutes)
 	code := helpers.GenerateResetCode(helpers.NormalizeEmail(command.Email), h.resetSecret, window)
-	if err := h.emailSender.SendResetCodeEmail(command.Email, code, h.validityMinutes); err != nil {
+	if err := h.emailSender.SendResetCodeEmail(command.Email, code, h.validityMinutes, helpers.NormalizeLanguage(user.Language)); err != nil {
 		return cqrs.NoResult{}, err
 	}
 	return cqrs.NoResult{}, nil

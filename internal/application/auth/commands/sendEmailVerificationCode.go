@@ -50,7 +50,7 @@ func (h *SendEmailVerificationCodeHandler) Handle(ctx context.Context, command S
 
 	window := helpers.ResetCodeWindow(h.validityMinutes)
 	code := helpers.GenerateResetCode(helpers.NormalizeEmail(command.Email), h.resetSecret, window)
-	err = h.emailSender.SendEmailVerificationCode(command.Email, code, h.validityMinutes)
+	err = h.emailSender.SendEmailVerificationCode(command.Email, code, h.validityMinutes, helpers.NormalizeLanguage(user.Language))
 	return cqrs.NoResult{}, err
 }
 

@@ -494,6 +494,13 @@ func SetupRoutes(
 			appEventService.HouseChanged(ctx, result.HouseId, false)
 		}))
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](applicationMediator, getReviewPhotoURLHandler)
+	cqrs.MustRegister[*dtos.ChoreArchivePageModel, choreQueries.GetChoreArchiveQuery](applicationMediator,
+		choreQueries.NewGetChoreArchiveHandler(
+			houseChoreRepository,
+			houseChoreStatusHistoryRepository,
+			houseChoreReviewVoteRepository,
+			houseMembershipPolicy,
+		))
 	choreCatalogRepository := database.NewDbContext[entities.ChoreCatalog](client, dbName)
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](applicationMediator,
 		choreCatalogQueries.NewListChoreCatalogHandler(choreCatalogRepository, userRepository, localizationCache))
@@ -512,6 +519,7 @@ func SetupRoutes(
 	// Registered before "/:id" so "catalog" is not taken as a chore id.
 	choreRoutes.Get("/catalog", choreController.ListChoreCatalog)
 	choreRoutes.Put("/catalog", choreController.UpsertChoreCatalog)
+	choreRoutes.Get("/archive", choreController.GetChoreArchive)
 	choreRoutes.Put("/status", choreController.UpdateChoreStatus)
 	choreRoutes.Put("/review", choreController.ReviewChore)
 	choreRoutes.Get("/:id/review-photo/:round", choreController.GetReviewPhotoURL)

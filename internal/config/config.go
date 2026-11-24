@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -14,7 +15,7 @@ import (
 
 const defaultHouseJoinCodeValidityMinutes = 2
 
-//go:embed staticFiles/code-email.html
+//go:embed staticFiles/code-email.html staticFiles/email-logo.png
 var staticFiles embed.FS
 
 func ReadStaticFile(name string) ([]byte, error) {
@@ -82,8 +83,37 @@ type ConfigJWT struct {
 	ApiSecret string `json:"apiSecret"`
 }
 
+// ConfigSMTP is the mail provider the code emails go through. An unset field
+// keeps the legacy Gmail account, so deploying this code changes nothing
+// until the SMTP_* secrets name the new provider.
 type ConfigSMTP struct {
-	Password string `json:"password"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	FromAddress string `json:"fromAddress"`
+}
+
+const (
+	legacySMTPHost        = "smtp.gmail.com"
+	legacySMTPPort        = 587
+	legacySMTPUsername    = "houseflow37@gmail.com"
+	legacySMTPFromAddress = "no-reply@houseflow.com"
+)
+
+func (c *ConfigSMTP) applyDefaults() {
+	if c.Host == "" {
+		c.Host = legacySMTPHost
+	}
+	if c.Port <= 0 {
+		c.Port = legacySMTPPort
+	}
+	if c.Username == "" {
+		c.Username = legacySMTPUsername
+	}
+	if c.FromAddress == "" {
+		c.FromAddress = legacySMTPFromAddress
+	}
 }
 
 type ConfigMongo struct {
@@ -263,9 +293,25 @@ func applyEnvOverrides(config *ConfigModel) {
 		config.Internal.HouseJoinCode.Secret = joinCodeSecret
 	}
 
+	if smtpHost := os.Getenv("SMTP_HOST"); smtpHost != "" {
+		config.Internal.SMTP.Host = smtpHost
+	}
+	if smtpPort := os.Getenv("SMTP_PORT"); smtpPort != "" {
+		port, err := strconv.Atoi(smtpPort)
+		if err == nil && port > 0 {
+			config.Internal.SMTP.Port = port
+		}
+	}
+	if smtpUsername := os.Getenv("SMTP_USERNAME"); smtpUsername != "" {
+		config.Internal.SMTP.Username = smtpUsername
+	}
 	if smtpPassword := os.Getenv("SMTP_PASSWORD"); smtpPassword != "" {
 		config.Internal.SMTP.Password = smtpPassword
 	}
+	if fromAddress := os.Getenv("SMTP_FROM_ADDRESS"); fromAddress != "" {
+		config.Internal.SMTP.FromAddress = fromAddress
+	}
+	config.Internal.SMTP.applyDefaults()
 
 	if credentials := os.Getenv("FIREBASE_CREDENTIALS"); credentials != "" {
 		config.External.Firebase.CredentialsJSON = credentials
@@ -342,6 +388,9 @@ func Validate(config *ConfigModel) error {
 	}
 	if config.Internal.SMTP.Password == "" {
 		return errors.New("smtp password is required")
+	}
+	if _, err := mail.ParseAddress(config.Internal.SMTP.FromAddress); err != nil || strings.ContainsAny(config.Internal.SMTP.FromAddress, "<> ") {
+		return errors.New("smtp from address must be a plain email address")
 	}
 	if err := ValidateProcess(config.Process); err != nil {
 		return err

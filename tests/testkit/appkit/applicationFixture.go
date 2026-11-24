@@ -150,16 +150,22 @@ func (s *RecordingObjectStorage) Object(objectKey string) []byte {
 
 type RecordingEmailSender struct {
 	ResetCode        string
+	ResetLanguage    string
 	VerificationCode string
+	// VerificationLanguage is the language the last verification code was
+	// mailed in.
+	VerificationLanguage string
 }
 
-func (s *RecordingEmailSender) SendResetCodeEmail(_ string, code string, _ int) error {
+func (s *RecordingEmailSender) SendResetCodeEmail(_ string, code string, _ int, language string) error {
 	s.ResetCode = code
+	s.ResetLanguage = language
 	return nil
 }
 
-func (s *RecordingEmailSender) SendEmailVerificationCode(_ string, code string, _ int) error {
+func (s *RecordingEmailSender) SendEmailVerificationCode(_ string, code string, _ int, language string) error {
 	s.VerificationCode = code
+	s.VerificationLanguage = language
 	return nil
 }
 
@@ -293,6 +299,8 @@ func NewConcurrencyFixture(t *testing.T) *ConcurrencyFixture {
 	cqrs.MustRegister[[]dtos.ChoreResponseModel, choreCommands.UpdateChoreStatusCommand](sender, updateChoreStatusHandler)
 	cqrs.MustRegister[*dtos.ChoreResponseModel, choreCommands.ReviewChoreCommand](sender, reviewChoreHandler)
 	cqrs.MustRegister[*dtos.ChoreReviewPhotoURLModel, choreQueries.GetReviewPhotoURLQuery](sender, getReviewPhotoURLHandler)
+	cqrs.MustRegister[*dtos.ChoreArchivePageModel, choreQueries.GetChoreArchiveQuery](sender,
+		choreQueries.NewGetChoreArchiveHandler(chores, choreStatusHistories, choreReviewVotes, membershipPolicy))
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogQueries.ListChoreCatalogQuery](sender, listChoreCatalogHandler)
 	cqrs.MustRegister[[]dtos.ChoreCatalogModel, choreCatalogCommands.UpsertChoreCatalogCommand](sender, upsertChoreCatalogHandler)
 	cqrs.MustRegister[*dtos.UserResultModel, userCommands.UpdateProfileCommand](sender, updateProfileHandler)

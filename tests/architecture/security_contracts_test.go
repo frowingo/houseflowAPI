@@ -16,7 +16,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
+// setProductionConfigEnv sets the secrets a production config needs.
+func setProductionConfigEnv(t *testing.T) {
+	t.Helper()
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("MONGO_URI", "mongodb://example:27017")
 	t.Setenv("MONGO_DB", "houseflow_test")
@@ -30,7 +32,10 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 	t.Setenv("BUCKET_NAME", "houseflow-test")
 	t.Setenv("AWS_ACCESS_KEY_ID", "tid_test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "tsec_test")
+}
 
+func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
+	setProductionConfigEnv(t)
 	cfg, err := config.MustLoadConfig()
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -55,6 +60,38 @@ func TestMustLoadConfigUsesEnvInProductionWithoutConfigFile(t *testing.T) {
 		cfg.External.Tigris.Bucket != "houseflow-test" || cfg.External.Tigris.AccessKeyID != "tid_test" ||
 		cfg.External.Tigris.SecretAccessKey != "tsec_test" {
 		t.Fatalf("Tigris environment overrides were not applied: %+v", cfg.External.Tigris)
+	}
+}
+
+func TestSMTPConfigKeepsTheLegacyAccountUntilTheSecretsNameAProvider(t *testing.T) {
+	setProductionConfigEnv(t)
+	cfg, err := config.MustLoadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if got := cfg.Internal.SMTP; got.Host != "smtp.gmail.com" || got.Port != 587 ||
+		got.Username != "houseflow37@gmail.com" || got.FromAddress != "no-reply@houseflow.com" {
+		t.Fatalf("SMTP without overrides = %+v, want the legacy Gmail account", got)
+	}
+
+	t.Setenv("SMTP_HOST", "smtp.resend.com")
+	t.Setenv("SMTP_PORT", "2587")
+	t.Setenv("SMTP_USERNAME", "resend")
+	t.Setenv("SMTP_FROM_ADDRESS", "no-reply@iworf.com")
+	cfg, err = config.MustLoadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if got := cfg.Internal.SMTP; got.Host != "smtp.resend.com" || got.Port != 2587 ||
+		got.Username != "resend" || got.FromAddress != "no-reply@iworf.com" || got.Password != "smtp-secret" {
+		t.Fatalf("SMTP overrides were not applied: %+v", got)
+	}
+
+	for _, invalid := range []string{"not-an-address", "FausCrew <no-reply@iworf.com>"} {
+		t.Setenv("SMTP_FROM_ADDRESS", invalid)
+		if _, err := config.MustLoadConfig(); err == nil {
+			t.Fatalf("SMTP_FROM_ADDRESS %q must be rejected", invalid)
+		}
 	}
 }
 

@@ -308,7 +308,7 @@ func (r *AuthController) SendSocialSignUpCode(c *fiber.Ctx) error {
 	ctx, cancel := requestContext(c)
 	defer cancel()
 	if _, err := cqrs.Send[cqrs.NoResult](ctx, r.sender, authCommands.SendSocialSignUpCodeCommand{
-		PendingToken: model.PendingToken, Email: model.Email,
+		PendingToken: model.PendingToken, Email: model.Email, Language: helpers.RequestLanguage(c),
 	}); err != nil {
 		return helpers.RespondLocalizedError(c, r.localizer, err)
 	}

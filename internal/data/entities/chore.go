@@ -28,6 +28,10 @@ type Chore struct {
 	Version           int64              `bson:"version" json:"-"`
 }
 
+// ChoreSystemActor is the completedBy of a chore the system closed as
+// failed, and the updater of the status history it writes.
+const ChoreSystemActor = "system"
+
 type ChoreLevel int
 
 const (
