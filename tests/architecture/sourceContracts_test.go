@@ -13,7 +13,7 @@ import (
 )
 
 // These tests read the repository's sources and deployment files instead of
-// importing them; scripts/testAffected.sh runs this package whenever such a
+// importing them; tests/testAffected.sh runs this package whenever such a
 // file changes.
 
 const concreteGamePackagePrefix = "houseflowApi/internal/application/game/games/"
@@ -54,13 +54,47 @@ func TestOnlyGameCompositionImportsConcreteGames(t *testing.T) {
 	}
 }
 
+// internal/bootstrap is the composition root: it builds every layer, so a
+// package it builds must never import it (or its adaptors) back.
+func TestOnlyCommandsImportBootstrap(t *testing.T) {
+	root := repositoryRoot(t)
+	bootstrapDirectory := filepath.Join(root, "internal", "bootstrap")
+	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") ||
+			strings.HasPrefix(path, bootstrapDirectory+string(filepath.Separator)) {
+			return walkErr
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imported := range parsed.Imports {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				return err
+			}
+			if importPath == bootstrapPackage || strings.HasPrefix(importPath, bootstrapPackage+"/") {
+				relative, _ := filepath.Rel(root, path)
+				t.Errorf("%s imports %s; only cmd/ may", relative, importPath)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+const bootstrapPackage = "houseflowApi/internal/bootstrap"
+
 func TestMigrationsRunOutsideAPIStartup(t *testing.T) {
 	repositoryRoot := repositoryRoot(t)
-	apiMain := readContractFile(t, filepath.Join(repositoryRoot, "cmd", "api", "main.go"))
-	migrationCommand := readContractFile(t, filepath.Join(repositoryRoot, "cmd", "api", "migrate.go"))
+	apiStartup := readContractFile(t, filepath.Join(repositoryRoot, "cmd", "api", "main.go")) +
+		readContractFile(t, filepath.Join(repositoryRoot, "internal", "bootstrap", "server.go"))
+	migrationCommand := readContractFile(t, filepath.Join(repositoryRoot, "internal", "bootstrap", "migrate.go"))
 	flyConfig := readContractFile(t, filepath.Join(repositoryRoot, "fly.toml"))
 
-	if strings.Contains(apiMain, "migration.RunAll") {
+	if strings.Contains(apiStartup, "migrations.RunAll") {
 		t.Fatal("API startup still runs database migrations")
 	}
 	if !strings.Contains(migrationCommand, "migrations.RunAll") {
@@ -88,7 +122,7 @@ func readContractFile(t *testing.T, path string) string {
 // Fiber matches routes in registration order, so the catalog routes must come
 // before "/:id" or PUT /chore/catalog would reach UpdateChore.
 func TestChoreCatalogRoutesPrecedeChoreIDRoute(t *testing.T) {
-	routes := readContractFile(t, filepath.Join(repositoryRoot(t), "cmd", "api", "routes.go"))
+	routes := readContractFile(t, filepath.Join(repositoryRoot(t), "internal", "bootstrap", "routes.go"))
 	idRoute := strings.Index(routes, `choreRoutes.Put("/:id"`)
 	if idRoute < 0 {
 		t.Fatal(`choreRoutes.Put("/:id") not found`)

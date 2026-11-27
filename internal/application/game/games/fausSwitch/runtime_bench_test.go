@@ -249,8 +249,11 @@ func TestFausSwitchSnapshotBandwidth(t *testing.T) {
 		load.races, seconds, frames/seconds, mean(roomEvents), slices.Max(roomEvents), wireMean, slices.Max(wire), deflatedMean,
 		float64(wireMean)*frames/seconds/1024, float64(deflatedMean)*frames/seconds/1024, float64(wireMean)*frames/seconds*MaximumPlayers/1024,
 		fanout/time.Duration(len(roomEvents)), load.flips, load.refused)
-	// Critical changes publish extra frames; the rate is a floor, not a cap.
-	if rate := frames / seconds; rate < SnapshotRateHz-1 || rate > SnapshotRateHz*1.5 {
+	// Critical changes and applied flips publish extra frames in the step
+	// that makes them, so the snapshot rate is a floor; one frame per
+	// scheduler step is the cap. Every robot flipping at the rate limit is
+	// the worst case: about 46 frames/s.
+	if rate := frames / seconds; rate < SnapshotRateHz-1 || rate > SchedulingRateHz {
 		t.Fatalf("published %.1f frames/s", rate)
 	}
 	if load.refused != 0 {

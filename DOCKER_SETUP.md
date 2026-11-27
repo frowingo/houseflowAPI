@@ -62,6 +62,8 @@ docker run -p 3162:3162 \
 | MONGO_PORT | 27017 | MongoDB port |
 | MONGO_DB | houseflowDb | Database adı |
 
+Production'da database adı `FausCrewDb`'dir ve Fly secret'ı olarak `.github/workflows/deploy.yml` ile verilir.
+
 ---
 
 ## 🧹 Cleanup

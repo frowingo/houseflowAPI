@@ -303,3 +303,17 @@ kimliği 24 karakterlik ObjectID ve görünen ad daha uzun olduğundan boyut bir
 - **20 Hz yeterli.** Her istemci aynı motoru yerelde çalıştırdığı için snapshot ara değer için
   değil düzeltme için gelir; 30 Hz bandı %50 artırır, kazanç yok.
 
+**27 Kasım 2026 — uygulanan flip anında frame (ADR-031 eki).** Aynı yük (8 robot, robot başına
+20 flip/sn, `TestFausSwitchSnapshotBandwidth`, 10 sn):
+
+| | Önce | Sonra |
+|---|---|---|
+| Frame/s | 20,0 | 45,9 |
+| Bağlantı başına bant | 64 KB/s ham, 14,2 KB/s sıkıştırılmış | 147 KB/s ham, 32,1 KB/s sıkıştırılmış |
+| Sunucu adımı (`BenchmarkFausSwitchSession8`) | 30–33 µs | 31 µs |
+| Ayırma / tick | 1,9 | 3,9 |
+
+Bu yük her robotun hız sınırında sürekli flip yaptığı en kötü durumdur; gerçek yarışta flip'ler
+çok daha seyrek, ek frame sayısı da o kadar azdır. Frame hızının tavanı scheduler hızıdır (60/s).
+Gateway fanout'u frame sayısıyla doğrusal artar: en kötü durumda bir çekirdeğin ~%1'i.
+

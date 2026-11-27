@@ -2,11 +2,11 @@
 # Runs only the Go test packages a change can affect. The full suite stays the
 # pull request's job in CI (.github/workflows/deploy.yml).
 #
-#   scripts/testAffected.sh                  changes since master, run them
-#   scripts/testAffected.sh --dry-run        only print what would run and why
-#   scripts/testAffected.sh --base dev       compare with another branch/commit
-#   scripts/testAffected.sh -- -run TestX    pass the rest to go test
-#   scripts/testAffected.sh --dry-run --file internal/x/y.go
+#   tests/testAffected.sh                  changes since master, run them
+#   tests/testAffected.sh --dry-run        only print what would run and why
+#   tests/testAffected.sh --base dev       compare with another branch/commit
+#   tests/testAffected.sh -- -run TestX    pass the rest to go test
+#   tests/testAffected.sh --dry-run --file internal/x/y.go
 #                                            what a change to these files runs
 #
 # A change is every file that differs from the merge base with --base:
@@ -91,7 +91,7 @@ while IFS= read -r file; do
 		run_all=true; echo "$file|dependencies changed" >>"$work/changed"; continue ;;
 	fly.toml)
 		architecture=true; echo "$file|read by tests/architecture" >>"$work/changed"; continue ;;
-	*.md | .github/* | docs/* | external/doc/* | deploy/* | scripts/* | Dockerfile | docker-compose*.yml | .gitignore | .dockerignore)
+	*.md | .github/* | docs/* | external/doc/* | deploy/* | tests/*.sh | Dockerfile | docker-compose*.yml | .gitignore | .dockerignore)
 		echo "$file" >>"$work/ignored"; continue ;;
 	esac
 	dir="$(dirname "$file")"

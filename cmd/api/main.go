@@ -1,35 +1,13 @@
+// Command api is the single FausCrew binary: serve (default), worker and
+// migrate. Everything it runs is built in internal/bootstrap.
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"strings"
-	"syscall"
-	"time"
 
-	"github.com/gofiber/contrib/websocket"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/compress"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/recover"
-
-	docs "houseflowApi/external/swagger/docs" // Swagger docs
-	"houseflowApi/internal/adaptors"
-	"houseflowApi/internal/config"
-	"houseflowApi/internal/controllers"
-	"houseflowApi/internal/data/database"
-	"houseflowApi/internal/infrastructure/appEvents"
-	"houseflowApi/internal/infrastructure/realtime"
-)
-
-const (
-	startupTimeout   = 15 * time.Second
-	shutdownTimeout  = 10 * time.Second
-	requestBodyLimit = 4 * 1024 * 1024
+	"houseflowApi/internal/bootstrap"
 )
 
 // @title HouseFlow API
@@ -60,11 +38,11 @@ func main() {
 	var err error
 	switch command {
 	case "serve":
-		err = runAPI()
+		err = bootstrap.Serve()
 	case "worker":
-		err = runWorker()
+		err = bootstrap.Work()
 	case "migrate":
-		err = runMigrations()
+		err = bootstrap.Migrate()
 	default:
 		err = fmt.Errorf("unknown command %q; expected serve, worker or migrate", command)
 	}
@@ -73,183 +51,4 @@ func main() {
 		log.Printf("application stopped with error: %v", err)
 		os.Exit(1)
 	}
-}
-
-func runAPI() error {
-	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	cfg, err := config.MustLoadConfig()
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
-
-	startupCtx, cancelStartup := context.WithTimeout(rootCtx, startupTimeout)
-	mongoClient, db, err := database.NewDatabase(startupCtx, cfg.External.Mongo)
-	cancelStartup()
-	if err != nil {
-		return fmt.Errorf("connect to database: %w", err)
-	}
-	defer disconnectDatabase(mongoClient)
-
-	coordinator := adaptors.NewCoordinator(rootCtx, cfg.External.Redis, cfg.Process)
-	defer adaptors.CloseCoordinator(coordinator)
-
-	jobRuntime := adaptors.NewJobRuntime(cfg.External.Redis, cfg.Process)
-
-	// Host'u boş bırakarak Swagger UI'nin isteğin geldiği host/scheme'i
-	// kullanmasını sağla (localhost, OrbStack domain, vs. ile uyumlu).
-	docs.SwaggerInfo.Host = ""
-	docs.SwaggerInfo.Schemes = []string{}
-
-	app := fiber.New(fiber.Config{
-		AppName: "HouseFlow API",
-		// Fly's proxy overwrites Fly-Client-IP; X-Forwarded-For is client-controlled
-		// and would let anyone pick their own rate-limit key.
-		ProxyHeader:        "Fly-Client-IP",
-		EnableIPValidation: true,
-		ReadTimeout:        15 * time.Second,
-		WriteTimeout:       15 * time.Second,
-		IdleTimeout:        60 * time.Second,
-		BodyLimit:          requestBodyLimit,
-	})
-
-	app.Use(recover.New())
-	app.Use(logger.New())
-	app.Use(compress.New(compress.Config{
-		Level: compress.LevelBestSpeed,
-		Next:  websocket.IsWebSocketUpgrade,
-	}))
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: getAllowedOrigins(),
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
-	}))
-
-	app.Get(
-		"/api/v1/base/health/coordination",
-		controllers.ReadinessController(adaptors.CoordinationReadiness(coordinator)),
-	)
-	// Not part of the Fly check: a Valkey outage must not restart the API.
-	app.Get("/api/v1/base/health/jobs", controllers.ReadinessController(jobRuntime.Ping))
-
-	realtimeService, appEventService, err := SetupRoutes(
-		rootCtx,
-		app,
-		mongoClient,
-		db.Name(),
-		cfg.Internal,
-		cfg.External.SocialAuth,
-		cfg.External.Tigris,
-		cfg.External.Firebase,
-		coordinator,
-		jobRuntime,
-	)
-	if err != nil {
-		return fmt.Errorf("set up routes: %w", err)
-	}
-	defer closeRealtimeService(realtimeService)
-	defer closeAppEventService(appEventService)
-	// Handlers are registered in SetupRoutes; processing starts after them.
-	// Deferred last, so jobs finish before the services they use close.
-	if err := jobRuntime.Start(rootCtx); err != nil {
-		adaptors.CloseJobRuntime(jobRuntime)
-		return fmt.Errorf("start background jobs: %w", err)
-	}
-	defer adaptors.CloseJobRuntime(jobRuntime)
-	go adaptors.ObserveRealtime(rootCtx, coordinator, realtimeService, appEventService)
-	go adaptors.ObserveJobs(rootCtx, jobRuntime, cfg.Process.InstanceID, nil, nil)
-
-	listenError := make(chan error, 1)
-	go func() {
-		listenError <- app.Listen(":3162")
-	}()
-
-	select {
-	case err := <-listenError:
-		if err != nil {
-			return fmt.Errorf("listen: %w", err)
-		}
-		return nil
-	case <-rootCtx.Done():
-		log.Println("shutdown signal received")
-	}
-	// Stop taking new jobs while HTTP drains; running ones finish in CloseJobRuntime.
-	jobRuntime.Stop()
-
-	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancelShutdown()
-	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown HTTP server: %w", err)
-	}
-
-	select {
-	case err := <-listenError:
-		if err != nil {
-			return fmt.Errorf("listen shutdown: %w", err)
-		}
-	case <-shutdownCtx.Done():
-		return fmt.Errorf("wait for HTTP server shutdown: %w", shutdownCtx.Err())
-	}
-
-	return nil
-}
-
-func closeRealtimeService(service *realtime.Service) {
-	if service == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	if err := service.Close(ctx); err != nil && err != context.Canceled {
-		log.Printf("realtime service shutdown failed: %v", err)
-	}
-}
-
-func closeAppEventService(service *appEvents.Service) {
-	if service == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	if err := service.Close(ctx); err != nil && err != context.Canceled {
-		log.Printf("app event service shutdown failed: %v", err)
-	}
-}
-
-func disconnectDatabase(client interface{ Disconnect(context.Context) error }) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := client.Disconnect(ctx); err != nil {
-		log.Printf("database disconnect failed: %v", err)
-	}
-}
-
-func getAllowedOrigins() string {
-	if origins := os.Getenv("CORS_ALLOW_ORIGINS"); origins != "" {
-		return origins
-	}
-	if os.Getenv("APP_ENV") == "production" {
-		log.Println("CORS_ALLOW_ORIGINS is empty in production; using Fiber's default origin policy")
-		return ""
-	}
-	return "*"
-}
-
-func webSocketAllowedOrigins() []string {
-	origins := os.Getenv("CORS_ALLOW_ORIGINS")
-	if origins == "" {
-		if os.Getenv("APP_ENV") == "production" {
-			return nil
-		}
-		return []string{"*"}
-	}
-	values := strings.Split(origins, ",")
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			result = append(result, value)
-		}
-	}
-	return result
 }

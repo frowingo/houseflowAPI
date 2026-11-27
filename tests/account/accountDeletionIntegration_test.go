@@ -92,7 +92,7 @@ func TestDeleteMeDeletesTheSignedInUser(t *testing.T) {
 		return c.Next()
 	}
 	superAdminOnly := func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) }
-	// Same order as cmd/api/routes.go: "/me" must win over "/:id".
+	// Same order as internal/bootstrap/routes.go: "/me" must win over "/:id".
 	app.Delete("/user/me", signedIn, userController.DeleteMe)
 	app.Delete("/user/:id", signedIn, superAdminOnly, userController.DeleteUser)
 

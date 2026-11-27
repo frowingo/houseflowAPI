@@ -9,7 +9,7 @@ takıldığında ya da uyarı geldiğinde ne yapılacağını anlatır.
 |---|---|
 | Port (iş tipi, seçenekler, zamanlayıcı) | `internal/application/jobs/abstract` |
 | Asynq ve süreç içi runtime, zamanlayıcı, istatistik | `internal/infrastructure/jobs` |
-| Kurulum, rol, telemetry | `internal/adaptors/jobs.go`, `internal/adaptors/jobsTelemetry.go` |
+| Kurulum, rol, telemetry | `internal/bootstrap/adaptors/jobs.go`, `internal/bootstrap/adaptors/jobsTelemetry.go` |
 
 - `REDIS_URL` boşsa ya da geçersizse işler süreç içinde çalışır: tekrar deneme ve kalıcılık yoktur.
   Bu durum yalnız yerel geliştirme içindir.
@@ -174,7 +174,7 @@ Worker komutu:
 - API `api` rolündeyse bu sırada işleri kimse işlemez. İşler kaybolmaz, kuyrukta birikir ve
   `queueLatency` uyarısı gelir.
 
-**Yeni iş tipi eklerken** handler'ı `cmd/api/backgroundJobs.go` içinde bağla. Başka yerde bağlanan
+**Yeni iş tipi eklerken** handler'ı `internal/bootstrap/backgroundJobs.go` içinde bağla. Başka yerde bağlanan
 iş, worker'da olmaz. `tests/architecture` içindeki sözleşme testi bunu yakalar.
 
 ## Deploy notları

@@ -1519,6 +1519,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/game/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "For each game a current member has completed a match of, returns how many completed matches every current member played and won. Cancelled matches, draws and shared first places count no win.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Game"
+                ],
+                "summary": "Get a house's game win counts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "House ID",
+                        "name": "houseId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_HouseGameStatsModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Requester is not a house member",
+                        "schema": {
+                            "$ref": "#/definitions/houseflowApi_internal_models_core.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/game/{gameKey}/config": {
             "put": {
                 "security": [
@@ -3240,6 +3292,20 @@ const docTemplate = `{
                 }
             }
         },
+        "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_HouseGameStatsModel": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.HouseGameStatsModel"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "houseflowApi_internal_models_core.ApiResponse-array_houseflowApi_internal_models_dtos_ImageAssetResultModel": {
             "type": "object",
             "properties": {
@@ -4231,6 +4297,21 @@ const docTemplate = `{
                 }
             }
         },
+        "houseflowApi_internal_models_dtos.HouseGameStatsModel": {
+            "type": "object",
+            "properties": {
+                "gameKey": {
+                    "type": "string",
+                    "example": "houseTanks"
+                },
+                "players": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/houseflowApi_internal_models_dtos.PlayerGameStatsModel"
+                    }
+                }
+            }
+        },
         "houseflowApi_internal_models_dtos.HouseInfosResponseModel": {
             "type": "object",
             "properties": {
@@ -4572,6 +4653,20 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "houseflowApi_internal_models_dtos.PlayerGameStatsModel": {
+            "type": "object",
+            "properties": {
+                "matchesPlayed": {
+                    "type": "integer"
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "wins": {
+                    "type": "integer"
                 }
             }
         },

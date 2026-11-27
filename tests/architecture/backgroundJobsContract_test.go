@@ -11,10 +11,10 @@ import (
 )
 
 // The worker command runs setupBackgroundJobs alone, so a job handler or
-// periodic job bound anywhere else in cmd/api would exist on API machines
+// periodic job bound anywhere else in internal/bootstrap would exist on API machines
 // only and its jobs would never run with a worker group.
 func TestJobHandlersAreBoundOnlyInBackgroundJobs(t *testing.T) {
-	directory := filepath.Join(repositoryRoot(t), "cmd", "api")
+	directory := filepath.Join(repositoryRoot(t), "internal", "bootstrap")
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestJobHandlersAreBoundOnlyInBackgroundJobs(t *testing.T) {
 	}
 	for name, count := range bindings {
 		if name != "backgroundJobs.go" {
-			t.Errorf("cmd/api/%s binds %d job handler(s); bind them in setupBackgroundJobs so the worker has them", name, count)
+			t.Errorf("internal/bootstrap/%s binds %d job handler(s); bind them in setupBackgroundJobs so the worker has them", name, count)
 		}
 	}
 }

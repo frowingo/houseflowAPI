@@ -6,12 +6,12 @@ paket, PR açıldığında CI'da çalışır (`.github/workflows/deploy.yml`, `v
 ## Etkilenen testleri çalıştırmak
 
 ```bash
-scripts/testAffected.sh                 # master'a göre değişenler (commit + stage + çalışma ağacı + yeni dosyalar)
-scripts/testAffected.sh --dry-run       # yalnızca neyin neden çalışacağını yazar
-scripts/testAffected.sh --base dev      # başka bir dala göre
-scripts/testAffected.sh --dry-run --file internal/x/y.go   # "bunu değiştirirsem ne çalışır?"
-scripts/testAffected.sh -- -run TestX   # go test'e ek argüman
-scripts/testAffected.sh --all           # her şey, CI ile aynı
+tests/testAffected.sh                 # master'a göre değişenler (commit + stage + çalışma ağacı + yeni dosyalar)
+tests/testAffected.sh --dry-run       # yalnızca neyin neden çalışacağını yazar
+tests/testAffected.sh --base dev      # başka bir dala göre
+tests/testAffected.sh --dry-run --file internal/x/y.go   # "bunu değiştirirsem ne çalışır?"
+tests/testAffected.sh -- -run TestX   # go test'e ek argüman
+tests/testAffected.sh --all           # her şey, CI ile aynı
 ```
 
 Betik değişen her dosyayı dizininin Go paketine eşler. Fixture ve testdata
@@ -23,7 +23,7 @@ dosya yüzünden seçildiğini yazar. İstisnalar:
 - `internal/` ve `cmd/` altındaki kaynak ile `fly.toml` dosyasını import etmeden
   okuyan testler `tests/architecture` içindedir (yaklaşık 2 sn). Bu paket, bu
   dosyalardan biri değişince çalışır. Dosya okuyan yeni bir test de buraya konur.
-- Doküman, CI, Docker ve `scripts/` değişiklikleri hiçbir testi çalıştırmaz.
+- Doküman, CI, Docker ve `tests/*.sh` değişiklikleri hiçbir testi çalıştırmaz.
 
 Seçim, üretim paketlerinin ayrımı kadar incedir. Örneğin gateway fixture'ı
 gerçek `internal/controllers` paketini kullanır ve bu paket tüm uygulama
@@ -46,7 +46,7 @@ başlatır, iş bitince kapatır (Homebrew `mongodb-community` ve `redis`).
 | `gamecore` | oturum domain'i, persistence, katalog, config, lobi niyetleri, modül sözleşmeleri |
 | `realtime` | koordinasyon, gateway, oda runtime, kapasite, sıkıştırma |
 | `jobs` | arka plan iş kuyruğu (Asynq): işleme, retry, arşiv, TaskID tekrarı, `FAUSCREW_ROLE=api` ayrımı, kapanış |
-| `adaptors` | config'ten adaptör kurulumu (`internal/adaptors`): coordinator, iş kuyruğu (worker runtime'ı dahil), sosyal giriş, yedeğe düşme; süreç config'i (`FAUSCREW_ROLE`, `INSTANCE_ID`) |
+| `adaptors` | config'ten adaptör kurulumu (`internal/bootstrap/adaptors`): coordinator, iş kuyruğu (worker runtime'ı dahil), sosyal giriş, yedeğe düşme; süreç config'i (`FAUSCREW_ROLE`, `INSTANCE_ID`) |
 | `games/<oyun>` | houseRockets, houseTanks, fausSwitch, ticTacToe |
 | `testkit` | `TestMain` (`testkit.Main`), Mongo DB havuzu, Redis seçimi, `RepoPath` |
 | `testkit/appkit` | uygulama fixture'ı (`NewConcurrencyFixture`) |

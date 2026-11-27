@@ -1,4 +1,4 @@
-package main
+package bootstrap
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 
-	"houseflowApi/internal/adaptors"
+	"houseflowApi/internal/bootstrap/adaptors"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"
@@ -21,10 +21,10 @@ import (
 // workerHealthAddress serves only health checks; the worker has no public API.
 const workerHealthAddress = ":3163"
 
-// runWorker processes background jobs without serving the API. It registers
+// Work processes background jobs without serving the API. It registers
 // the same handlers as serve (setupBackgroundJobs) and requires Valkey: an
 // API group with FAUSCREW_ROLE=api only enqueues, and workers drain the queue.
-func runWorker() error {
+func Work() error {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

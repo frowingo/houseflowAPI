@@ -1,25 +1,25 @@
 # Güvenlik ve performans sertleştirmesi
 
-Tarih: 11 Kasım 2026. Bu belge backend'de yapılan güvenlik ve performans değişikliklerini anlatır. Değişiklikler `dev` dalında ve henüz deploy edilmedi. Etkilenen testler `scripts/testAffected.sh --base HEAD` ile çalıştırıldı: 20 paket, `-race` ile, hepsi geçti.
+Tarih: 11 Kasım 2026. Bu belge backend'de yapılan güvenlik ve performans değişikliklerini anlatır. Değişiklikler `dev` dalında ve henüz deploy edilmedi. Etkilenen testler `tests/testAffected.sh --base HEAD` ile çalıştırıldı: 20 paket, `-race` ile, hepsi geçti.
 
 ## Özet
 
 | Alan | Sorun | Yapılan değişiklik | Ana dosya |
 |---|---|---|---|
-| Güvenlik | Rate limit IP'si istemcinin gönderdiği `X-Forwarded-For` başlığından okunuyordu | Güvenilir başlık `Fly-Client-IP` yapıldı, IP doğrulaması açıldı | [main.go](../../cmd/api/main.go) |
+| Güvenlik | Rate limit IP'si istemcinin gönderdiği `X-Forwarded-For` başlığından okunuyordu | Güvenilir başlık `Fly-Client-IP` yapıldı, IP doğrulaması açıldı | [server.go](../../internal/bootstrap/server.go) |
 | Güvenlik | Sıfırlama ve doğrulama kodlarında deneme sınırı yoktu | Kod başına 5 deneme sınırı, sabit zamanlı karşılaştırma, kullanılan kodun tekrar kullanılamaması | [codeAttempts.go](../../internal/application/auth/policies/codeAttempts.go) |
 | Güvenlik | JWT doğrulaması HS256 ve `exp` alanını zorunlu tutmuyordu | İkisi de zorunlu yapıldı, `iat` eksikse panik riski kapatıldı | [jwt.go](../../internal/helpers/jwt.go) |
-| Güvenlik | Swagger production'da herkese açıktı | Production'da e-posta + şifre (Basic Auth) ve SuperAdmin rolü gerekiyor | [swagger.go](../../cmd/api/swagger.go) |
+| Güvenlik | Swagger production'da herkese açıktı | Production'da e-posta + şifre (Basic Auth) ve SuperAdmin rolü gerekiyor | [swagger.go](../../internal/bootstrap/swagger.go) |
 | Güvenlik | Bazı metin ve URL alanlarında uzunluk sınırı yoktu | Duyuru, profil adı ve resim URL'lerine `max` sınırı | [announcementModels.go](../../internal/models/dtos/announcementModels.go) |
 | Güvenlik | Websocket okuma sınırı sıkıştırılmış baytları sayıyordu | Açılmış mesaj da aynı sınırla okunuyor, aşan bağlantı 1009 ile kapanıyor | [gatewayV2.go](../../internal/infrastructure/realtime/gatewayV2.go) |
 | Güvenlik | Bir kullanıcı instance'ın bütün realtime slotlarını alabiliyordu | Kullanıcı başına en fazla 4 bağlantı | [admission.go](../../internal/infrastructure/realtime/admission.go) |
 | Güvenlik | Snapshot isteği dolu kuyrukta maçı iptal edebiliyordu | Kuyruk yarıdan fazla doluyken snapshot `busy` ile reddediliyor | [houseTanks runtime](../../internal/application/game/games/houseTanks/runtime.go) |
 | Güvenlik | Abonelik kopan oda hub'ı kayıtlı kalıyordu | Hub kayıttan çıkarılıp durduruluyor | [gateway.go](../../internal/infrastructure/realtime/gateway.go) |
 | Güvenlik | Bazı Mongo çağrılarında zaman aşımı yoktu | Mevcut `CommandTimeout` uygulandı | [roomManager.go](../../internal/infrastructure/realtime/roomManager.go) |
-| Performans | `/auth/isAuth` sıkı auth limitine takılabiliyordu | Yalnızca genel API limiti uygulanıyor | [routes.go](../../cmd/api/routes.go) |
+| Performans | `/auth/isAuth` sıkı auth limitine takılabiliyordu | Yalnızca genel API limiti uygulanıyor | [routes.go](../../internal/bootstrap/routes.go) |
 | Performans | Yerelleştirme önbelleği yalnızca İngilizceyi yüklüyor, eksik çeviriler her seferinde Mongo'ya gidiyordu | `en` ve `tr` yükleniyor, eksik çeviri bir kez sorgulanıp önbelleğe alınıyor | [cache.go](../../internal/infrastructure/localization/cache.go) |
 | Performans | SMTP gönderimi zaman aşımsızdı, şablon her gönderimde parse ediliyordu | 10 sn bağlantı, 20 sn toplam süre; şablon bir kez parse ediliyor | [notificationService.go](../../internal/services/notificationService.go) |
-| Performans | Yanıtlar sıkıştırılmıyordu | Fiber `compress` (en hızlı seviye), websocket hariç | [main.go](../../cmd/api/main.go) |
+| Performans | Yanıtlar sıkıştırılmıyordu | Fiber `compress` (en hızlı seviye), websocket hariç | [server.go](../../internal/bootstrap/server.go) |
 | Performans | Redis kullanılamazken her komut sonrası 750 ms bekleniyordu | Bus kullanılamaz görünürken olay 100 ms bütçeyle deneniyor | [service.go](../../internal/infrastructure/appEvents/service.go) |
 | Performans | Görev deadline taraması her dakika geçmişteki tüm görevleri okuyordu | Dakikalık tur yalnızca açık görevlere bakıyor | [deadlineService.go](../../internal/application/chore/deadlineService.go) |
 | Performans | Birkaç sorgu ve silme için uygun indeks yoktu | Migration 0064 ile eklendi | [0064_queryIndexes.go](../../internal/data/migrations/0064_queryIndexes.go) |
@@ -33,7 +33,7 @@ Uygulama `ProxyHeader` olarak `X-Forwarded-For` kullanıyordu ve bu başlık do�
 
 Şimdi `ProxyHeader: "Fly-Client-IP"` ve `EnableIPValidation: true` kullanılıyor. Bu başlığı Fly'ın proxy'si kendisi ayarlar; istemcinin gönderdiği değerin üzerine yazdığı staging'de doğrulanmalıdır (bkz. Deploy notları). Başlık yoksa (yerel geliştirme, Docker) uzak adres kullanılır. `/localization` grubundaki ikinci `IPRateLimit` gereksiz olduğu için kaldırıldı; genel API limiti zaten geçerli.
 
-Dosyalar: [main.go](../../cmd/api/main.go), [routes.go](../../cmd/api/routes.go)
+Dosyalar: [server.go](../../internal/bootstrap/server.go), [routes.go](../../internal/bootstrap/routes.go)
 
 ### Sıfırlama ve doğrulama kodlarına kaba kuvvet
 
@@ -67,7 +67,7 @@ Production dışında (`APP_ENV != "production"`) eskisi gibi açık. Production
 - Rota ayrıca IP başına 50 istek / dakika limitinin arkasındadır.
 - Tarayıcı kimlik bilgisini her istekte gönderir; her istek şifreyi yeniden doğrular. Kimlik bilgisi sunucuda saklanmaz.
 
-Dosyalar: [swagger.go](../../cmd/api/swagger.go), [swaggerAuthMiddleware.go](../../internal/infrastructure/middleware/swaggerAuthMiddleware.go)
+Dosyalar: [swagger.go](../../internal/bootstrap/swagger.go), [swaggerAuthMiddleware.go](../../internal/infrastructure/middleware/swaggerAuthMiddleware.go)
 
 ### Girdi uzunluk sınırları
 
@@ -81,7 +81,7 @@ Uygulama açılışta ve her `user.changed` olayında `/auth/isAuth` çağırıy
 
 Rota artık `/auth` grubunun önünde kayıtlı; yalnızca genel API limiti (IP başına 50 istek / dakika) uygulanıyor. Yanıt değişmedi.
 
-Dosya: [routes.go](../../cmd/api/routes.go)
+Dosya: [routes.go](../../internal/bootstrap/routes.go)
 
 ### Yerelleştirme önbelleği
 
@@ -103,7 +103,7 @@ Dosya: [notificationService.go](../../internal/services/notificationService.go)
 
 Fiber `compress` middleware'i en hızlı seviyede (`LevelBestSpeed`) eklendi. Websocket yükseltmeleri atlanır. Sıkıştırma yalnızca istemci `Accept-Encoding` gönderdiğinde uygulanır. `go.mod` değişmedi.
 
-Dosya: [main.go](../../cmd/api/main.go)
+Dosya: [server.go](../../internal/bootstrap/server.go)
 
 ### App event'leri
 
@@ -235,7 +235,7 @@ Yeni eklenen veya genişletilen testler:
 Çalıştırma:
 
 ```bash
-scripts/testAffected.sh --base HEAD
+tests/testAffected.sh --base HEAD
 ```
 
 - Varsayılan karşılaştırma `master` dalıdır. Bu değişiklikleri kapsamak için `--base HEAD` gerekir; bu komut commit'lenmemiş ve izlenmeyen dosyaları da alır.

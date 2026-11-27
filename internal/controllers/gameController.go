@@ -158,6 +158,45 @@ func (controller *GameController) GetCatalog(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(core.Success(models))
 }
 
+// @Summary Get a house's game win counts
+// @Description For each game a current member has completed a match of, returns how many completed matches every current member played and won. Cancelled matches, draws and shared first places count no win.
+// @Tags Game
+// @Produce json
+// @Security BearerAuth
+// @Param houseId query string true "House ID"
+// @Success 200 {object} core.ApiResponse[[]dtos.HouseGameStatsModel]
+// @Failure 400 {object} core.ErrorResponse
+// @Failure 401 {object} core.ErrorResponse "Unauthorized"
+// @Failure 403 {object} core.ErrorResponse "Requester is not a house member"
+// @Router /game/stats [get]
+func (controller *GameController) GetHouseStats(c *fiber.Ctx) error {
+	model := dtos.EnsureGameSessionModel{HouseId: c.Query("houseId")}
+	if err := controller.validator.Validate(model); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(
+			helpers.LocalizedCoreError(c, controller.localizer, err.Error()),
+		)
+	}
+	ctx, cancel := requestContext(c)
+	defer cancel()
+	stats, err := cqrs.Send[[]gameQueries.GameStats](ctx, controller.sender, gameQueries.GetHouseGameStatsQuery{HouseID: model.HouseId, UserID: c.Locals("userID").(string)})
+	if err != nil {
+		return helpers.RespondLocalizedError(c, controller.localizer, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(core.Success(houseGameStatsModels(stats)))
+}
+
+func houseGameStatsModels(stats []gameQueries.GameStats) []dtos.HouseGameStatsModel {
+	models := make([]dtos.HouseGameStatsModel, 0, len(stats))
+	for _, game := range stats {
+		players := make([]dtos.PlayerGameStatsModel, 0, len(game.Players))
+		for _, player := range game.Players {
+			players = append(players, dtos.PlayerGameStatsModel{UserId: player.UserID, Wins: player.Wins, MatchesPlayed: player.MatchesPlayed})
+		}
+		models = append(models, dtos.HouseGameStatsModel{GameKey: game.GameKey, Players: players})
+	}
+	return models
+}
+
 // @Summary List game configs
 // @Description Returns every game this deployment can run with its current config, including switched-off games.
 // @Tags Game

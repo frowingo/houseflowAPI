@@ -34,6 +34,16 @@ type ResultCodec interface {
 	FinalizeResult(proposed gameDomain.MatchResult, session gameDomain.SessionSnapshot) (gameDomain.MatchResult, error)
 	// DecodeResult checks a stored result and returns its public wire model.
 	DecodeResult(stored gameDomain.MatchResult) (any, error)
+	// Standing checks a stored result and reads who played and who won it.
+	Standing(stored gameDomain.MatchResult) (Standing, error)
+}
+
+// Standing is the part of a result every game shares. WinnerID is the match's
+// sole winner as the result records it, and empty for a draw, a shared first
+// place or a cancelled match; a game never awards more than one.
+type Standing struct {
+	PlayerIDs []string
+	WinnerID  string
 }
 
 // ErrorCode namespaces a game-specific application error key.

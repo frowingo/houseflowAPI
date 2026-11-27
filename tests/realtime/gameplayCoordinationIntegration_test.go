@@ -45,8 +45,11 @@ func TestGameplayCoordinationRequiresReadySubscriberAndNeverReplays(t *testing.T
 	if err := subscription.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// Close drops the subscriber's connection; Redis processes the disconnect
+	// asynchronously, so a publish right after it may still count the
+	// subscriber for a moment.
 	envelope.Payload = nil
-	if err := sender.PublishGameplay(t.Context(), receiver.InstanceID(), envelope); !errors.Is(err, coordinationAbstract.ErrUnavailable) {
-		t.Fatalf("closed subscriber: %v", err)
-	}
+	gamekit.Eventually(t, time.Second, func() bool {
+		return errors.Is(sender.PublishGameplay(t.Context(), receiver.InstanceID(), envelope), coordinationAbstract.ErrUnavailable)
+	})
 }

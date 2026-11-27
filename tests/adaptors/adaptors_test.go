@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"houseflowApi/internal/adaptors"
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	jobsAbstract "houseflowApi/internal/application/jobs/abstract"
+	"houseflowApi/internal/bootstrap/adaptors"
 	"houseflowApi/internal/config"
 	infrastructureJobs "houseflowApi/internal/infrastructure/jobs"
 	"houseflowApi/tests/testkit"

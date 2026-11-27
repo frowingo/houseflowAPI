@@ -166,6 +166,22 @@ func (gameModule) DecodeResult(stored gameDomain.MatchResult) (any, error) {
 	return decodeResult(stored)
 }
 
+// Standing reads the stored winner: three in a row or a timeout.
+func (gameModule) Standing(stored gameDomain.MatchResult) (module.Standing, error) {
+	result, err := decodeResult(stored)
+	if err != nil {
+		return module.Standing{}, err
+	}
+	standing := module.Standing{PlayerIDs: make([]string, 0, len(result.Players))}
+	for _, player := range result.Players {
+		standing.PlayerIDs = append(standing.PlayerIDs, player.PlayerID)
+	}
+	if stored.Status == gameDomain.MatchCompleted && result.WinnerID != nil {
+		standing.WinnerID = *result.WinnerID
+	}
+	return standing, nil
+}
+
 func nextDeadline(turn module.Turn) time.Time {
 	return turn.Now.Add(sessionSettings(turn.Session.Settings).turnTimeout()).UTC()
 }
