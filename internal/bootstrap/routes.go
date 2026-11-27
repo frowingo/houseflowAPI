@@ -1,8 +1,7 @@
-package main
+package bootstrap
 
 import (
 	"context"
-	"houseflowApi/internal/adaptors"
 	authCommands "houseflowApi/internal/application/auth/commands"
 	authPolicies "houseflowApi/internal/application/auth/policies"
 	authQueries "houseflowApi/internal/application/auth/queries"
@@ -31,6 +30,7 @@ import (
 	userCommands "houseflowApi/internal/application/user/commands"
 	userPolicies "houseflowApi/internal/application/user/policies"
 	userQueries "houseflowApi/internal/application/user/queries"
+	"houseflowApi/internal/bootstrap/adaptors"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/controllers"
 	"houseflowApi/internal/data/database"

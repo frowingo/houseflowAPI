@@ -1,4 +1,4 @@
-package main
+package bootstrap
 
 import (
 	"context"
@@ -16,7 +16,8 @@ import (
 
 const migrationTimeout = 4 * time.Minute
 
-func runMigrations() error {
+// Migrate applies every pending migration and exits.
+func Migrate() error {
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

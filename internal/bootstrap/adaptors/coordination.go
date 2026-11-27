@@ -1,6 +1,6 @@
 // Package adaptors builds the infrastructure adapters the API runs with from
 // its configuration, and decides what to fall back to when one is missing.
-// cmd/api only calls these; the adapters themselves stay config-free.
+// Only internal/bootstrap calls these; the adapters themselves stay config-free.
 package adaptors
 
 import (

@@ -81,7 +81,7 @@ func TestRateLimitCountsConcurrentRequestsExactly(t *testing.T) {
 // isAuth runs on every app start and user.changed; housemates behind one NAT
 // must not share the strict /auth budget for it.
 func TestIsAuthIsOutsideStrictAuthRateLimit(t *testing.T) {
-	routes := readContractFile(t, filepath.Join(repositoryRoot(t), "cmd", "api", "routes.go"))
+	routes := readContractFile(t, filepath.Join(repositoryRoot(t), "internal", "bootstrap", "routes.go"))
 	isAuth := strings.Index(routes, `api.Get("/auth/isAuth", authController.IsAuth)`)
 	authGroup := strings.Index(routes, `api.Group("/auth", middleware.StrictRateLimit(`)
 	if isAuth < 0 || authGroup < 0 || isAuth > authGroup {

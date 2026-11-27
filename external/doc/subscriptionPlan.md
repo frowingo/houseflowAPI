@@ -463,7 +463,7 @@ internal/application/subscription/
   queries/getSubscriptionStatus.go
   jobs.go                             // fauscrew:subscription:sync handler
 internal/infrastructure/revenueCat/client.go  // HTTP adaptörü (timeout, retry)
-internal/adaptors/revenueCat.go               // config'ten kurulum, yoksa kapalı
+internal/bootstrap/adaptors/revenueCat.go     // config'ten kurulum, yoksa kapalı
 internal/controllers/subscriptionController.go
 internal/models/dtos/subscriptionModels.go
 ```

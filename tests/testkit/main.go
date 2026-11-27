@@ -2,7 +2,7 @@
 // the pooled migrated Mongo databases, Redis selection and repository paths.
 // It imports no application code: the application fixture lives in
 // testkit/appkit and the game session, room runtime and realtime gateway
-// fixtures in testkit/gamekit, so scripts/testAffected.sh runs a test package
+// fixtures in testkit/gamekit, so tests/testAffected.sh runs a test package
 // only for changes to code it uses. Apart from the pool's guard test it has
 // no tests of its own.
 package testkit

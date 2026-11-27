@@ -13,3 +13,7 @@ internal/config/config.json
 # Go workspace
 go.work
 go.work.sum
+
+# Editor settings
+/.idea/
+/.vscode/

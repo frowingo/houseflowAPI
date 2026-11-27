@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"houseflowApi/internal/adaptors"
+	"houseflowApi/internal/bootstrap/adaptors"
 	infrastructureJobs "houseflowApi/internal/infrastructure/jobs"
 )
 

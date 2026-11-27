@@ -1,4 +1,4 @@
-package main
+package bootstrap
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 
-	"houseflowApi/internal/adaptors"
 	authEmail "houseflowApi/internal/application/auth/email"
 	choreApplication "houseflowApi/internal/application/chore"
 	chorePolicies "houseflowApi/internal/application/chore/policies"
 	coordinationAbstract "houseflowApi/internal/application/coordination/abstract"
 	"houseflowApi/internal/application/notification"
+	"houseflowApi/internal/bootstrap/adaptors"
 	"houseflowApi/internal/config"
 	"houseflowApi/internal/data/database"
 	"houseflowApi/internal/data/entities"

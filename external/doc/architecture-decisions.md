@@ -1420,9 +1420,9 @@ index bunları siler. İstemci token'ını her açılışta yeniden kaydeder.
   ortamda API grubu `FAUSCREW_ROLE=api` ile çalışırken worker'lar da çalışabilir.
 - Worker, `NewJobRuntime` gibi süreç içi çalışmaya düşmez. Valkey yoksa hata verir ve makine
   yeniden başlar.
-- Handler'lar ve periyodik işler `cmd/api/backgroundJobs.go` içindeki `setupBackgroundJobs`
-  fonksiyonunda bağlanır. `serve` ve `worker` aynı fonksiyonu çağırır. Bir mimari test, `cmd/api`
-  içinde başka bir yerde iş bağlanmasını engeller.
+- Handler'lar ve periyodik işler `internal/bootstrap/backgroundJobs.go` içindeki
+  `setupBackgroundJobs` fonksiyonunda bağlanır. `serve` ve `worker` aynı fonksiyonu çağırır. Bir
+  mimari test, `internal/bootstrap` içinde başka bir yerde iş bağlanmasını engeller (ADR-033).
 - Worker grubu hazırdır ama `fly.toml` içinde açık değildir. Açma ve geri alma adımları
   runbook'taki "Ayrı worker grubu" bölümündedir.
 - `kill_timeout = 30`.
@@ -1449,3 +1449,34 @@ Port sayesinde ileride başka bir kuyruğa geçmek yalnız altyapı katmanını 
 - Mail artık isteğin içinde gönderilmez. SMTP hatası API yanıtına yansımaz; istemci yeniden
   gönderime güvenir.
 - Asynq 0.x sürümündedir ve sürümü sabittir. API değişirse etkisi altyapı katmanıyla sınırlıdır.
+
+## ADR-033 — Uygulamanın kurulumu `internal/bootstrap` paketinde
+
+**Durum:** Kabul edildi — 27 Kasım 2026.
+
+**Bağlam.** `cmd/api` içinde `main.go` dışında beş dosya vardı: `routes.go` (handler kayıtları,
+servis kurulumu ve route'lar), `backgroundJobs.go`, `swagger.go`, `worker.go` ve `migrate.go`.
+Bunlar `package main` içinde olduğu için import edilemiyordu. Bu yüzden:
+
+- `tests/` altındaki fixture'lar handler kayıtlarını elle tekrar ediyordu.
+- Mimari testler kurulum kodunu metin olarak okumak zorundaydı.
+
+**Karar.**
+
+- `cmd/api/main.go` yalnız alt komutu seçer ve `bootstrap.Serve`, `bootstrap.Work` ya da
+  `bootstrap.Migrate` çağırır. Swagger'ın genel tanım yorumları da burada kalır.
+- Kurulum (composition root) `internal/bootstrap` paketindedir: `server.go`, `routes.go`,
+  `backgroundJobs.go`, `swagger.go`, `worker.go`, `migrate.go`.
+- Config'ten altyapı adaptörü kuran paket `internal/bootstrap/adaptors` altına taşındı. Ayrı paket
+  olarak kalır; dar bağımlılık grafiği sayesinde `tests/adaptors` yalnız ilgili değişikliklerde
+  seçilir.
+- `internal/infrastructure` altına konmadı. O katman config, controller ve service import etmez;
+  bootstrap ise hepsini kurar. Bağımlılık yönü dizinde de görünür: bootstrap → adaptors →
+  infrastructure.
+- Bir mimari test (`TestOnlyCommandsImportBootstrap`), `internal/` altında bootstrap dışındaki
+  hiçbir paketin `internal/bootstrap` ya da alt paketlerini import etmesine izin vermez.
+
+**Sonuçları.**
+
+- Binary, alt komutlar, Dockerfile ve `fly.toml` değişmedi; deploy etkisi yoktur.
+- Test fixture'larının gerçek kurulumu kullanması ayrı bir adımdır.

@@ -415,7 +415,7 @@ emailsiz Apple girişi `social_email_required` ile reddedilir.
 | `internal/application/auth/commands/socialAuth.go` | `SocialAuthCommand` |
 | `internal/application/auth/commands/completeSocialSignUp.go` | `CompleteSocialSignUpCommand` |
 | `internal/application/auth/commands/{link,unlink}SocialProvider.go` | Faz E |
-| `internal/controllers/authController.go`, `cmd/api/routes.go` | Uçlar ve handler kaydı |
+| `internal/controllers/authController.go`, `internal/bootstrap/routes.go` | Uçlar ve handler kaydı |
 | `internal/models/dtos/authModels.go` | Request/response modelleri, DTO alanları |
 | `internal/config/config.go` | `ConfigSocialAuth` ve env okuma (bölüm 7) |
 

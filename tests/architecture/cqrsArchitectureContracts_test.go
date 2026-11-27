@@ -158,12 +158,12 @@ func TestEveryApplicationRequestIsRegisteredInCompositionRoot(t *testing.T) {
 
 	for requestID, path := range requests {
 		if _, ok := registrations[requestID]; !ok {
-			t.Errorf("application request %s declared in %s is not registered in cmd/api/routes.go", requestID, path)
+			t.Errorf("application request %s declared in %s is not registered in internal/bootstrap/routes.go", requestID, path)
 		}
 	}
 	for requestID := range registrations {
 		if _, ok := requests[requestID]; !ok {
-			t.Errorf("cmd/api/routes.go registers unknown application request %s", requestID)
+			t.Errorf("internal/bootstrap/routes.go registers unknown application request %s", requestID)
 		}
 	}
 }
@@ -248,7 +248,7 @@ func applicationRequests(t *testing.T) map[string]string {
 
 func registeredRequests(t *testing.T) map[string]struct{} {
 	t.Helper()
-	routesPath := filepath.Join(testkit.ApplicationDirectory(t), "..", "..", "cmd", "api", "routes.go")
+	routesPath := filepath.Join(testkit.ApplicationDirectory(t), "..", "..", "internal", "bootstrap", "routes.go")
 	parsed, err := parser.ParseFile(token.NewFileSet(), routesPath, nil, 0)
 	if err != nil {
 		t.Fatal(err)
