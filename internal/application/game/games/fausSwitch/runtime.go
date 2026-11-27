@@ -430,7 +430,9 @@ func (runtime *Runtime) Advance(now time.Time) error {
 	runtime.remainder %= int64(time.Second)
 	runtime.lastAdvance = now
 	_ = runtime.race.advance(int(ticks))
-	runtime.applyPending(now, &observation)
+	// An applied flip is not critical, but other players should see it now
+	// rather than at the next periodic frame.
+	changed = runtime.applyPending(now, &observation) || changed
 	if runtime.race.outcome != nil {
 		runtime.terminal = true
 	}
@@ -506,10 +508,11 @@ func (runtime *Runtime) dropControl(seat int) {
 // applyPending hands the step's flips to the simulation as one batch, so a
 // step costs at most one rewind. Every flip is processed: an applied or
 // unsupported one is confirmed by lastProcessedInputSequence, a refused one
-// (its robot had already stopped at the flip's tick) is rejected.
-func (runtime *Runtime) applyPending(now time.Time, observation *module.RuntimeObservation) {
+// (its robot had already stopped at the flip's tick) is rejected. It reports
+// whether a flip turned a robot.
+func (runtime *Runtime) applyPending(now time.Time, observation *module.RuntimeObservation) (applied bool) {
 	if len(runtime.pending) == 0 {
-		return
+		return false
 	}
 	requests := runtime.requests[:0]
 	for _, flip := range runtime.pending {
@@ -527,6 +530,8 @@ func (runtime *Runtime) applyPending(now time.Time, observation *module.RuntimeO
 			runtime.NotifyRejected(flip.connection, flip.messageID, ErrRuntimeFinished)
 		case requests[index].outcome == flipNotRunning:
 			runtime.NotifyRejected(flip.connection, flip.messageID, ErrRunnerFinished)
+		case requests[index].outcome == flipped:
+			applied = true
 		}
 	}
 	if len(requests) > 1 {
@@ -536,6 +541,7 @@ func (runtime *Runtime) applyPending(now time.Time, observation *module.RuntimeO
 		runtime.controls[seat].queued = 0
 	}
 	runtime.requests, runtime.pending = requests[:0], runtime.pending[:0]
+	return applied
 }
 
 // end finishes the race for a cancellation reason and publishes it.

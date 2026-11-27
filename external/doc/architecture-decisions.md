@@ -1323,6 +1323,12 @@ referans motoruyla aynı olduğu için geri sarma sonucu istemcinin yerel tahmin
   `player_eliminated` eşlemesine düşmez.
 - Rolling deploy'a etkisi yok: geri sarma tamamen oda sahibinin süreç içi durumudur, wire formatı
   ve checkpoint şeması bundan bağımsızdır.
+- **Ek (27 Kasım 2026):** Bir robotu döndüren flip, onu uygulayan scheduler adımında frame
+  yayınlatır; sıradaki periyodik snapshot beklenmez. Böylece diğer oyuncular flip'i en fazla bir
+  scheduler adımı (~16,7 ms) sonra görür, 30 Hz'de ortalama ~17 ms erken. Desteksiz (havada) ya da
+  reddedilen flip frame üretmez. Ek frame periyodik takvimi kaydırmaz; protokol ve checkpoint
+  değişmez. En kötü durumda (8 robot, her biri saniyede 20 flip) frame hızı 20'den ~46/s'ye çıkar,
+  tavan scheduler hızıdır (60/s).
 
 ## ADR-032 — Arka plan işleri Asynq ile mevcut Valkey üzerinde
 

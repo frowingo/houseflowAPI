@@ -101,6 +101,10 @@ fiziğin istemciyle bire bir aynı olduğunun kanıtıdır.
 - Yinelenen `inputSequence` hatasız kabul edilir ve uygulanmaz (yeniden gönderim güvenli).
 - Hız sınırı saniyede 20 flip ve oyuncu başına en çok 8 bekleyen flip; fazlası
   `realtime.error.rate_limited`. Yarış bittiyse `fausSwitch.error.not_running`.
+- Robotu döndüren flip, sunucunun onu uyguladığı adımda yeni bir snapshot yayınlatır (27 Kasım
+  2026); periyodik snapshot beklenmez. Snapshot'lar bu yüzden periyodik aralığın dışında da gelir
+  (kontrol değişimlerinde zaten geliyordu). Sözleşme değişmez: istemci her snapshot'ı
+  `stateSequence` sırasıyla işler ve aralığın sabit olduğunu varsaymaz.
 
 ### 4.4. Yarış sonu ve sonuç
 
@@ -134,6 +138,7 @@ düşer) yarış `cancelled` / `runtimeOverloaded` ile biter. Hesap maliyeti bun
 | En kötü adım (tam pencere geri sarma) | ~80 µs |
 | Snapshot, 8 robot | ~3,3 KB ham, ~0,7 KB permessage-deflate ile |
 | Bağlantı başına bant, 20 Hz | 64 KB/s ham, **14 KB/s sıkıştırılmış** |
+| Aynı yük, flip'te anında frame ile (~46 frame/s) | 147 KB/s ham, **32 KB/s sıkıştırılmış** |
 
 İstemci WebSocket bağlantısında permessage-deflate'i açmalı; snapshot %78 küçülür.
 
