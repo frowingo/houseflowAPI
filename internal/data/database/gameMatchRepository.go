@@ -56,12 +56,40 @@ func (repository *GameMatchRepository) FindResult(ctx context.Context, sessionID
 	if err != nil {
 		return gameDomain.MatchResult{}, err
 	}
-	digest := sha256.Sum256(document.Payload)
-	result := document.result()
-	if hex.EncodeToString(digest[:]) != document.PayloadHash || document.RuntimeEpoch < 1 || strings.TrimSpace(document.ResultEventType) == "" || result.Validate() != nil {
+	if !validResultDocument(document) {
 		return gameDomain.MatchResult{}, gameAbstract.ErrInvalidPersistenceBatch
 	}
-	return result, nil
+	return document.result(), nil
+}
+
+// validResultDocument holds for a result exactly as Complete stored it.
+func validResultDocument(document gameMatchResultDocument) bool {
+	digest := sha256.Sum256(document.Payload)
+	return hex.EncodeToString(digest[:]) == document.PayloadHash && document.RuntimeEpoch >= 1 &&
+		strings.TrimSpace(document.ResultEventType) != "" && document.result().Validate() == nil
+}
+
+// CompletedResults reads with the houseId index; each result is checked as
+// FindResult checks it, so a damaged one fails the read instead of being
+// counted.
+func (repository *GameMatchRepository) CompletedResults(ctx context.Context, houseID string) ([]gameDomain.MatchResult, error) {
+	cursor, err := repository.results.Find(ctx, bson.M{"houseId": houseID, "status": gameDomain.MatchCompleted})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	results := []gameDomain.MatchResult{}
+	for cursor.Next(ctx) {
+		var document gameMatchResultDocument
+		if err := cursor.Decode(&document); err != nil {
+			return nil, err
+		}
+		if !validResultDocument(document) {
+			return nil, gameAbstract.ErrInvalidPersistenceBatch
+		}
+		results = append(results, document.result())
+	}
+	return results, cursor.Err()
 }
 
 func (repository *GameMatchRepository) Complete(ctx context.Context, completion gameAbstract.MatchCompletion) (gameDomain.MatchResult, error) {

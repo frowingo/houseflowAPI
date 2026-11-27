@@ -30,4 +30,7 @@ type MatchCompletion struct {
 type GameMatchRepository interface {
 	FindResult(ctx context.Context, sessionID string) (gameDomain.MatchResult, error)
 	Complete(ctx context.Context, completion MatchCompletion) (gameDomain.MatchResult, error)
+	// CompletedResults returns every completed result of a house; cancelled
+	// results have no winner and expire.
+	CompletedResults(ctx context.Context, houseID string) ([]gameDomain.MatchResult, error)
 }

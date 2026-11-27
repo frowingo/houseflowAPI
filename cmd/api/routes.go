@@ -264,6 +264,7 @@ func SetupRoutes(
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameCommands.ApplyLobbyIntentCommand](applicationMediator, gameCommands.NewApplyLobbyIntentHandler(gameSessionRepository, houseMembershipPolicy, gameRegistry))
 	cqrs.MustRegister[gameDomain.MatchResult, gameCommands.CompleteMatchCommand](applicationMediator, gameCommands.NewCompleteMatchHandler(gameSessionRepository, matchRepository, gameRegistry))
 	cqrs.MustRegister[any, gameQueries.GetMatchResultQuery](applicationMediator, gameQueries.NewGetMatchResultHandler(gameSessionRepository, matchRepository, gameRegistry, houseMembershipPolicy))
+	cqrs.MustRegister[[]gameQueries.GameStats, gameQueries.GetHouseGameStatsQuery](applicationMediator, gameQueries.NewGetHouseGameStatsHandler(matchRepository, gameRegistry, houseMembershipPolicy))
 	cqrs.MustRegister[gameDomain.SessionSnapshot, gameQueries.AuthorizeCancellationQuery](applicationMediator, gameQueries.NewAuthorizeCancellationHandler(gameSessionRepository, houseMembershipPolicy))
 	ensureActiveGameSessionHandler := gameCommands.NewEnsureActiveGameSessionHandler(
 		gameSessionRepository,
@@ -547,6 +548,7 @@ func SetupRoutes(
 		middleware.AuthRequired(jwtService, localizationCache),
 	)
 	gameRoutes.Get("/catalog", middleware.UserRateLimit(localizationCache), gameController.GetCatalog)
+	gameRoutes.Get("/stats", middleware.UserRateLimit(localizationCache), gameController.GetHouseStats)
 	gameRoutes.Get("/configs", middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), gameController.GetConfigs)
 	gameRoutes.Put("/:gameKey/config", middleware.UserRateLimit(localizationCache), middleware.RequireRoleWithLocalizer(localizationCache, int(entities.SuperAdmin)), gameController.UpdateConfig)
 	gameRoutes.Put(

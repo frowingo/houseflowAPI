@@ -265,6 +265,22 @@ func (gameModule) DecodeResult(stored gameDomain.MatchResult) (any, error) {
 	return DecodeMatchResult(stored)
 }
 
+// Standing reads the stored winner: the last survivor.
+func (gameModule) Standing(stored gameDomain.MatchResult) (module.Standing, error) {
+	result, err := DecodeMatchResult(stored)
+	if err != nil {
+		return module.Standing{}, err
+	}
+	standing := module.Standing{PlayerIDs: make([]string, 0, len(result.Players))}
+	for _, player := range result.Players {
+		standing.PlayerIDs = append(standing.PlayerIDs, player.PlayerID)
+	}
+	if stored.Status == gameDomain.MatchCompleted && result.WinnerID != nil {
+		standing.WinnerID = *result.WinnerID
+	}
+	return standing, nil
+}
+
 // tickRuntime adapts Runtime's typed channels to the module contract.
 type tickRuntime struct{ *Runtime }
 

@@ -116,6 +116,10 @@ func verifyTurnModule(t *testing.T, game module.TurnModule) {
 	if _, err := game.DecodeResult(finalized); err != nil {
 		t.Fatalf("decode result: %v", err)
 	}
+	// A cancelled match is played by its roster but won by nobody.
+	if standing, err := game.Standing(finalized); err != nil || standing.WinnerID != "" || len(standing.PlayerIDs) == 0 {
+		t.Fatalf("cancelled standing = %+v %v", standing, err)
+	}
 }
 
 func sameJSONObject(t *testing.T, first, second json.RawMessage) bool {
@@ -240,6 +244,10 @@ func verifyTickModule(t *testing.T, game module.TickModule) {
 	}
 	if _, err := game.DecodeResult(finalized); err != nil {
 		t.Fatal(err)
+	}
+	// A cancelled match is played by its roster but won by nobody.
+	if standing, err := game.Standing(finalized); err != nil || standing.WinnerID != "" || len(standing.PlayerIDs) == 0 {
+		t.Fatalf("cancelled standing = %+v %v", standing, err)
 	}
 	if _, err := runtime.CommittedFrame(finalized); err != nil {
 		t.Fatal(err)

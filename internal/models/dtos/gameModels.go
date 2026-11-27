@@ -142,3 +142,17 @@ func GameConfigToModel(definition gameDomain.GameDefinition, config gameDomain.G
 	houseIDs := append([]string{}, config.HouseIDs...)
 	return GameConfigModel{GameKey: definition.GameKey, ProtocolVersion: definition.ProtocolVersion, Mode: string(definition.Mode), Version: config.Version, Enabled: config.Enabled, HouseIds: houseIDs, Rules: gameRulesModel(config.Rules), Settings: config.Settings}
 }
+
+// HouseGameStatsModel is one game's tally for every current house member.
+type HouseGameStatsModel struct {
+	GameKey string                 `json:"gameKey" example:"houseTanks"`
+	Players []PlayerGameStatsModel `json:"players"`
+}
+
+// PlayerGameStatsModel counts completed matches only; a draw or a shared first
+// place is played but not won.
+type PlayerGameStatsModel struct {
+	UserId        string `json:"userId"`
+	Wins          int    `json:"wins"`
+	MatchesPlayed int    `json:"matchesPlayed"`
+}
