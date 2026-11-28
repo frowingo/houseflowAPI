@@ -120,7 +120,8 @@ func (r *LocalizationController) InsertLocalizationLanguage(c *fiber.Ctx) error 
 	return c.Status(fiber.StatusCreated).JSON(core.Success[any](nil))
 }
 
-// @Summary Insert localization values
+// @Summary Insert or update localization values
+// @Description Upserts each item by (language, type, key): new keys are created, existing ones get the new value. The batch is atomic.
 // @Tags Localization
 // @Accept json
 // @Produce json

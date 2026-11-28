@@ -2,10 +2,11 @@ package account
 
 import (
 	"testing"
+	"time"
 
 	localizationCommands "houseflowApi/internal/application/localization/commands"
 	localizationQueries "houseflowApi/internal/application/localization/queries"
-	"houseflowApi/internal/helpers"
+	"houseflowApi/internal/data/entities"
 	"houseflowApi/internal/infrastructure/cqrs"
 	"houseflowApi/internal/models/dtos"
 	"houseflowApi/tests/testkit/appkit"
@@ -59,21 +60,64 @@ func TestLocalizationCommandsAndQueriesUseAtomicWritesAndCache(t *testing.T) {
 		t.Fatalf("cached plaintext count=%d, want 2", len(cachedPlaintexts))
 	}
 
-	duplicateKey := "phase5.transaction-rollback"
-	_, err = cqrs.Send[cqrs.NoResult](fixture.Ctx, fixture.Sender, localizationCommands.InsertLocalizationsCommand{
+	upsertKey := "phase5.upsert"
+	if _, err := cqrs.Send[cqrs.NoResult](fixture.Ctx, fixture.Sender, localizationCommands.InsertLocalizationsCommand{
 		Localizations: []localizationCommands.LocalizationValue{
-			{Type: "message", Language: "en", Key: duplicateKey, Value: "First value"},
-			{Type: "message", Language: "en", Key: duplicateKey, Value: "Duplicate value"},
+			{Type: "plaintext", Language: "en", Key: upsertKey, Value: "First value"},
+			{Type: "PLAINTEXT", Language: "EN", Key: upsertKey, Value: "Second value"},
 		},
-	})
-	if !helpers.IsApplicationError(err, "localization.error.duplicate_key") {
-		t.Fatalf("duplicate error=%v, want localization conflict", err)
+	}); err != nil {
+		t.Fatalf("same key twice in one batch: %v", err)
 	}
-	count, err := fixture.DB.Collection("localization").CountDocuments(fixture.Ctx, bson.M{"key": duplicateKey})
+	first := findLocalization(t, fixture, upsertKey)
+	if first.Value != "Second value" {
+		t.Fatalf("value=%q, want last value of the batch", first.Value)
+	}
+	time.Sleep(10 * time.Millisecond) // Mongo dates are millisecond precision
+
+	if _, err := cqrs.Send[cqrs.NoResult](fixture.Ctx, fixture.Sender, localizationCommands.InsertLocalizationsCommand{
+		Localizations: []localizationCommands.LocalizationValue{
+			{Type: "plaintext", Language: "en", Key: upsertKey, Value: "Updated value"},
+		},
+	}); err != nil {
+		t.Fatalf("existing key upsert: %v", err)
+	}
+	count, err := fixture.DB.Collection("localization").CountDocuments(fixture.Ctx, bson.M{"key": upsertKey})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Fatalf("rolled back localization count=%d, want 0", count)
+	if count != 1 {
+		t.Fatalf("localization count=%d, want 1 after upsert", count)
 	}
+	updated := findLocalization(t, fixture, upsertKey)
+	if updated.Value != "Updated value" || updated.Id != first.Id {
+		t.Fatalf("updated=%+v, want same document with new value", updated)
+	}
+	if !updated.CreatedOn.Equal(first.CreatedOn) || !updated.UpdatedOn.After(first.UpdatedOn) {
+		t.Fatalf("createdOn %v->%v updatedOn %v->%v, want createdOn kept and updatedOn advanced",
+			first.CreatedOn, updated.CreatedOn, first.UpdatedOn, updated.UpdatedOn)
+	}
+
+	plaintexts, err = cqrs.Send[[]dtos.LocalizationPlaintextResponseModel](fixture.Ctx, fixture.Sender, localizationQueries.GetPlaintextsQuery{Language: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cachedValue := ""
+	for _, plaintext := range plaintexts {
+		if plaintext.Key == upsertKey {
+			cachedValue = plaintext.Value
+		}
+	}
+	if cachedValue != "Updated value" {
+		t.Fatalf("cached value=%q, want updated value", cachedValue)
+	}
+}
+
+func findLocalization(t *testing.T, fixture *appkit.ConcurrencyFixture, key string) entities.Localization {
+	t.Helper()
+	var localization entities.Localization
+	if err := fixture.DB.Collection("localization").FindOne(fixture.Ctx, bson.M{"key": key}).Decode(&localization); err != nil {
+		t.Fatal(err)
+	}
+	return localization
 }
