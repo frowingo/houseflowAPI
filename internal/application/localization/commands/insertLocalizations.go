@@ -10,7 +10,9 @@ import (
 	"houseflowApi/internal/helpers"
 	"houseflowApi/internal/infrastructure/cqrs"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type LocalizationValue struct {
@@ -64,9 +66,20 @@ func (h *InsertLocalizationsHandler) Handle(ctx context.Context, command InsertL
 		})
 	}
 
+	// Upsert on the unique (language, type, key) index: an existing row gets the
+	// new value and updatedOn, createdOn is kept. A key repeated within one batch
+	// resolves to its last value, matching the cache writes below.
 	err := h.localizationRepository.WithinTransaction(ctx, func(txCtx mongo.SessionContext) error {
 		for _, localization := range localizations {
-			if _, err := h.localizationRepository.Insert(txCtx, localization); err != nil {
+			_, err := h.localizationRepository.Collection().UpdateOne(txCtx,
+				bson.M{"language": localization.Language, "type": localization.Type, "key": localization.Key},
+				bson.M{
+					"$set":         bson.M{"value": localization.Value, "updatedOn": localization.UpdatedOn},
+					"$setOnInsert": bson.M{"createdOn": localization.CreatedOn},
+				},
+				options.Update().SetUpsert(true))
+			if err != nil {
+				// Only a concurrent first insert of the same key can still collide.
 				if mongo.IsDuplicateKeyError(err) {
 					return helpers.NewConflictError("localization.error.duplicate_key")
 				}
